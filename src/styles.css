@@ -189,7 +189,8 @@ button {
 .toolbar,
 .payment-tabs,
 .cash-buttons,
-.modal-actions {
+.modal-actions,
+.subnav-row {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -197,7 +198,8 @@ button {
 
 .category-button,
 .toolbar button,
-.payment-tabs button {
+.payment-tabs button,
+.subnav-row button {
   min-height: 48px;
   border: 1px solid #d8dee8;
   border-radius: 8px;
@@ -209,10 +211,120 @@ button {
 
 .category-button.is-active,
 .toolbar button.is-active,
-.payment-tabs button.is-active {
+.payment-tabs button.is-active,
+.subnav-row button.is-active {
   color: #fff;
   border-color: #136f63;
   background: #136f63;
+}
+
+.pos-screen {
+  display: grid;
+  gap: 14px;
+}
+
+.shift-card {
+  margin-bottom: 14px;
+  border: 1px solid #b7e4d4;
+  border-radius: 8px;
+  padding: 14px;
+  background: #effaf6;
+  display: grid;
+  gap: 12px;
+}
+
+.shift-card.needs-open {
+  border-color: #f5c56b;
+  background: #fffbeb;
+}
+
+.shift-card h3,
+.shift-card p {
+  margin: 0;
+}
+
+.shift-card p {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.shift-open-form,
+.shift-close-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.shift-open-form label,
+.shift-close-form label {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.shift-open-form input,
+.shift-close-form input {
+  min-height: 48px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+}
+
+.shift-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.shift-metrics span {
+  min-height: 58px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+  display: grid;
+  gap: 4px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.shift-metrics strong {
+  color: #136f63;
+  font-size: 18px;
+}
+
+.shift-metrics.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.history-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
+  gap: 16px;
+}
+
+.history-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.shift-summary-card {
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+  display: grid;
+  gap: 8px;
+}
+
+.shift-summary-card > span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .product-grid {
@@ -596,6 +708,105 @@ button {
   align-items: start;
 }
 
+.expense-wide-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.65fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.expense-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.expense-header label {
+  min-width: 220px;
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.expense-header input {
+  min-height: 46px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+}
+
+.expense-table {
+  display: grid;
+  gap: 8px;
+}
+
+.expense-table-head,
+.expense-entry-row {
+  display: grid;
+  grid-template-columns: 115px minmax(180px, 1.25fr) minmax(150px, 1fr) 90px 110px minmax(120px, 0.8fr) 42px;
+  gap: 8px;
+  align-items: center;
+}
+
+.expense-table-head {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.expense-entry-row {
+  padding: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.expense-entry-row input,
+.expense-entry-row select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #fff;
+}
+
+.expense-entry-row button {
+  width: 38px;
+  height: 38px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #fff;
+  display: grid;
+  place-items: center;
+}
+
+.stock-preview {
+  color: #136f63;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.expense-actions {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.expense-total {
+  margin-left: auto;
+  color: #136f63;
+  font-size: 22px;
+  font-weight: 950;
+}
+
 .expense-layout .inventory-grid {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
@@ -616,6 +827,20 @@ button {
   box-shadow: 0 10px 30px rgba(20, 28, 44, 0.05);
   display: grid;
   gap: 16px;
+}
+
+.new-record-button {
+  min-height: 58px;
+  border: 1px solid #136f63;
+  border-radius: 8px;
+  padding: 0 14px;
+  color: #136f63;
+  background: #e7f7f1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 950;
 }
 
 .side-editor form,
@@ -879,6 +1104,8 @@ button {
 
   .pos-layout,
   .expense-layout,
+  .expense-wide-layout,
+  .history-layout,
   .management-layout {
     grid-template-columns: 1fr;
   }
@@ -895,6 +1122,24 @@ button {
 
   .settings-card-wide {
     grid-column: span 1;
+  }
+
+  .expense-table-head {
+    display: none;
+  }
+
+  .expense-entry-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .expense-entry-row .stock-preview {
+    min-height: 42px;
+    border: 1px solid #d8dee8;
+    border-radius: 8px;
+    padding: 0 10px;
+    background: #fff;
+    display: flex;
+    align-items: center;
   }
 }
 
@@ -962,6 +1207,26 @@ button {
   .inventory-grid,
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .shift-open-form,
+  .shift-close-form,
+  .expense-header {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .shift-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .expense-entry-row {
+    grid-template-columns: 1fr;
+  }
+
+  .expense-total {
+    width: 100%;
+    margin-left: 0;
   }
 
   .product-tile {

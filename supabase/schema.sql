@@ -55,8 +55,23 @@ create table public.modifier_recipes (
   quantity_delta numeric not null
 );
 
+create table public.shifts (
+  id uuid primary key default gen_random_uuid(),
+  opened_at timestamptz not null default now(),
+  opening_cash numeric not null default 0,
+  closed_at timestamptz,
+  closing_cash numeric,
+  cash_sales numeric not null default 0,
+  transfer_sales numeric not null default 0,
+  expected_cash numeric not null default 0,
+  cash_difference numeric not null default 0,
+  order_count int not null default 0,
+  status text not null default 'OPEN' check (status in ('OPEN', 'CLOSED'))
+);
+
 create table public.orders (
   id uuid primary key default gen_random_uuid(),
+  shift_id uuid references public.shifts(id),
   order_no text not null unique,
   total_amount numeric not null,
   payment_status text not null check (payment_status in ('PENDING', 'COMPLETED', 'VOIDED')),
@@ -92,6 +107,7 @@ create table public.payments (
 create table public.expenses (
   id uuid primary key default gen_random_uuid(),
   expense_no text not null unique,
+  expense_date date not null default current_date,
   total_amount numeric not null default 0,
   note text,
   created_at timestamptz not null default now()
