@@ -1,0 +1,7 @@
+outputs/
+tools/
+node_modules/
+dist/
+.vite/
+.DS_Store
+Thumbs.db
