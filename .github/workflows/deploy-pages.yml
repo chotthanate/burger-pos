@@ -26,8 +26,8 @@ jobs:
           curl -L --retry 3 -o gh-pages.zip "https://github.com/${GITHUB_REPOSITORY}/archive/refs/heads/gh-pages.zip"
           unzip -q gh-pages.zip
           mkdir site
-          shopt -s dotglob
-          mv burger-pos-gh-pages-*/* site/
+          top_dir="$(find . -maxdepth 1 -type d -name 'burger-pos-*' | head -n 1)"
+          cp -a "${top_dir}/." site/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
