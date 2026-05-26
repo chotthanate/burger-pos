@@ -267,6 +267,25 @@ button {
   background: transparent;
 }
 
+.shift-closed-summary {
+  display: grid;
+  gap: 14px;
+}
+
+.shift-closed-summary h3,
+.shift-closed-summary p {
+  margin: 0;
+}
+
+.shift-closed-summary p {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.shift-metrics .span-2 {
+  grid-column: span 2;
+}
+
 .shift-card {
   margin-bottom: 14px;
   border: 1px solid #b7e4d4;
@@ -1005,6 +1024,61 @@ button {
   gap: 16px;
 }
 
+.side-editor.is-unsaved {
+  animation: shake-panel 0.28s ease-in-out;
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.16), 0 10px 30px rgba(20, 28, 44, 0.05);
+}
+
+@keyframes shake-panel {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+.inline-warning {
+  min-height: 40px;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: #92400e;
+  background: #fffbeb;
+  font-weight: 900;
+}
+
+.side-editor label.is-dirty,
+.recipe-toggle-box.is-dirty {
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 8px;
+  background: #fffbeb;
+}
+
+.icon-close-button {
+  min-height: 34px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+  font-weight: 900;
+}
+
+.danger-button {
+  min-height: 44px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 0 14px;
+  color: #b91c1c;
+  background: #fff1f2;
+  font-weight: 950;
+}
+
+.danger-button.is-armed {
+  color: #fff;
+  border-color: #dc2626;
+  background: #dc2626;
+}
+
 .new-record-button {
   min-height: 58px;
   border: 1px solid #136f63;
@@ -1026,11 +1100,56 @@ button {
 
 .side-editor form,
 .recipe-list,
+.recipe-line-list,
 .small-list,
 .table-list,
 .queue-list {
   display: grid;
   gap: 10px;
+}
+
+.panel-title .icon-close-button {
+  margin-left: auto;
+}
+
+.recipe-toggle-box {
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.recipe-line-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px 48px 38px;
+  gap: 8px;
+  align-items: center;
+}
+
+.recipe-line-row select,
+.recipe-line-row input {
+  min-height: 42px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #fff;
+}
+
+.recipe-line-row span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.recipe-line-row button {
+  width: 38px;
+  height: 38px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #fff;
+  display: grid;
+  place-items: center;
 }
 
 .side-editor h3 {
@@ -1403,12 +1522,17 @@ button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .shift-metrics .span-2 {
+    grid-column: span 1;
+  }
+
   .expense-entry-row {
     grid-template-columns: 1fr;
   }
 
   .expense-entry-row.is-custom,
-  .modal-form-grid {
+  .modal-form-grid,
+  .recipe-line-row {
     grid-template-columns: 1fr;
   }
 

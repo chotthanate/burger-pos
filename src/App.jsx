@@ -62,7 +62,7 @@ const defaultSettings = {
   kitchenTemplate: "[ORDER_NO]\nรายการอาหาร: ตัวหนา\n  - ตัวเลือกเสริม: ตัวบางและเยื้อง\nหมายเหตุ\nเวลาสั่ง",
   receiptLogoDataUrl: "",
   receiptLogoName: "",
-  receiptTemplate: "ใบเสร็จรับเงิน\n[LOGO]\n--------------------------------------\nหมายเลขคำสั่งซื้อ : [ORDER_NO]\nวันและเวลา : [ORDER_DATE]\n--------------------------------------\nสินค้า                  ราคา     จำนวน     รวม\n[ITEMS]\nรวม                                                  [TOTAL]",
+  receiptTemplate: "ใบเสร็จรับเงิน\n[LOGO]\n--------------------------------------\nหมายเลขคำสั่งซื้อ : [ORDER_NO]\nวันและเวลา : [ORDER_DATE]\n--------------------------------------\nสินค้า                  ราคา     จำนวน            รวม\n[ITEMS]            [PRICE]  [QUANTITY]   [TOTAL (price*quantity)]\nรวม                                                  [TOTAL]",
 };
 
 export default function App() {
@@ -210,17 +210,22 @@ export default function App() {
       alert("กรุณาใส่เงินสดตอนปิดกะ");
       return false;
     }
-    const summary = calculateShiftSummary(openShift, orders, Number(closingCash || 0));
+    const closedAt = new Date().toISOString();
+    const summary = {
+      ...calculateShiftSummary(openShift, orders, Number(closingCash || 0)),
+      openedAt: openShift.openedAt,
+      closedAt,
+    };
     setShifts((current) =>
       current.map((shift) =>
         shift.id === openShift.id
-          ? { ...shift, closedAt: new Date().toISOString(), closingCash: Number(closingCash || 0), summary }
+          ? { ...shift, closedAt, closingCash: Number(closingCash || 0), summary }
           : shift,
       ),
     );
     setCart([]);
     setPaymentOpen(false);
-    return true;
+    return { summary };
   }
 
   async function recordExpense(expense) {
@@ -258,6 +263,17 @@ export default function App() {
         ? current.map((ingredient) => (ingredient.id === nextIngredient.id ? nextIngredient : ingredient))
         : [...current, nextIngredient];
     });
+  }
+
+  function deleteIngredient(ingredientId) {
+    setIngredients((current) => current.filter((ingredient) => ingredient.id !== ingredientId));
+    setPurchaseUnits((current) => current.filter((unit) => unit.ingredientId !== ingredientId));
+    setRecipes((current) => current.filter((recipe) => recipe.ingredientId !== ingredientId));
+  }
+
+  function deleteProduct(productId) {
+    setProducts((current) => current.filter((product) => product.id !== productId));
+    setRecipes((current) => current.filter((recipe) => recipe.productId !== productId));
   }
 
   function adjustStock({ ingredientId, quantityDelta, reason }) {
@@ -347,6 +363,7 @@ export default function App() {
           {activeTab === "inventory" ? (
             <InventoryScreen
               adjustStock={adjustStock}
+              deleteIngredient={deleteIngredient}
               ingredients={ingredients}
               onAddPurchaseUnit={setPurchaseUnits}
               purchaseUnits={purchaseUnits}
@@ -358,6 +375,7 @@ export default function App() {
               ingredients={ingredients}
               products={products}
               recipes={recipes}
+              deleteProduct={deleteProduct}
               setProducts={setProducts}
               setRecipes={setRecipes}
             />
@@ -467,12 +485,16 @@ function PosScreen({
   updateCartNote,
 }) {
   const [shiftPanelOpen, setShiftPanelOpen] = useState(false);
+  const [closedShiftSummary, setClosedShiftSummary] = useState(null);
   const productCategories = Array.from(new Set([...categories, ...products.map((product) => product.category)]));
   const visibleProducts = products.filter((product) => product.category === activeCategory);
   const currentSummary = openShift ? calculateShiftSummary(openShift, orders) : null;
   function submitCloseShift(closingCash) {
     const closed = onCloseShift(closingCash);
-    if (closed) setShiftPanelOpen(false);
+    if (closed) {
+      setShiftPanelOpen(false);
+      setClosedShiftSummary(closed.summary);
+    }
   }
   return (
     <section className={`pos-screen ${!openShift && posView === "sale" ? "is-shift-locked" : ""}`}>
@@ -552,6 +574,14 @@ function PosScreen({
               shift={openShift}
               summary={currentSummary}
             />
+          </div>
+        </div>
+      ) : null}
+
+      {closedShiftSummary ? (
+        <div className="modal-backdrop">
+          <div className="modal-card shift-modal-card">
+            <ShiftClosedSummary summary={closedShiftSummary} onClose={() => setClosedShiftSummary(null)} />
           </div>
         </div>
       ) : null}
@@ -689,6 +719,29 @@ function ShiftStatusCard({ onCloseShift, onDismiss, shift, summary }) {
   );
 }
 
+function ShiftClosedSummary({ onClose, summary }) {
+  return (
+    <section className="shift-closed-summary">
+      <div>
+        <h3>สรุปปิดกะ</h3>
+        <p>ปิดกะแล้ว ตรวจยอดก่อนออกจากหน้าต่างนี้</p>
+      </div>
+      <div className="shift-metrics">
+        <span>เงินสดเริ่มต้น <strong>{money(summary.openingCash)} บาท</strong></span>
+        <span>เงินสดขาย <strong>{money(summary.cashSales)} บาท</strong></span>
+        <span>เงินโอน <strong>{money(summary.transferSales)} บาท</strong></span>
+        <span>ออเดอร์ <strong>{summary.orderCount}</strong></span>
+        <span>เงินสดที่ควรมี <strong>{money(summary.expectedCash)} บาท</strong></span>
+        <span>เงินสดที่นับได้ <strong>{money(summary.closingCash)} บาท</strong></span>
+        <span className="span-2">ส่วนต่างเงินสด <strong className={summary.cashDifference < 0 ? "text-danger" : ""}>{money(summary.cashDifference)} บาท</strong></span>
+      </div>
+      <div className="modal-actions">
+        <button className="primary-button" onClick={onClose} type="button">ออกจากสรุป</button>
+      </div>
+    </section>
+  );
+}
+
 function SalesHistory({ orders, shifts }) {
   const latestShifts = shifts.slice(0, 8);
   return (
@@ -814,7 +867,7 @@ function PaymentModal({ cart, onClose, onSubmit, total }) {
   );
 }
 
-function InventoryScreen({ adjustStock, ingredients, onAddPurchaseUnit, purchaseUnits, saveIngredient }) {
+function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurchaseUnit, purchaseUnits, saveIngredient }) {
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
@@ -823,10 +876,55 @@ function InventoryScreen({ adjustStock, ingredients, onAddPurchaseUnit, purchase
   const [form, setForm] = useState(emptyIngredient());
   const [adjustment, setAdjustment] = useState({ quantityDelta: "", reason: "" });
   const [unitForm, setUnitForm] = useState({ label: "แพ็ค", ratio: 1 });
+  const [editorNotice, setEditorNotice] = useState("");
+  const [deleteArmed, setDeleteArmed] = useState(false);
 
   useEffect(() => {
     if (selected) setForm(selected);
   }, [selectedId, selected?.stock]);
+
+  const savedForm = selected || emptyIngredient();
+  const hasUnsavedChanges = editorOpen && JSON.stringify(normalizeIngredientForm(form)) !== JSON.stringify(normalizeIngredientForm(savedForm));
+
+  function warnUnsaved() {
+    setEditorNotice("มีข้อมูลที่แก้ไขแล้วยังไม่ได้บันทึก");
+    window.setTimeout(() => setEditorNotice(""), 1800);
+  }
+
+  function openEditorFor(item) {
+    if (hasUnsavedChanges) {
+      warnUnsaved();
+      return;
+    }
+    setSelectedId(item.id);
+    setForm(item);
+    setEditorOpen(true);
+    setDeleteArmed(false);
+    setEditorNotice("");
+  }
+
+  function startNewIngredient() {
+    if (hasUnsavedChanges) {
+      warnUnsaved();
+      return;
+    }
+    setSelectedId("");
+    setForm(emptyIngredient());
+    setEditorOpen(true);
+    setDeleteArmed(false);
+    setEditorNotice("");
+  }
+
+  function closeEditor() {
+    if (hasUnsavedChanges) {
+      warnUnsaved();
+      return;
+    }
+    setSelectedId(null);
+    setEditorOpen(false);
+    setDeleteArmed(false);
+    setEditorNotice("");
+  }
 
   const rows = ingredients.filter((item) => {
     const low = Number(item.stock) <= Number(item.minimumStock);
@@ -844,8 +942,25 @@ function InventoryScreen({ adjustStock, ingredients, onAddPurchaseUnit, purchase
       minimumStock: Number(form.minimumStock || 0),
     };
     saveIngredient(next);
-    setSelectedId(next.id);
-    setEditorOpen(true);
+    setSelectedId(null);
+    setEditorOpen(false);
+    setDeleteArmed(false);
+    setEditorNotice("");
+  }
+
+  function removeSelectedIngredient() {
+    if (!selected) return;
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      setEditorNotice("กดลบอีกครั้งเพื่อยืนยัน");
+      return;
+    }
+    deleteIngredient(selected.id);
+    setSelectedId(null);
+    setForm(emptyIngredient());
+    setEditorOpen(false);
+    setDeleteArmed(false);
+    setEditorNotice("");
   }
 
   function addUnit(event) {
@@ -880,11 +995,7 @@ function InventoryScreen({ adjustStock, ingredients, onAddPurchaseUnit, purchase
           <button className={filter === "out" ? "is-active" : ""} onClick={() => setFilter("out")} type="button">หมดแล้ว</button>
           <button
             className="new-record-button toolbar-add-button"
-            onClick={() => {
-              setSelectedId("");
-              setForm(emptyIngredient());
-              setEditorOpen(true);
-            }}
+            onClick={startNewIngredient}
             type="button"
           >
             <Plus size={20} />
@@ -899,8 +1010,8 @@ function InventoryScreen({ adjustStock, ingredients, onAddPurchaseUnit, purchase
                 className={`inventory-card ${low ? "is-low" : ""} ${selectedId === item.id ? "is-active" : ""}`}
                 key={item.id}
                 onClick={() => {
-                  setSelectedId(item.id);
-                  setEditorOpen(true);
+                  if (editorOpen && selectedId === item.id) closeEditor();
+                  else openEditorFor(item);
                 }}
                 type="button"
               >
@@ -916,15 +1027,21 @@ function InventoryScreen({ adjustStock, ingredients, onAddPurchaseUnit, purchase
         </div>
       </div>
       {editorOpen ? (
-      <aside className="side-editor">
+      <aside className={`side-editor ${editorNotice ? "is-unsaved" : ""}`}>
         <form onSubmit={saveForm}>
-          <div className="panel-title"><Edit3 size={20} /><h3>จัดการวัตถุดิบ</h3></div>
-          <label>ชื่อ<input value={form.name || ""} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} /></label>
-          <label>หน่วยหลัก<input value={form.unit || ""} onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))} /></label>
-          <label>คงเหลือ<input inputMode="decimal" type="number" value={form.stock ?? 0} onChange={(event) => setForm((current) => ({ ...current, stock: event.target.value }))} /></label>
-          <label>แจ้งเตือนเมื่อเหลือ<input inputMode="decimal" type="number" value={form.minimumStock ?? 0} onChange={(event) => setForm((current) => ({ ...current, minimumStock: event.target.value }))} /></label>
+          <div className="panel-title">
+            <Edit3 size={20} />
+            <h3>จัดการวัตถุดิบ</h3>
+            <button className="icon-close-button" onClick={closeEditor} type="button">ปิด</button>
+          </div>
+          {editorNotice ? <div className="inline-warning">{editorNotice}</div> : null}
+          <label className={hasUnsavedChanges && normalizeIngredientForm(form).name !== normalizeIngredientForm(savedForm).name ? "is-dirty" : ""}>ชื่อ<input value={form.name || ""} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, name: event.target.value })); }} /></label>
+          <label className={hasUnsavedChanges && normalizeIngredientForm(form).unit !== normalizeIngredientForm(savedForm).unit ? "is-dirty" : ""}>หน่วยหลัก<input value={form.unit || ""} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, unit: event.target.value })); }} /></label>
+          <label className={hasUnsavedChanges && normalizeIngredientForm(form).stock !== normalizeIngredientForm(savedForm).stock ? "is-dirty" : ""}>คงเหลือ<input inputMode="decimal" type="number" value={form.stock ?? 0} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, stock: event.target.value })); }} /></label>
+          <label className={hasUnsavedChanges && normalizeIngredientForm(form).minimumStock !== normalizeIngredientForm(savedForm).minimumStock ? "is-dirty" : ""}>แจ้งเตือนเมื่อเหลือ<input inputMode="decimal" type="number" value={form.minimumStock ?? 0} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, minimumStock: event.target.value })); }} /></label>
           <div className="modal-actions">
             <button className="primary-button" type="submit"><Save size={18} /> บันทึก</button>
+            {selected ? <button className={`danger-button ${deleteArmed ? "is-armed" : ""}`} onClick={removeSelectedIngredient} type="button">{deleteArmed ? "ยืนยันลบ" : "ลบวัตถุดิบ"}</button> : null}
           </div>
         </form>
         {selected ? (
@@ -954,21 +1071,79 @@ function InventoryScreen({ adjustStock, ingredients, onAddPurchaseUnit, purchase
   );
 }
 
-function MenuRecipeScreen({ ingredients, products, recipes, setProducts, setRecipes }) {
+function MenuRecipeScreen({ deleteProduct, ingredients, products, recipes, setProducts, setRecipes }) {
   const [selectedId, setSelectedId] = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const selected = selectedId ? products.find((product) => product.id === selectedId) : null;
   const [productForm, setProductForm] = useState(emptyProduct());
   const [recipeDraft, setRecipeDraft] = useState({});
+  const [hasRecipe, setHasRecipe] = useState(false);
+  const [editorNotice, setEditorNotice] = useState("");
+  const [deleteArmed, setDeleteArmed] = useState(false);
   const productCategories = Array.from(new Set(products.map((product) => product.category).filter(Boolean)));
   const visibleProducts = categoryFilter === "all" ? products : products.filter((product) => product.category === categoryFilter);
+  const savedProductForm = selected || emptyProduct();
+  const savedRecipeDraft = selected
+    ? Object.fromEntries(recipes.filter((recipe) => recipe.productId === selected.id).map((recipe) => [recipe.ingredientId, recipe.quantity]))
+    : {};
+  const savedHasRecipe = Object.keys(savedRecipeDraft).length > 0;
+  const recipeEntries = Object.entries(recipeDraft).filter(([, quantity]) => Number(quantity) > 0);
+  const hasUnsavedChanges = editorOpen && (
+    JSON.stringify(normalizeProductForm(productForm)) !== JSON.stringify(normalizeProductForm(savedProductForm)) ||
+    hasRecipe !== savedHasRecipe ||
+    JSON.stringify(normalizeRecipeDraft(recipeDraft)) !== JSON.stringify(normalizeRecipeDraft(savedRecipeDraft))
+  );
 
   useEffect(() => {
     if (!selected) return;
+    const nextDraft = Object.fromEntries(recipes.filter((recipe) => recipe.productId === selected.id).map((recipe) => [recipe.ingredientId, recipe.quantity]));
     setProductForm(selected);
-    setRecipeDraft(Object.fromEntries(recipes.filter((recipe) => recipe.productId === selected.id).map((recipe) => [recipe.ingredientId, recipe.quantity])));
+    setRecipeDraft(nextDraft);
+    setHasRecipe(Object.keys(nextDraft).length > 0);
   }, [selectedId, selected?.price, recipes.length]);
+
+  function warnUnsaved() {
+    setEditorNotice("มีข้อมูลที่แก้ไขแล้วยังไม่ได้บันทึก");
+    window.setTimeout(() => setEditorNotice(""), 1800);
+  }
+
+  function openEditorFor(product) {
+    if (hasUnsavedChanges) {
+      warnUnsaved();
+      return;
+    }
+    setSelectedId(product.id);
+    setProductForm(product);
+    setEditorOpen(true);
+    setDeleteArmed(false);
+    setEditorNotice("");
+  }
+
+  function startNewProduct() {
+    if (hasUnsavedChanges) {
+      warnUnsaved();
+      return;
+    }
+    setSelectedId("");
+    setProductForm(emptyProduct());
+    setRecipeDraft({});
+    setHasRecipe(false);
+    setEditorOpen(true);
+    setDeleteArmed(false);
+    setEditorNotice("");
+  }
+
+  function closeEditor() {
+    if (hasUnsavedChanges) {
+      warnUnsaved();
+      return;
+    }
+    setSelectedId(null);
+    setEditorOpen(false);
+    setDeleteArmed(false);
+    setEditorNotice("");
+  }
 
   function saveProduct(event) {
     event.preventDefault();
@@ -982,12 +1157,49 @@ function MenuRecipeScreen({ ingredients, products, recipes, setProducts, setReci
       const exists = current.some((product) => product.id === next.id);
       return exists ? current.map((product) => (product.id === next.id ? next : product)) : [...current, next];
     });
-    const nextRecipes = Object.entries(recipeDraft)
-      .filter(([, quantity]) => Number(quantity) > 0)
-      .map(([ingredientId, quantity]) => ({ productId: next.id, ingredientId, quantity: Number(quantity) }));
+    const nextRecipes = hasRecipe
+      ? recipeEntries.map(([ingredientId, quantity]) => ({ productId: next.id, ingredientId, quantity: Number(quantity) }))
+      : [];
     setRecipes((current) => [...current.filter((recipe) => recipe.productId !== next.id), ...nextRecipes]);
-    setSelectedId(next.id);
-    setEditorOpen(true);
+    setSelectedId(null);
+    setEditorOpen(false);
+    setDeleteArmed(false);
+    setEditorNotice("");
+  }
+
+  function addRecipeLine() {
+    const nextIngredient = ingredients.find((ingredient) => !recipeDraft[ingredient.id]);
+    if (!nextIngredient) return;
+    setHasRecipe(true);
+    setRecipeDraft((current) => ({ ...current, [nextIngredient.id]: 1 }));
+  }
+
+  function updateRecipeIngredient(fromIngredientId, toIngredientId) {
+    if (!toIngredientId || fromIngredientId === toIngredientId) return;
+    setRecipeDraft((current) => {
+      const next = { ...current };
+      const quantity = next[fromIngredientId] || 1;
+      delete next[fromIngredientId];
+      next[toIngredientId] = quantity;
+      return next;
+    });
+  }
+
+  function removeProduct() {
+    if (!selected) return;
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      setEditorNotice("กดลบอีกครั้งเพื่อยืนยัน");
+      return;
+    }
+    deleteProduct(selected.id);
+    setSelectedId(null);
+    setProductForm(emptyProduct());
+    setRecipeDraft({});
+    setHasRecipe(false);
+    setEditorOpen(false);
+    setDeleteArmed(false);
+    setEditorNotice("");
   }
 
   return (
@@ -1005,16 +1217,7 @@ function MenuRecipeScreen({ ingredients, products, recipes, setProducts, setReci
               {category}
             </button>
           ))}
-          <button
-            className="new-record-button toolbar-add-button"
-            onClick={() => {
-              setSelectedId("");
-              setProductForm(emptyProduct());
-              setRecipeDraft({});
-              setEditorOpen(true);
-            }}
-            type="button"
-          >
+          <button className="new-record-button toolbar-add-button" onClick={startNewProduct} type="button">
             <Plus size={20} />
             เพิ่มเมนูใหม่
           </button>
@@ -1025,8 +1228,8 @@ function MenuRecipeScreen({ ingredients, products, recipes, setProducts, setReci
               className={`admin-product ${selectedId === product.id ? "is-active" : ""}`}
               key={product.id}
               onClick={() => {
-                setSelectedId(product.id);
-                setEditorOpen(true);
+                if (editorOpen && selectedId === product.id) closeEditor();
+                else openEditorFor(product);
               }}
               type="button"
             >
@@ -1038,30 +1241,52 @@ function MenuRecipeScreen({ ingredients, products, recipes, setProducts, setReci
         </div>
       </div>
       {editorOpen ? (
-      <form className="side-editor" onSubmit={saveProduct}>
-        <div className="panel-title"><Utensils size={20} /><h3>เมนูและสูตร BOM</h3></div>
-        <label>ชื่อเมนู<input value={productForm.name || ""} onChange={(event) => setProductForm((current) => ({ ...current, name: event.target.value }))} /></label>
-        <label>หมวด<input value={productForm.category || ""} onChange={(event) => setProductForm((current) => ({ ...current, category: event.target.value }))} /></label>
-        <label>ราคา<input inputMode="decimal" type="number" value={productForm.price ?? 0} onChange={(event) => setProductForm((current) => ({ ...current, price: event.target.value }))} /></label>
-        <label className="check-line"><input checked={productForm.active !== false} onChange={(event) => setProductForm((current) => ({ ...current, active: event.target.checked }))} type="checkbox" /> เปิดขาย</label>
-        <h3>สูตรวัตถุดิบต่อ 1 ชิ้น</h3>
-        <div className="recipe-list">
-          {ingredients.map((ingredient) => (
-            <label key={ingredient.id}>
-              {ingredient.name} ({ingredient.unit})
-              <input
-                inputMode="decimal"
-                min="0"
-                type="number"
-                value={recipeDraft[ingredient.id] || ""}
-                onChange={(event) => setRecipeDraft((current) => ({ ...current, [ingredient.id]: event.target.value }))}
-                placeholder="0"
-              />
-            </label>
-          ))}
+      <form className={`side-editor ${editorNotice ? "is-unsaved" : ""}`} onSubmit={saveProduct}>
+        <div className="panel-title">
+          <Utensils size={20} />
+          <h3>เมนูและสูตร BOM</h3>
+          <button className="icon-close-button" onClick={closeEditor} type="button">ปิด</button>
+        </div>
+        {editorNotice ? <div className="inline-warning">{editorNotice}</div> : null}
+        <label className={hasUnsavedChanges && normalizeProductForm(productForm).name !== normalizeProductForm(savedProductForm).name ? "is-dirty" : ""}>ชื่อเมนู<input value={productForm.name || ""} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, name: event.target.value })); }} /></label>
+        <label className={hasUnsavedChanges && normalizeProductForm(productForm).category !== normalizeProductForm(savedProductForm).category ? "is-dirty" : ""}>หมวด<input value={productForm.category || ""} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, category: event.target.value })); }} /></label>
+        <label className={hasUnsavedChanges && normalizeProductForm(productForm).price !== normalizeProductForm(savedProductForm).price ? "is-dirty" : ""}>ราคา<input inputMode="decimal" type="number" value={productForm.price ?? 0} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, price: event.target.value })); }} /></label>
+        <label className="check-line"><input checked={productForm.active !== false} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, active: event.target.checked })); }} type="checkbox" /> เปิดขาย</label>
+        <div className={`recipe-toggle-box ${hasUnsavedChanges && (hasRecipe !== savedHasRecipe || JSON.stringify(normalizeRecipeDraft(recipeDraft)) !== JSON.stringify(normalizeRecipeDraft(savedRecipeDraft))) ? "is-dirty" : ""}`}>
+          <label className="check-line"><input checked={hasRecipe} onChange={(event) => { setDeleteArmed(false); setHasRecipe(event.target.checked); }} type="checkbox" /> มีวัตถุดิบในสูตร</label>
+          {hasRecipe ? (
+            <div className="recipe-line-list">
+              {recipeEntries.map(([ingredientId, quantity]) => {
+                const ingredient = ingredients.find((item) => item.id === ingredientId);
+                return (
+                  <div className="recipe-line-row" key={ingredientId}>
+                    <select value={ingredientId} onChange={(event) => updateRecipeIngredient(ingredientId, event.target.value)}>
+                      {ingredients.map((item) => <option disabled={Boolean(recipeDraft[item.id]) && item.id !== ingredientId} key={item.id} value={item.id}>{item.name}</option>)}
+                    </select>
+                    <input
+                      inputMode="decimal"
+                      min="0"
+                      type="number"
+                      value={quantity}
+                      onChange={(event) => setRecipeDraft((current) => ({ ...current, [ingredientId]: event.target.value }))}
+                      placeholder="จำนวน"
+                    />
+                    <span>{ingredient?.unit || ""}</span>
+                    <button onClick={() => setRecipeDraft((current) => {
+                      const next = { ...current };
+                      delete next[ingredientId];
+                      return next;
+                    })} type="button"><Trash2 size={16} /></button>
+                  </div>
+                );
+              })}
+              <button className="ghost-button" onClick={addRecipeLine} type="button">เพิ่มวัตถุดิบในสูตร</button>
+            </div>
+          ) : <div className="empty-compact">เมนูนี้ไม่ตัดสต็อกวัตถุดิบ</div>}
         </div>
         <div className="modal-actions">
           <button className="primary-button" type="submit">บันทึกเมนู/สูตร</button>
+          {selected ? <button className={`danger-button ${deleteArmed ? "is-armed" : ""}`} onClick={removeProduct} type="button">{deleteArmed ? "ยืนยันลบ" : "ลบเมนู"}</button> : null}
         </div>
       </form>
       ) : null}
@@ -1347,7 +1572,7 @@ function NewIngredientModal({ onClose, onSubmit }) {
 }
 
 function SettingsScreen({ orders, queueLists, refreshQueues, setSettings, settings }) {
-  const receiptTemplateValue = settings.receiptTemplate?.includes("[ITEMS]") ? settings.receiptTemplate : defaultSettings.receiptTemplate;
+  const receiptTemplateValue = settings.receiptTemplate?.includes("[TOTAL (price*quantity)]") ? settings.receiptTemplate : defaultSettings.receiptTemplate;
 
   function update(key, value) {
     setSettings((current) => ({ ...current, [key]: value }));
@@ -1580,6 +1805,36 @@ function emptyIngredient() {
   return { id: "", name: "", stock: 0, unit: "ชิ้น", minimumStock: 0 };
 }
 
+function normalizeIngredientForm(item) {
+  return {
+    id: item?.id || "",
+    name: (item?.name || "").trim(),
+    stock: Number(item?.stock || 0),
+    unit: (item?.unit || "").trim(),
+    minimumStock: Number(item?.minimumStock || 0),
+  };
+}
+
 function emptyProduct() {
   return { id: "", name: "", category: "เบอร์เกอร์", price: 0, active: true, color: "bg-white" };
+}
+
+function normalizeProductForm(product) {
+  return {
+    id: product?.id || "",
+    name: (product?.name || "").trim(),
+    category: (product?.category || "").trim(),
+    price: Number(product?.price || 0),
+    active: product?.active !== false,
+    color: product?.color || "bg-white",
+  };
+}
+
+function normalizeRecipeDraft(draft) {
+  return Object.fromEntries(
+    Object.entries(draft || {})
+      .filter(([, quantity]) => Number(quantity) > 0)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([ingredientId, quantity]) => [ingredientId, Number(quantity)]),
+  );
 }
