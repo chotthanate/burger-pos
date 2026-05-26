@@ -307,7 +307,7 @@ export default function App() {
       <div className="app-grid">
         <aside className="nav-rail">
           <div className="brand-block">
-            <div className="brand-mark">BOY</div>
+            <img className="brand-mark" src={`${import.meta.env.BASE_URL}boy-burger-logo.png`} alt="BOY Burger & BBQ" />
             <div>
               <h1>BOY Burger POS</h1>
               <p>Burger & BBQ counter</p>

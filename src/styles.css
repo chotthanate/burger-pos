@@ -7,25 +7,27 @@
 }
 
 :root {
-  --boy-red: #d83a2e;
-  --boy-red-dark: #a9221e;
-  --boy-yellow: #ffd84d;
-  --boy-cream: #fff8df;
-  --boy-black: #161411;
-  --boy-ink: #211b17;
-  --boy-muted: #6f6258;
-  --boy-line: #241f1a;
-  --boy-border: #decdb6;
-  --boy-surface: #fffdf6;
-  --boy-shadow: 0 16px 36px rgba(62, 36, 24, 0.12);
+  --boy-red: #d92d27;
+  --boy-red-dark: #b91f1a;
+  --boy-yellow: #f0bc3e;
+  --boy-title: #fdce89;
+  --boy-cream: #f5f0e6;
+  --boy-black: #1f1f1f;
+  --boy-nav: #2b2b2b;
+  --boy-ink: #191919;
+  --boy-muted: #6b6258;
+  --boy-line: #ded6c8;
+  --boy-border: #e3dacb;
+  --boy-surface: #fffdf7;
+  --boy-card: #ffffff;
+  --boy-shadow: 0 14px 34px rgba(30, 27, 24, 0.1);
+  --boy-checker: conic-gradient(#111 25%, #fff 0 50%, #111 0 75%, #fff 0);
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  background:
-    linear-gradient(135deg, rgba(216, 58, 46, 0.08) 0 18px, transparent 18px 36px),
-    linear-gradient(180deg, #fff9ec 0%, #f4eee4 100%);
+  background: #f3efe6;
   color: var(--boy-ink);
   font-family: "Noto Sans Thai", Tahoma, Arial, sans-serif;
 }
@@ -53,10 +55,8 @@ button {
   height: 100vh;
   padding: 18px 14px;
   color: #fff8df;
-  background:
-    linear-gradient(90deg, var(--boy-red) 0 7px, transparent 7px),
-    linear-gradient(180deg, #24201c 0%, #12100e 100%);
-  border-right: 4px solid var(--boy-red);
+  background: var(--boy-nav);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -73,20 +73,12 @@ button {
 }
 
 .brand-mark {
-  width: 56px;
-  height: 48px;
-  border-radius: 8px;
-  border: 2px solid var(--boy-black);
-  display: grid;
-  place-items: center;
-  background: var(--boy-yellow);
-  color: var(--boy-red-dark);
-  box-shadow:
-    0 0 0 3px #fff,
-    0 0 0 7px var(--boy-red),
-    0 8px 18px rgba(0, 0, 0, 0.28);
-  font-size: 15px;
-  font-weight: 950;
+  width: 58px;
+  height: 58px;
+  border-radius: 14px;
+  object-fit: contain;
+  background: #fff7e8;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
 }
 
 .brand-block h1,
@@ -99,10 +91,15 @@ button {
 }
 
 .brand-block h1 {
-  color: var(--boy-yellow);
+  color: var(--boy-title);
   font-size: 18px;
   font-weight: 950;
-  text-shadow: 2px 2px 0 #000;
+  text-shadow:
+    1px 0 0 #000,
+    -1px 0 0 #000,
+    0 1px 0 #000,
+    0 -1px 0 #000,
+    0 2px 8px rgba(0, 0, 0, 0.28);
 }
 
 .brand-block p,
@@ -143,9 +140,9 @@ button {
 .nav-button.is-active,
 .nav-button:hover {
   color: #fff;
-  border-color: rgba(255, 216, 77, 0.5);
-  background: linear-gradient(180deg, var(--boy-red) 0%, var(--boy-red-dark) 100%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.08);
+  background: var(--boy-red);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
 }
 
 .status-card {
@@ -155,7 +152,7 @@ button {
   border-radius: 8px;
   color: #fff8df;
   background:
-    linear-gradient(45deg, #fff 25%, #161411 25% 50%, #fff 50% 75%, #161411 75%) left top / 18px 18px repeat-x,
+    var(--boy-checker) left top / 18px 18px repeat-x,
     rgba(255, 255, 255, 0.06);
   background-size: 18px 18px, auto;
   padding-top: 26px;
@@ -228,9 +225,8 @@ button {
 .settings-card::before,
 .side-editor::before {
   content: "";
-  height: 8px;
-  background:
-    linear-gradient(45deg, #fff 25%, var(--boy-black) 25% 50%, #fff 50% 75%, var(--boy-black) 75%) left top / 16px 16px repeat-x;
+  height: 12px;
+  background: var(--boy-checker) left top / 16px 16px;
   position: absolute;
   top: 0;
   right: 0;
@@ -1487,6 +1483,222 @@ button {
   border-radius: 8px;
   background: #fffdf8;
   font-weight: 900;
+}
+
+/* Modern BOY diner theme overrides */
+.menu-area,
+.cart-panel,
+.work-panel,
+.expense-form,
+.settings-card,
+.side-editor {
+  border: 1px solid var(--boy-border);
+  background: var(--boy-surface);
+  box-shadow: var(--boy-shadow);
+}
+
+.menu-area,
+.work-panel,
+.expense-form,
+.settings-card {
+  padding-top: 24px;
+}
+
+.topbar h2 {
+  text-shadow: 0 2px 0 rgba(253, 206, 137, 0.75);
+}
+
+.top-status span,
+.search-box,
+.cart-row,
+.inventory-card,
+.admin-product,
+.small-list div,
+.queue-item,
+.table-row,
+.recent-strip,
+.expense-entry-row,
+.receipt-preview,
+.receipt-logo-preview,
+.recipe-toggle-box {
+  background: var(--boy-card);
+  border-color: var(--boy-border);
+  box-shadow: 0 8px 18px rgba(35, 31, 28, 0.05);
+}
+
+.category-button,
+.toolbar button,
+.payment-tabs button,
+.subnav-row button,
+.ghost-button,
+.icon-close-button,
+.table-row button,
+.queue-item button,
+.receipt-logo-preview button,
+.qty-control button,
+.expense-entry-row > button,
+.recipe-line-row button {
+  border: 1px solid var(--boy-border);
+  background: #fffaf0;
+  box-shadow: none;
+  color: var(--boy-ink);
+}
+
+.category-button.is-active,
+.toolbar button.is-active,
+.payment-tabs button.is-active,
+.subnav-row button.is-active,
+.expense-mode-toggle button.is-active {
+  border-color: var(--boy-red);
+  background: var(--boy-red);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(217, 45, 39, 0.2);
+}
+
+.checkout-button,
+.primary-button,
+.close-shift-button {
+  border: 0 !important;
+  background: var(--boy-red) !important;
+  color: #fff;
+  box-shadow: 0 8px 0 #8f1713, 0 16px 26px rgba(217, 45, 39, 0.22);
+}
+
+.checkout-button:active,
+.primary-button:active,
+.close-shift-button:active {
+  transform: translateY(2px);
+  box-shadow: 0 6px 0 #8f1713, 0 12px 22px rgba(217, 45, 39, 0.18);
+}
+
+.checkout-button:disabled,
+.primary-button:disabled {
+  background: #df9b96 !important;
+  box-shadow: 0 6px 0 #b98783;
+}
+
+.new-record-button,
+.cash-buttons button {
+  border: 0;
+  background: var(--boy-yellow);
+  color: #171717;
+  box-shadow: 0 8px 18px rgba(240, 188, 62, 0.2);
+}
+
+.product-tile {
+  min-height: 150px;
+  border: 0;
+  background: var(--boy-card);
+  box-shadow: 0 10px 24px rgba(35, 31, 28, 0.12);
+  position: relative;
+  overflow: hidden;
+  padding-bottom: 46px;
+}
+
+.product-tile:nth-child(2n) {
+  background: var(--boy-card);
+}
+
+.product-tile::before {
+  content: "";
+  height: 62px;
+  border-radius: 10px;
+  background:
+    url("/burger-pos/boy-burger-logo.png") center / 58px auto no-repeat,
+    #2b2b2b;
+  display: block;
+}
+
+.product-tile::after {
+  content: "+";
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--boy-yellow);
+  color: #151515;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 950;
+  box-shadow: 0 6px 14px rgba(240, 188, 62, 0.28);
+}
+
+.product-tile span {
+  font-size: 18px;
+  line-height: 1.15;
+  text-transform: none;
+}
+
+.product-tile strong,
+.cart-row span,
+.cart-total strong,
+.pay-total strong,
+.inventory-card > strong,
+.expense-total,
+.stock-preview,
+.conversion-preview,
+.transfer-ready,
+.shift-metrics strong {
+  color: var(--boy-red-dark);
+}
+
+.inventory-card.is-active,
+.admin-product.is-active {
+  border-color: rgba(217, 45, 39, 0.45);
+  background: #fff8ed;
+  box-shadow: 0 10px 24px rgba(217, 45, 39, 0.12);
+}
+
+.inventory-card.is-low,
+.warning-box,
+.inline-warning,
+.recipe-toggle-box.is-dirty,
+.side-editor label.is-dirty {
+  border-color: #f0bc3e;
+  background: #fff7e5;
+  color: #8a4c00;
+}
+
+.shift-gate-overlay {
+  background: rgba(247, 242, 232, 0.82);
+}
+
+.shift-gate-overlay .shift-card {
+  border: 0;
+  background: #fff7e8;
+  box-shadow: 0 22px 60px rgba(35, 31, 28, 0.2);
+}
+
+.shift-card {
+  border-color: var(--boy-border);
+  background: #fff7e8;
+}
+
+.shift-card.needs-open {
+  border-color: var(--boy-border);
+  background: #fff7e8;
+}
+
+.modal-card {
+  border: 1px solid var(--boy-border);
+  background:
+    var(--boy-checker) left top / 16px 16px repeat-x,
+    var(--boy-surface);
+  box-shadow: 0 28px 70px rgba(30, 27, 24, 0.24);
+}
+
+.cash-display {
+  border: 0;
+  background: #2b2b2b;
+  box-shadow: none;
+}
+
+.empty-state,
+.empty-compact {
+  background: #fffaf0;
 }
 
 @media (max-width: 1180px) {
