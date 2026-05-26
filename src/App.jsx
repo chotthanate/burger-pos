@@ -307,10 +307,10 @@ export default function App() {
       <div className="app-grid">
         <aside className="nav-rail">
           <div className="brand-block">
-            <div className="brand-mark">BG</div>
+            <div className="brand-mark">BOY</div>
             <div>
-              <h1>เบอร์เกอร์ POS</h1>
-              <p>หน้าร้าน + สต็อก + รายจ่าย</p>
+              <h1>BOY Burger POS</h1>
+              <p>Burger & BBQ counter</p>
             </div>
           </div>
           <nav className="nav-list">
