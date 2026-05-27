@@ -8,6 +8,7 @@ import {
   CreditCard,
   Database,
   Edit3,
+  FileImage,
   Minus,
   Package,
   Plus,
@@ -21,11 +22,13 @@ import {
   SlidersHorizontal,
   Store,
   Trash2,
+  UploadCloud,
   Utensils,
   WalletCards,
   Wifi,
+  X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   categories,
   modifierRecipes as seedModifierRecipes,
@@ -48,12 +51,11 @@ import {
 import { usePersistentState } from "./lib/storage.js";
 
 const navItems = [
-  { id: "pos", label: "ขาย", icon: Store },
+  { id: "pos", label: "ขาย", icon: Store, children: [{ id: "sales-history", label: "ประวัติขาย", tab: "pos", view: "history" }] },
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
-  { id: "menu", label: "เมนู/สูตร", icon: Utensils },
-  { id: "modifiers", label: "ตัวเลือกเสริม", icon: SlidersHorizontal },
+  { id: "menu", label: "เมนู/สูตร", icon: Utensils, children: [{ id: "modifiers", label: "จัดการตัวเลือกเสริม", tab: "modifiers" }] },
   { id: "inventory", label: "วัตถุดิบ", icon: Package },
-  { id: "expense", label: "รายจ่าย", icon: ReceiptText },
+  { id: "expense", label: "รายจ่าย", icon: ReceiptText, children: [{ id: "expense-history", label: "ประวัติรายจ่าย", tab: "expense", view: "history" }] },
   { id: "settings", label: "ตั้งค่า", icon: Settings },
 ];
 
@@ -94,6 +96,7 @@ export default function App() {
   const resolvedSettings = useMemo(() => ({ ...defaultSettings, ...settings }), [settings]);
   const [cart, setCart] = useState([]);
   const [posView, setPosView] = useState("sale");
+  const [expenseView, setExpenseView] = useState("entry");
   const [orderNote, setOrderNote] = useState("");
   const [printOptions, setPrintOptions] = useState({ kitchen: true, receipt: false });
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -315,6 +318,29 @@ export default function App() {
     setStockMovements((current) => [movement, ...current].slice(0, 500));
   }
 
+  function navigateMain(tabId) {
+    setActiveTab(tabId);
+    if (tabId === "pos") setPosView("sale");
+    if (tabId === "expense") setExpenseView("entry");
+  }
+
+  function navigateSub(item) {
+    setActiveTab(item.tab);
+    if (item.tab === "pos") setPosView(item.view || "sale");
+    if (item.tab === "expense") setExpenseView(item.view || "entry");
+  }
+
+  function isNavActive(item) {
+    return activeTab === item.id || item.children?.some((child) => child.tab === activeTab);
+  }
+
+  function isSubNavActive(item) {
+    if (item.tab !== activeTab) return false;
+    if (item.tab === "pos") return posView === item.view;
+    if (item.tab === "expense") return expenseView === item.view;
+    return true;
+  }
+
   const queueStats = {
     print: queueLists.print.filter((job) => job.status !== "PRINTED").length,
     sheet: queueLists.sheet.filter((job) => job.status !== "SYNCED").length,
@@ -335,15 +361,30 @@ export default function App() {
             {navItems.map((item) => {
               const Icon = item.icon;
               return (
-                <button
-                  className={`nav-button ${activeTab === item.id ? "is-active" : ""}`}
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  type="button"
-                >
-                  <Icon size={22} />
-                  <span>{item.label}</span>
-                </button>
+                <div className={`nav-group ${isNavActive(item) ? "is-open" : ""}`} key={item.id}>
+                  <button
+                    className={`nav-button ${activeTab === item.id ? "is-active" : ""}`}
+                    onClick={() => navigateMain(item.id)}
+                    type="button"
+                  >
+                    <Icon size={22} />
+                    <span>{item.label}</span>
+                  </button>
+                  {item.children?.length ? (
+                    <div className="nav-sub-list">
+                      {item.children.map((child) => (
+                        <button
+                          className={`nav-sub-button ${isSubNavActive(child) ? "is-active" : ""}`}
+                          key={child.id}
+                          onClick={() => navigateSub(child)}
+                          type="button"
+                        >
+                          {child.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               );
             })}
           </nav>
@@ -351,7 +392,7 @@ export default function App() {
         </aside>
 
         <main className="main-pane">
-          <Header activeTab={activeTab} lowStock={lowStock.length} queueStats={queueStats} />
+          <Header activeTab={activeTab} expenseView={expenseView} lowStock={lowStock.length} posView={posView} queueStats={queueStats} />
           {activeTab === "pos" ? (
             <PosScreen
               activeCategory={activeCategory}
@@ -429,6 +470,8 @@ export default function App() {
               onRecord={recordExpense}
               purchaseUnits={purchaseUnits}
               recentExpenses={expenses}
+              setView={setExpenseView}
+              view={expenseView}
             />
           ) : null}
           {activeTab === "settings" ? (
@@ -467,14 +510,14 @@ export default function App() {
   );
 }
 
-function Header({ activeTab, lowStock, queueStats }) {
+function Header({ activeTab, expenseView, lowStock, posView, queueStats }) {
   const title = {
-    pos: "ขายหน้าร้าน",
+    pos: posView === "history" ? "ประวัติการขาย" : "ขายหน้าร้าน",
     dashboard: "Dashboard สรุปยอดขาย",
     inventory: "เช็ควัตถุดิบ",
     menu: "เมนูและสูตรอาหาร",
     modifiers: "จัดการตัวเลือกเสริม",
-    expense: "บันทึกรายจ่าย",
+    expense: expenseView === "history" ? "ประวัติรายจ่าย" : "บันทึกรายจ่าย",
     settings: "ตั้งค่าระบบ",
   }[activeTab];
   return (
@@ -1396,6 +1439,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
   const [productForm, setProductForm] = useState(emptyProduct());
   const [recipeDraft, setRecipeDraft] = useState({});
   const [hasRecipe, setHasRecipe] = useState(false);
+  const [imageUpload, setImageUpload] = useState({ progress: 0, uploading: false });
   const [editorNotice, setEditorNotice] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
   const productCategories = Array.from(new Set([...(menuCategories || []), ...products.map((product) => product.category).filter(Boolean)]));
@@ -1418,6 +1462,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
     setProductForm(selected);
     setRecipeDraft(nextDraft);
     setHasRecipe(Object.keys(nextDraft).length > 0);
+    setImageUpload({ progress: selected.imageDataUrl ? 100 : 0, uploading: false });
   }, [selectedId, selected?.price, recipes.length]);
 
   function warnUnsaved() {
@@ -1446,6 +1491,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
     setProductForm(emptyProduct(productCategories[0] || categories[0]));
     setRecipeDraft({});
     setHasRecipe(false);
+    setImageUpload({ progress: 0, uploading: false });
     setEditorOpen(true);
     setDeleteArmed(false);
     setEditorNotice("");
@@ -1485,24 +1531,37 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
     setEditorNotice("");
   }
 
-  function updateProductImage(event) {
-    const file = event.target.files?.[0];
+  function updateProductImageFile(file) {
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setEditorNotice("กรุณาอัปโหลดไฟล์รูปภาพเท่านั้น");
+      window.setTimeout(() => setEditorNotice(""), 1800);
+      return;
+    }
+    setImageUpload({ progress: 12, uploading: true });
     const reader = new FileReader();
+    reader.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+      setImageUpload({ progress: Math.max(12, Math.round((event.loaded / event.total) * 86)), uploading: true });
+    };
     reader.onload = () => {
       setDeleteArmed(false);
       setProductForm((current) => ({
         ...current,
         imageDataUrl: String(reader.result || ""),
         imageName: file.name,
+        imageSize: file.size,
       }));
+      setImageUpload({ progress: 100, uploading: false });
     };
+    reader.onerror = () => setImageUpload({ progress: 0, uploading: false });
     reader.readAsDataURL(file);
   }
 
   function removeProductImage() {
     setDeleteArmed(false);
-    setProductForm((current) => ({ ...current, imageDataUrl: "", imageName: "" }));
+    setImageUpload({ progress: 0, uploading: false });
+    setProductForm((current) => ({ ...current, imageDataUrl: "", imageName: "", imageSize: 0 }));
   }
 
   function addMenuCategory(event) {
@@ -1634,27 +1693,16 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
         </div>
         {editorNotice ? <div className="inline-warning">{editorNotice}</div> : null}
         <label className={hasUnsavedChanges && normalizeProductForm(productForm).name !== normalizeProductForm(savedProductForm).name ? "is-dirty" : ""}>ชื่อเมนู<input value={productForm.name || ""} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, name: event.target.value })); }} /></label>
-        <div className={`menu-image-control ${hasUnsavedChanges && normalizeProductForm(productForm).imageDataUrl !== normalizeProductForm(savedProductForm).imageDataUrl ? "is-dirty" : ""}`}>
-          <strong>รูปเมนู</strong>
-          {productForm.imageDataUrl ? (
-            <div className="product-image-preview">
-              <img alt={productForm.name || "รูปเมนู"} src={productForm.imageDataUrl} />
-              <span>{productForm.imageName || "รูปเมนู"}</span>
-              <button onClick={removeProductImage} type="button">ลบรูป</button>
-            </div>
-          ) : (
-            <label className="image-upload-button">
-              เพิ่มรูปเมนู
-              <input accept="image/*" onChange={updateProductImage} type="file" />
-            </label>
-          )}
-          {productForm.imageDataUrl ? (
-            <label className="image-upload-button secondary">
-              เปลี่ยนรูป
-              <input accept="image/*" onChange={updateProductImage} type="file" />
-            </label>
-          ) : null}
-        </div>
+        <MenuImageUploader
+          className={hasUnsavedChanges && normalizeProductForm(productForm).imageDataUrl !== normalizeProductForm(savedProductForm).imageDataUrl ? "is-dirty" : ""}
+          imageDataUrl={productForm.imageDataUrl}
+          imageName={productForm.imageName}
+          imageSize={productForm.imageSize}
+          onFile={updateProductImageFile}
+          onRemove={removeProductImage}
+          progress={imageUpload.progress}
+          uploading={imageUpload.uploading}
+        />
         <label className={hasUnsavedChanges && normalizeProductForm(productForm).category !== normalizeProductForm(savedProductForm).category ? "is-dirty" : ""}>หมวด<select value={productForm.category || productCategories[0] || ""} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, category: event.target.value })); }}>
           {productCategories.map((category) => <option key={category} value={category}>{category}</option>)}
         </select></label>
@@ -1704,6 +1752,60 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
       </form>
       ) : null}
     </section>
+  );
+}
+
+function MenuImageUploader({ className = "", imageDataUrl, imageName, imageSize, onFile, onRemove, progress, uploading }) {
+  const inputRef = useRef(null);
+  const hasImage = Boolean(imageDataUrl);
+  const displayProgress = hasImage ? Math.max(progress || 0, 100) : progress || 0;
+
+  function pickFile(event) {
+    onFile(event.target.files?.[0]);
+    event.target.value = "";
+  }
+
+  function dropFile(event) {
+    event.preventDefault();
+    onFile(event.dataTransfer.files?.[0]);
+  }
+
+  return (
+    <div className={`menu-image-control ${className}`}>
+      <strong>รูปเมนู</strong>
+      <div
+        className={`image-drop-zone ${hasImage ? "has-file" : ""}`}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={dropFile}
+        role="button"
+        tabIndex={0}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") inputRef.current?.click();
+        }}
+      >
+        {hasImage ? <img alt={imageName || "รูปเมนู"} src={imageDataUrl} /> : <UploadCloud size={34} />}
+        <div>
+          <span>{hasImage ? "ลากรูปใหม่มาวาง หรือเลือกไฟล์เพื่อเปลี่ยนรูป" : "ลากรูปมาวาง หรือเลือกไฟล์เพื่ออัปโหลด"}</span>
+          <small>รองรับ JPG, PNG, WebP · แนะนำรูปแนวนอน</small>
+        </div>
+        <input accept="image/*" onChange={pickFile} ref={inputRef} type="file" />
+      </div>
+      {hasImage || uploading ? (
+        <div className="upload-file-card">
+          <button aria-label="ลบรูปเมนู" onClick={onRemove} type="button"><X size={17} /></button>
+          <span className="upload-file-icon"><FileImage size={20} /></span>
+          <div className="upload-file-info">
+            <strong>{imageName || "รูปเมนู"}</strong>
+            <small>{formatFileSize(imageSize || 0)}</small>
+          </div>
+          <div className="upload-progress-row">
+            <div className="upload-progress-track"><i style={{ width: `${displayProgress}%` }} /></div>
+            <small>{displayProgress}%</small>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1896,7 +1998,7 @@ function ModifierManagementScreen({ ingredients, modifierRecipes, modifiers, pro
   );
 }
 
-function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onRecord, purchaseUnits, recentExpenses }) {
+function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onRecord, purchaseUnits, recentExpenses, setView, view }) {
   const firstIngredientId = ingredients[0]?.id || "";
   const firstIngredientName = ingredients[0]?.name || "";
   const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1942,6 +2044,10 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
         : row
     )));
     setIngredientModalOpen(false);
+  }
+
+  if (view === "history") {
+    return <ExpenseHistoryPanel expenses={recentExpenses} onBack={() => setView("entry")} />;
   }
 
   return (
@@ -2298,6 +2404,97 @@ function RecentExpenses({ expenses }) {
   );
 }
 
+function ExpenseHistoryPanel({ expenses, onBack }) {
+  const [selectedExpenseId, setSelectedExpenseId] = useState(expenses[0]?.id || "");
+  const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId) || expenses[0] || null;
+
+  useEffect(() => {
+    if (!expenses.length) {
+      setSelectedExpenseId("");
+      return;
+    }
+    if (!expenses.some((expense) => expense.id === selectedExpenseId)) {
+      setSelectedExpenseId(expenses[0].id);
+    }
+  }, [expenses, selectedExpenseId]);
+
+  if (!expenses.length) {
+    return (
+      <section className="work-panel">
+        <div className="panel-title">
+          <ReceiptText size={22} />
+          <div>
+            <h3>ประวัติรายจ่าย</h3>
+            <p>ยังไม่มีรายการรายจ่าย</p>
+          </div>
+          <button className="ghost-button" onClick={onBack} type="button">กลับไปบันทึก</button>
+        </div>
+        <div className="empty-state">บันทึกรายจ่ายแล้วรายการจะแสดงที่นี่</div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="history-layout">
+      <div className="work-panel">
+        <div className="panel-title">
+          <ReceiptText size={22} />
+          <div>
+            <h3>ประวัติรายจ่าย</h3>
+            <p>{expenses.length} ครั้งล่าสุด</p>
+          </div>
+          <button className="ghost-button" onClick={onBack} type="button">บันทึกรายจ่าย</button>
+        </div>
+        <div className="table-list">
+          {expenses.map((expense) => (
+            <button
+              className={`table-row history-row history-button-row ${selectedExpense?.id === expense.id ? "is-active" : ""}`}
+              key={expense.id}
+              onClick={() => setSelectedExpenseId(expense.id)}
+              type="button"
+            >
+              <span>
+                {expense.id}
+                <small>{formatExpenseDate(expense)} · {expense.items?.length || 0} รายการ</small>
+              </span>
+              <strong>{money(expense.totalAmount)} บาท</strong>
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="work-panel order-detail-card">
+        <div className="panel-title">
+          <ClipboardList size={22} />
+          <div>
+            <h3>{selectedExpense?.id}</h3>
+            <p>{selectedExpense ? formatExpenseDate(selectedExpense) : ""}</p>
+          </div>
+        </div>
+        <div className="order-detail-items">
+          {(selectedExpense?.items || []).map((item) => (
+            <div className="order-detail-item" key={item.id}>
+              <span>
+                {item.name}
+                <small>
+                  {item.mode === "ingredient"
+                    ? `${money(item.purchaseQuantity)} ${item.purchaseUnit} · เพิ่ม ${money(item.stockQuantity)} ${item.baseUnit}`
+                    : `${money(item.purchaseQuantity)} รายการทั่วไป`}
+                  {item.note ? ` · ${item.note}` : ""}
+                </small>
+              </span>
+              <strong>{money(item.lineTotal)} บาท</strong>
+            </div>
+          ))}
+        </div>
+        <div className="order-detail-total">
+          <span>รวมรายจ่าย</span>
+          <strong>{money(selectedExpense?.totalAmount || 0)} บาท</strong>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function OrderToast({ order, onClose }) {
   return (
     <div className="order-toast">
@@ -2473,7 +2670,7 @@ function normalizeIngredientForm(item) {
 }
 
 function emptyProduct(category = categories[0]) {
-  return { id: "", name: "", category, price: 0, channelPrices: Object.fromEntries(salesChannels.map((channel) => [channel.id, 0])), active: true, color: "bg-white", imageDataUrl: "", imageName: "" };
+  return { id: "", name: "", category, price: 0, channelPrices: Object.fromEntries(salesChannels.map((channel) => [channel.id, 0])), active: true, color: "bg-white", imageDataUrl: "", imageName: "", imageSize: 0 };
 }
 
 function normalizeProductForm(product) {
@@ -2487,7 +2684,22 @@ function normalizeProductForm(product) {
     color: product?.color || "bg-white",
     imageDataUrl: product?.imageDataUrl || "",
     imageName: product?.imageName || "",
+    imageSize: Number(product?.imageSize || 0),
   };
+}
+
+function formatFileSize(bytes) {
+  const size = Number(bytes || 0);
+  if (!size) return "0 KB";
+  const units = ["Bytes", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(size) / Math.log(1024)), units.length - 1);
+  return `${(size / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`;
+}
+
+function formatExpenseDate(expense) {
+  const dateValue = expense?.createdAt || (expense?.expenseDate ? `${expense.expenseDate}T12:00:00` : "");
+  if (!dateValue) return "";
+  return new Date(dateValue).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
 }
 
 function emptyModifier(products = []) {

@@ -124,6 +124,11 @@ button {
   gap: 10px;
 }
 
+.nav-group {
+  display: grid;
+  gap: 6px;
+}
+
 .nav-button {
   min-height: 54px;
   border: 1px solid transparent;
@@ -143,6 +148,39 @@ button {
   border-color: rgba(255, 255, 255, 0.08);
   background: var(--boy-red);
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
+}
+
+.nav-group.is-open > .nav-button {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.nav-sub-list {
+  display: none;
+  gap: 4px;
+  padding: 2px 0 2px 42px;
+}
+
+.nav-group.is-open .nav-sub-list {
+  display: grid;
+}
+
+.nav-sub-button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #e9d7bf;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.nav-sub-button.is-active,
+.nav-sub-button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .status-card {
@@ -436,6 +474,18 @@ button {
 
 .history-row {
   grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.history-button-row {
+  width: 100%;
+  color: var(--boy-ink);
+  text-align: left;
+}
+
+.history-button-row.is-active {
+  border-color: var(--boy-red);
+  background: #fff1dc;
+  box-shadow: inset 0 0 0 1px var(--boy-red), 0 8px 18px rgba(35, 31, 28, 0.05);
 }
 
 .shift-summary-card {
@@ -1444,6 +1494,137 @@ button {
   background: #fffaf0;
   display: grid;
   gap: 10px;
+}
+
+.image-drop-zone {
+  min-height: 152px;
+  border: 1px dashed #d8cfc2;
+  border-radius: 12px;
+  padding: 18px;
+  background: #fffefb;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  color: var(--boy-muted);
+  text-align: center;
+  cursor: pointer;
+}
+
+.image-drop-zone:hover {
+  border-color: var(--boy-red);
+  background: #fff8ec;
+}
+
+.image-drop-zone svg {
+  color: var(--boy-red-dark);
+}
+
+.image-drop-zone img {
+  width: min(220px, 100%);
+  height: 112px;
+  border-radius: 12px;
+  object-fit: cover;
+  box-shadow: 0 8px 18px rgba(35, 31, 28, 0.08);
+}
+
+.image-drop-zone span {
+  color: var(--boy-ink);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.image-drop-zone small {
+  display: block;
+  margin-top: 2px;
+  color: var(--boy-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.image-drop-zone input {
+  display: none;
+}
+
+.upload-file-card {
+  position: relative;
+  border: 1px solid var(--boy-border);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fffdf8;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  box-shadow: 0 8px 18px rgba(35, 31, 28, 0.06);
+}
+
+.upload-file-card > button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--boy-muted);
+  display: grid;
+  place-items: center;
+}
+
+.upload-file-icon {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--boy-border);
+  border-radius: 10px;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  color: var(--boy-red-dark);
+}
+
+.upload-file-info {
+  min-width: 0;
+  padding-right: 30px;
+}
+
+.upload-file-info strong,
+.upload-file-info small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-file-info strong {
+  font-size: 13px;
+}
+
+.upload-file-info small {
+  color: var(--boy-muted);
+  font-size: 12px;
+}
+
+.upload-progress-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 10px;
+  align-items: center;
+}
+
+.upload-progress-track {
+  height: 7px;
+  border-radius: 999px;
+  background: #e6ddd1;
+  overflow: hidden;
+}
+
+.upload-progress-track i {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--boy-red);
+  display: block;
 }
 
 .product-image-preview {
@@ -2551,6 +2732,10 @@ body {
     display: none;
   }
 
+  .nav-sub-list {
+    display: none !important;
+  }
+
   .nav-button {
     justify-content: center;
     padding: 0;
@@ -2645,6 +2830,26 @@ body {
   .nav-button span {
     display: block;
     font-size: 11px;
+  }
+
+  .nav-group.is-open .nav-sub-list {
+    position: fixed;
+    right: 12px;
+    bottom: 86px;
+    left: 12px;
+    z-index: 31;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 8px;
+    background: rgba(35, 31, 28, 0.96);
+    display: flex !important;
+    gap: 8px;
+  }
+
+  .nav-sub-button {
+    flex: 1 1 auto;
+    min-height: 42px;
+    text-align: center;
   }
 
   .main-pane {
