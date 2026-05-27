@@ -3363,6 +3363,156 @@ b {
   font-weight: 400;
 }
 
+:root {
+  --pos-motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes posOverlayIn {
+  from {
+    opacity: 0;
+    background: rgba(33, 27, 23, 0);
+  }
+  to {
+    opacity: 1;
+    background: rgba(33, 27, 23, 0.52);
+  }
+}
+
+@keyframes posModalIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes posCartEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.96);
+  }
+  62% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.012);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes posCartPulse {
+  0% {
+    box-shadow: 0 10px 22px rgba(30, 24, 18, 0.045);
+  }
+  45% {
+    box-shadow: 0 14px 28px rgba(198, 40, 40, 0.18);
+  }
+  100% {
+    box-shadow: 0 10px 22px rgba(30, 24, 18, 0.045);
+  }
+}
+
+@keyframes dashboardLiftIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes dashboardBarGrow {
+  from {
+    width: 0;
+  }
+  to {
+    width: var(--bar-width, 0%);
+  }
+}
+
+.modal-backdrop {
+  animation: posOverlayIn 180ms ease-out both;
+}
+
+.modal-card {
+  animation: posModalIn 230ms var(--pos-motion-ease) both;
+  transform-origin: center;
+}
+
+.modifier-modal-card .modal-actions {
+  margin-top: 18px;
+  padding-top: 10px;
+}
+
+.product-tile {
+  will-change: transform;
+}
+
+.product-tile:active {
+  transform: translateY(1px) scale(0.985);
+}
+
+.cart-row.is-cart-motion {
+  animation:
+    posCartEnter 340ms var(--pos-motion-ease) both,
+    posCartPulse 420ms ease-out both;
+}
+
+.motion-dashboard .metric-card,
+.motion-dashboard .chart-card {
+  animation: dashboardLiftIn 300ms var(--pos-motion-ease) both;
+  animation-delay: calc(var(--motion-index, 0) * 55ms);
+}
+
+.motion-dashboard .bar-row {
+  animation: dashboardLiftIn 260ms var(--pos-motion-ease) both;
+  animation-delay: calc(120ms + var(--motion-index, 0) * 45ms);
+}
+
+.bar-track i {
+  width: var(--bar-width, 0%);
+}
+
+.motion-dashboard .bar-track i {
+  animation: dashboardBarGrow 680ms var(--pos-motion-ease) both;
+  animation-delay: calc(190ms + var(--motion-index, 0) * 45ms);
+}
+
+.payment-donut {
+  transition: background 180ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop,
+  .modal-card,
+  .cart-row.is-cart-motion,
+  .motion-dashboard .metric-card,
+  .motion-dashboard .chart-card,
+  .motion-dashboard .bar-row,
+  .motion-dashboard .bar-track i {
+    animation: none !important;
+  }
+
+  .product-tile,
+  .checkout-button,
+  .primary-button,
+  .close-shift-button,
+  .payment-donut {
+    transition: none !important;
+  }
+
+  .motion-dashboard .bar-track i,
+  .bar-track i {
+    width: var(--bar-width, 0%) !important;
+  }
+}
+
 @media (max-width: 720px) {
   .product-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

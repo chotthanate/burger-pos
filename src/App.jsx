@@ -78,6 +78,62 @@ const defaultSettings = {
   receiptTemplate: "ใบเสร็จรับเงิน\n[LOGO]\n--------------------------------------\nหมายเลขคำสั่งซื้อ : [ORDER_NO]\nวันและเวลา : [ORDER_DATE]\n--------------------------------------\nสินค้า                  ราคา     จำนวน            รวม\n[ITEMS]            [PRICE]  [QUANTITY]   [TOTAL (price*quantity)]\nรวม                                                  [TOTAL]",
 };
 
+function usePrefersReducedMotion() {
+  const [prefersReduced, setPrefersReduced] = useState(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return false;
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setPrefersReduced(media.matches);
+    update();
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
+
+  return prefersReduced;
+}
+
+function useAnimatedNumber(value, { duration = 700, prefersReducedMotion = false } = {}) {
+  const target = Number(value) || 0;
+  const [display, setDisplay] = useState(target);
+  const displayRef = useRef(target);
+
+  useEffect(() => {
+    displayRef.current = display;
+  }, [display]);
+
+  useEffect(() => {
+    if (prefersReducedMotion || typeof window === "undefined") {
+      displayRef.current = target;
+      setDisplay(target);
+      return undefined;
+    }
+
+    const from = displayRef.current;
+    if (from === target) return undefined;
+
+    let frameId = 0;
+    const startedAt = performance.now();
+    const easeOutCubic = (point) => 1 - Math.pow(1 - point, 3);
+
+    const tick = (now) => {
+      const progress = Math.min(1, (now - startedAt) / duration);
+      const next = Math.round(from + (target - from) * easeOutCubic(progress));
+      displayRef.current = next;
+      setDisplay(next);
+      if (progress < 1) frameId = window.requestAnimationFrame(tick);
+    };
+
+    frameId = window.requestAnimationFrame(tick);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [duration, prefersReducedMotion, target]);
+
+  return display;
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("pos");
   const [activeCategory, setActiveCategory] = useState(categories[0]);
@@ -104,6 +160,8 @@ export default function App() {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
   const [queueLists, setQueueLists] = useState({ print: [], sheet: [] });
+  const [cartMotionKey, setCartMotionKey] = useState("");
+  const cartMotionTimer = useRef(null);
 
   const catalog = useMemo(() => ({ recipes, modifierRecipes }), [recipes, modifierRecipes]);
   const activeProducts = useMemo(() => products.filter((product) => product.active !== false), [products]);
@@ -116,6 +174,10 @@ export default function App() {
 
   useEffect(() => {
     refreshQueues();
+  }, []);
+
+  useEffect(() => () => {
+    if (cartMotionTimer.current) window.clearTimeout(cartMotionTimer.current);
   }, []);
 
   useEffect(() => {
@@ -146,10 +208,11 @@ export default function App() {
   function addToCart(product, selectedModifierIds) {
     const selectedModifiers = modifiers.filter((modifier) => selectedModifierIds.includes(modifier.id));
     const unitPrice = getChannelPrice(product, "store") + selectedModifiers.reduce((sum, modifier) => sum + Number(modifier.price || 0), 0);
+    const key = `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setCart((current) => [
       ...current,
       {
-        key: `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        key,
         product,
         quantity: 1,
         unitPrice,
@@ -158,10 +221,18 @@ export default function App() {
         note: "",
       },
     ]);
+    setCartMotionKey(key);
+    if (cartMotionTimer.current) window.clearTimeout(cartMotionTimer.current);
+    cartMotionTimer.current = window.setTimeout(() => setCartMotionKey(""), 420);
     setSelectedProduct(null);
   }
 
   function changeQuantity(key, delta) {
+    if (delta > 0) {
+      setCartMotionKey(key);
+      if (cartMotionTimer.current) window.clearTimeout(cartMotionTimer.current);
+      cartMotionTimer.current = window.setTimeout(() => setCartMotionKey(""), 320);
+    }
     setCart((current) =>
       current
         .map((item) => (item.key === key ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item))
@@ -397,6 +468,7 @@ export default function App() {
             <PosScreen
               activeCategory={activeCategory}
               cart={cart}
+              cartMotionKey={cartMotionKey}
               catalog={catalog}
               changeQuantity={changeQuantity}
               ingredients={ingredients}
@@ -548,33 +620,45 @@ function StatusPanel({ lowStock, queueStats }) {
 
 function DashboardScreen({ expenses, ingredients, orders, products, shifts }) {
   const data = useMemo(() => buildDashboardData(orders, expenses, ingredients, products, shifts), [orders, expenses, ingredients, products, shifts]);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const animatedTotalSales = useAnimatedNumber(data.totalSales, { prefersReducedMotion });
+  const animatedAverageOrder = useAnimatedNumber(data.averageOrder, { prefersReducedMotion });
+  const animatedCashSales = useAnimatedNumber(data.cashSales, { prefersReducedMotion });
+  const animatedTransferSales = useAnimatedNumber(data.transferSales, { prefersReducedMotion });
+  const animatedOrderCount = useAnimatedNumber(data.orderCount, { duration: 520, prefersReducedMotion });
+  const animatedCashOrders = useAnimatedNumber(data.cashOrders, { duration: 520, prefersReducedMotion });
+  const animatedTransferOrders = useAnimatedNumber(data.transferOrders, { duration: 520, prefersReducedMotion });
+  const animatedCashPercent = useAnimatedNumber(data.cashPercent, { duration: 620, prefersReducedMotion });
+  const animatedExpenseTotal = useAnimatedNumber(data.expenseTotal, { prefersReducedMotion });
+  const animatedExpenseCount = useAnimatedNumber(data.expenseCount, { duration: 520, prefersReducedMotion });
+  const animatedNetAfterExpenses = useAnimatedNumber(data.netAfterExpenses, { prefersReducedMotion });
   return (
-    <section className="dashboard-screen">
+    <section className="dashboard-screen motion-dashboard">
       <div className="dashboard-metrics">
-        <article className="metric-card">
+        <article className="metric-card" style={{ "--motion-index": 0 }}>
           <span>ยอดขายทั้งหมด</span>
-          <strong>{money(data.totalSales)} บาท</strong>
-          <small>{data.orderCount} ออร์เดอร์</small>
+          <strong>{money(animatedTotalSales)} บาท</strong>
+          <small>{animatedOrderCount} ออร์เดอร์</small>
         </article>
-        <article className="metric-card">
+        <article className="metric-card" style={{ "--motion-index": 1 }}>
           <span>บิลเฉลี่ย</span>
-          <strong>{money(data.averageOrder)} บาท</strong>
+          <strong>{money(animatedAverageOrder)} บาท</strong>
           <small>เฉลี่ยต่อออร์เดอร์</small>
         </article>
-        <article className="metric-card">
+        <article className="metric-card" style={{ "--motion-index": 2 }}>
           <span>เงินสด</span>
-          <strong>{money(data.cashSales)} บาท</strong>
-          <small>{data.cashOrders} ออร์เดอร์</small>
+          <strong>{money(animatedCashSales)} บาท</strong>
+          <small>{animatedCashOrders} ออร์เดอร์</small>
         </article>
-        <article className="metric-card">
+        <article className="metric-card" style={{ "--motion-index": 3 }}>
           <span>เงินโอน</span>
-          <strong>{money(data.transferSales)} บาท</strong>
-          <small>{data.transferOrders} ออร์เดอร์</small>
+          <strong>{money(animatedTransferSales)} บาท</strong>
+          <small>{animatedTransferOrders} ออร์เดอร์</small>
         </article>
       </div>
 
       <div className="dashboard-grid">
-        <article className="chart-card span-2">
+        <article className="chart-card span-2" style={{ "--motion-index": 4 }}>
           <div className="panel-title">
             <BarChart3 size={22} />
             <div>
@@ -583,17 +667,17 @@ function DashboardScreen({ expenses, ingredients, orders, products, shifts }) {
             </div>
           </div>
           <div className="bar-chart">
-            {data.dailySales.map((day) => (
-              <div className="bar-row" key={day.key}>
+            {data.dailySales.map((day, index) => (
+              <div className="bar-row" key={day.key} style={{ "--bar-width": `${day.percent}%`, "--motion-index": index }}>
                 <span>{day.label}</span>
-                <div className="bar-track"><i style={{ width: `${day.percent}%` }} /></div>
+                <div className="bar-track"><i /></div>
                 <strong>{money(day.total)}</strong>
               </div>
             ))}
           </div>
         </article>
 
-        <article className="chart-card">
+        <article className="chart-card" style={{ "--motion-index": 5 }}>
           <div className="panel-title">
             <WalletCards size={22} />
             <div>
@@ -601,16 +685,16 @@ function DashboardScreen({ expenses, ingredients, orders, products, shifts }) {
               <p>เงินสดเทียบกับเงินโอน</p>
             </div>
           </div>
-          <div className="payment-donut" style={{ "--cash": `${data.cashPercent}%` }}>
-            <span>{data.cashPercent}%</span>
+          <div className="payment-donut" style={{ "--cash": `${animatedCashPercent}%` }}>
+            <span>{animatedCashPercent}%</span>
           </div>
           <div className="legend-list">
-            <span><i className="legend-cash" /> เงินสด {money(data.cashSales)} บาท</span>
-            <span><i className="legend-transfer" /> เงินโอน {money(data.transferSales)} บาท</span>
+            <span><i className="legend-cash" /> เงินสด {money(animatedCashSales)} บาท</span>
+            <span><i className="legend-transfer" /> เงินโอน {money(animatedTransferSales)} บาท</span>
           </div>
         </article>
 
-        <article className="chart-card">
+        <article className="chart-card" style={{ "--motion-index": 6 }}>
           <div className="panel-title">
             <Utensils size={22} />
             <div>
@@ -629,7 +713,7 @@ function DashboardScreen({ expenses, ingredients, orders, products, shifts }) {
           </div>
         </article>
 
-        <article className="chart-card">
+        <article className="chart-card" style={{ "--motion-index": 7 }}>
           <div className="panel-title">
             <ReceiptText size={22} />
             <div>
@@ -638,13 +722,13 @@ function DashboardScreen({ expenses, ingredients, orders, products, shifts }) {
             </div>
           </div>
           <div className="summary-list">
-            <span>รายจ่ายรวม <strong>{money(data.expenseTotal)} บาท</strong></span>
-            <span>จำนวนรายการ <strong>{data.expenseCount}</strong></span>
-            <span>ยอดสุทธิหลังรายจ่าย <strong>{money(data.netAfterExpenses)} บาท</strong></span>
+            <span>รายจ่ายรวม <strong>{money(animatedExpenseTotal)} บาท</strong></span>
+            <span>จำนวนรายการ <strong>{animatedExpenseCount}</strong></span>
+            <span>ยอดสุทธิหลังรายจ่าย <strong>{money(animatedNetAfterExpenses)} บาท</strong></span>
           </div>
         </article>
 
-        <article className="chart-card">
+        <article className="chart-card" style={{ "--motion-index": 8 }}>
           <div className="panel-title">
             <AlertTriangle size={22} />
             <div>
@@ -669,6 +753,7 @@ function DashboardScreen({ expenses, ingredients, orders, products, shifts }) {
 function PosScreen({
   activeCategory,
   cart,
+  cartMotionKey,
   catalog,
   changeQuantity,
   ingredients,
@@ -755,6 +840,7 @@ function PosScreen({
           </section>
           <CartPanel
             cart={cart}
+            cartMotionKey={cartMotionKey}
             changeQuantity={changeQuantity}
             disabled={!openShift}
             onCheckout={onCheckout}
@@ -800,6 +886,7 @@ function PosScreen({
 
 function CartPanel({
   cart,
+  cartMotionKey,
   changeQuantity,
   disabled,
   onCheckout,
@@ -821,7 +908,7 @@ function CartPanel({
       </div>
       <div className="cart-list">
         {cart.length ? cart.map((item) => (
-          <div className="cart-row cart-row-full" key={item.key}>
+          <div className={`cart-row cart-row-full ${cartMotionKey === item.key ? "is-cart-motion" : ""}`} key={item.key}>
             <div className="cart-row-head">
               <div>
                 <div className="cart-item-title">
