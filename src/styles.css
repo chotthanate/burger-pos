@@ -1701,6 +1701,382 @@ button {
   background: #fffaf0;
 }
 
+/* Premium fast-casual refinements */
+:root {
+  --boy-red: #c62828;
+  --boy-red-dark: #8f1d1a;
+  --boy-yellow: #edb83d;
+  --boy-title: #fdce89;
+  --boy-cream: #f8f5ef;
+  --boy-nav: #23201c;
+  --boy-ink: #181512;
+  --boy-muted: #746b61;
+  --boy-border: #ded2c1;
+  --boy-surface: #fffaf0;
+  --boy-card: #fffefb;
+  --boy-shadow: 0 18px 40px rgba(30, 24, 18, 0.08);
+  --boy-checker: conic-gradient(rgba(0, 0, 0, 0.38) 25%, rgba(255, 255, 255, 0.62) 0 50%, rgba(0, 0, 0, 0.38) 0 75%, rgba(255, 255, 255, 0.62) 0);
+}
+
+body {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.34) 1px, transparent 1px) 0 0 / 26px 26px,
+    #f8f5ef;
+}
+
+.app-grid {
+  grid-template-columns: 248px minmax(0, 1fr);
+}
+
+.nav-rail {
+  padding: 22px 14px 18px;
+  background: linear-gradient(180deg, #2b2622 0%, #1d1b19 100%);
+  gap: 22px;
+}
+
+.brand-block {
+  gap: 13px;
+  padding: 0 2px 8px;
+}
+
+.brand-mark {
+  width: 62px;
+  height: 62px;
+  border-radius: 16px;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
+}
+
+.brand-block h1 {
+  line-height: 1.05;
+  text-shadow:
+    0.8px 0 0 #000,
+    -0.8px 0 0 #000,
+    0 0.8px 0 #000,
+    0 -0.8px 0 #000;
+}
+
+.brand-block p {
+  color: rgba(248, 231, 186, 0.68);
+  font-weight: 600;
+}
+
+.nav-list {
+  gap: 8px;
+}
+
+.nav-button {
+  min-height: 52px;
+  border-radius: 12px;
+  padding: 0 16px;
+  color: rgba(255, 248, 223, 0.82);
+  font-weight: 750;
+}
+
+.nav-button.is-active,
+.nav-button:hover {
+  background: linear-gradient(180deg, #d73a35 0%, var(--boy-red) 100%);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.16);
+}
+
+.status-card {
+  padding: 13px;
+  padding-top: 18px;
+  border-color: rgba(253, 206, 137, 0.18);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.status-card::before {
+  content: "";
+  height: 7px;
+  background: var(--boy-checker) left top / 14px 14px;
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  opacity: 0.72;
+}
+
+.status-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.status-card div {
+  color: rgba(255, 248, 223, 0.86);
+  font-weight: 650;
+}
+
+.main-pane {
+  padding: 24px 24px 18px;
+}
+
+.topbar {
+  margin-bottom: 20px;
+}
+
+.topbar h2 {
+  font-size: 30px;
+  text-shadow: 0 1px 0 rgba(253, 206, 137, 0.48);
+}
+
+.topbar p,
+.panel-title p,
+.cart-row p,
+.settings-card p {
+  color: var(--boy-muted);
+  font-weight: 500;
+}
+
+.top-status span {
+  min-height: 40px;
+  border-color: rgba(30, 24, 18, 0.08);
+  background: rgba(255, 254, 251, 0.86);
+  box-shadow: 0 8px 18px rgba(30, 24, 18, 0.04);
+  font-weight: 650;
+}
+
+.menu-area,
+.cart-panel,
+.work-panel,
+.expense-form,
+.settings-card,
+.side-editor {
+  border-color: rgba(30, 24, 18, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 250, 240, 0.92);
+  box-shadow: var(--boy-shadow);
+}
+
+.menu-area::before,
+.cart-panel::before,
+.work-panel::before,
+.settings-card::before,
+.side-editor::before {
+  height: 7px;
+  background: var(--boy-checker) left top / 14px 14px;
+  opacity: 0.5;
+}
+
+.menu-area,
+.work-panel,
+.expense-form,
+.settings-card,
+.side-editor {
+  padding: 26px 18px 18px;
+}
+
+.cart-panel {
+  padding: 26px 18px 18px;
+}
+
+.category-row,
+.toolbar,
+.payment-tabs,
+.cash-buttons,
+.modal-actions,
+.subnav-row {
+  gap: 9px;
+}
+
+.category-button,
+.toolbar button,
+.payment-tabs button,
+.subnav-row button,
+.ghost-button,
+.icon-close-button,
+.table-row button,
+.queue-item button,
+.receipt-logo-preview button,
+.qty-control button,
+.expense-entry-row > button,
+.recipe-line-row button {
+  border-color: rgba(30, 24, 18, 0.09);
+  border-radius: 12px;
+  background: rgba(255, 254, 251, 0.75);
+  color: var(--boy-ink);
+  font-weight: 700;
+}
+
+.category-button.is-active,
+.toolbar button.is-active,
+.payment-tabs button.is-active,
+.subnav-row button.is-active,
+.expense-mode-toggle button.is-active {
+  border-color: transparent;
+  background: linear-gradient(180deg, #d83a35 0%, var(--boy-red) 100%);
+  box-shadow: 0 12px 22px rgba(198, 40, 40, 0.18);
+}
+
+.checkout-button,
+.primary-button,
+.close-shift-button {
+  border-radius: 12px;
+  background: linear-gradient(180deg, #d83a35 0%, var(--boy-red) 100%) !important;
+  box-shadow: 0 7px 0 #8b1c19, 0 18px 30px rgba(198, 40, 40, 0.18);
+  font-weight: 850;
+}
+
+.checkout-button:disabled,
+.primary-button:disabled {
+  background: #e9c7c2 !important;
+  box-shadow: none;
+}
+
+.product-grid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+}
+
+.product-tile {
+  min-height: 212px;
+  border-radius: 20px;
+  padding: 16px;
+  padding-bottom: 58px;
+  background: var(--boy-card);
+  box-shadow: 0 16px 32px rgba(30, 24, 18, 0.09);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.product-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 38px rgba(30, 24, 18, 0.12);
+}
+
+.product-tile::before {
+  height: 104px;
+  border-radius: 16px;
+  background:
+    radial-gradient(ellipse at center 23%, #f6bd5d 0 26%, transparent 27%),
+    linear-gradient(180deg, transparent 0 34%, #73a84b 34% 39%, #f7d451 39% 47%, #7b3f27 47% 59%, #e8b15b 59% 70%, transparent 70%),
+    linear-gradient(135deg, #332b24 0%, #171513 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.product-tile:nth-child(2n)::before {
+  background:
+    radial-gradient(ellipse at center 23%, #f7c666 0 25%, transparent 26%),
+    linear-gradient(180deg, transparent 0 32%, #e8cf62 32% 39%, #7d3226 39% 49%, #f2d957 49% 57%, #6f3825 57% 68%, transparent 68%),
+    linear-gradient(135deg, #332b24 0%, #171513 100%);
+}
+
+.product-tile span {
+  font-size: 18px;
+  font-weight: 850;
+}
+
+.product-tile strong {
+  font-size: 25px;
+  font-weight: 850;
+}
+
+.product-tile em,
+.product-tile.is-disabled em {
+  font-weight: 650;
+}
+
+.product-tile::after {
+  right: 15px;
+  bottom: 15px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  font-size: 24px;
+  box-shadow: 0 12px 18px rgba(237, 184, 61, 0.22);
+}
+
+.cart-row,
+.inventory-card,
+.admin-product,
+.small-list div,
+.queue-item,
+.table-row,
+.recent-strip,
+.expense-entry-row,
+.receipt-preview,
+.receipt-logo-preview,
+.recipe-toggle-box {
+  border-color: rgba(30, 24, 18, 0.08);
+  border-radius: 14px;
+  background: var(--boy-card);
+  box-shadow: 0 10px 22px rgba(30, 24, 18, 0.045);
+}
+
+.inventory-card,
+.admin-product {
+  min-height: 140px;
+  padding: 18px;
+}
+
+.inventory-card h3,
+.admin-product strong,
+.cart-row strong {
+  font-weight: 800;
+}
+
+.inventory-card p,
+.inventory-card small,
+.admin-product span,
+.admin-product em,
+.table-row small,
+.queue-item small,
+.recent-strip span {
+  color: var(--boy-muted);
+  font-weight: 500;
+}
+
+.inventory-card > strong,
+.cart-total strong,
+.pay-total strong,
+.expense-total {
+  font-weight: 850;
+}
+
+.cart-row input,
+.order-note,
+.search-box,
+.expense-header input,
+.expense-entry-row input,
+.expense-entry-row select,
+.settings-card input,
+.settings-card select,
+.settings-card textarea,
+.side-editor input,
+.side-editor select,
+.recipe-list input,
+.recipe-line-row select,
+.recipe-line-row input,
+.modal-form-grid input {
+  border-color: rgba(30, 24, 18, 0.11);
+  border-radius: 12px;
+  background: rgba(255, 254, 251, 0.92);
+}
+
+.empty-state {
+  background: rgba(255, 254, 251, 0.44);
+  border-color: rgba(30, 24, 18, 0.08);
+}
+
+.shift-gate-overlay {
+  background: rgba(248, 245, 239, 0.78);
+}
+
+.shift-gate-overlay .shift-card {
+  border-radius: 18px;
+  background: rgba(255, 250, 240, 0.96);
+  box-shadow: 0 28px 72px rgba(30, 24, 18, 0.16);
+}
+
+.modal-card {
+  border-radius: 18px;
+  background:
+    var(--boy-checker) left top / 14px 14px repeat-x,
+    var(--boy-surface);
+}
+
+.modal-card {
+  background-size: 14px 7px, auto;
+}
+
 @media (max-width: 1180px) {
   .app-grid {
     grid-template-columns: 92px minmax(0, 1fr);
