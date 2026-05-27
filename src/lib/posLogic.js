@@ -85,6 +85,7 @@ export function makeOrderPayload({ cart, paymentMethod, cashReceived, total }) {
       unitPrice: item.unitPrice,
       modifierIds: item.modifierIds,
       modifiers: item.modifiers.map((modifier) => modifier.label),
+      note: item.note || "",
     })),
   };
 }

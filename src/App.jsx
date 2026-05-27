@@ -191,6 +191,12 @@ export default function App() {
     await refreshQueues();
   }
 
+  async function queueHistoricalPrint(order, type) {
+    await addLocalJob("printJobs", { type, order, source: "HISTORY_REPRINT" });
+    await refreshQueues();
+    return true;
+  }
+
   function openNewShift(openingCash) {
     const shift = {
       id: `SHIFT-${Date.now()}`,
@@ -346,6 +352,7 @@ export default function App() {
               onCloseShift={closeCurrentShift}
               onOpenShift={openNewShift}
               onProduct={openProduct}
+              onReprintOrder={queueHistoricalPrint}
               orderNote={orderNote}
               orders={orders}
               openShift={openShift}
@@ -471,6 +478,7 @@ function PosScreen({
   onCloseShift,
   onOpenShift,
   onProduct,
+  onReprintOrder,
   orderNote,
   orders,
   openShift,
@@ -507,7 +515,7 @@ function PosScreen({
       </div>
 
       {posView === "history" ? (
-        <SalesHistory orders={orders} shifts={shifts} />
+        <SalesHistoryPanel onReprintOrder={onReprintOrder} orders={orders} shifts={shifts} />
       ) : (
         <div className="pos-layout">
           <section className="menu-area">
@@ -739,6 +747,123 @@ function ShiftClosedSummary({ onClose, summary }) {
         <button className="primary-button" onClick={onClose} type="button">ออกจากสรุป</button>
       </div>
     </section>
+  );
+}
+
+function SalesHistoryPanel({ onReprintOrder, orders, shifts }) {
+  const [selectedOrderId, setSelectedOrderId] = useState(orders[0]?.id || "");
+  const [printNotice, setPrintNotice] = useState("");
+  const latestShifts = shifts.slice(0, 8);
+  const selectedOrder = orders.find((order) => order.id === selectedOrderId) || orders[0] || null;
+
+  useEffect(() => {
+    if (!orders.length) {
+      setSelectedOrderId("");
+      return;
+    }
+    if (!orders.some((order) => order.id === selectedOrderId)) {
+      setSelectedOrderId(orders[0].id);
+    }
+  }, [orders, selectedOrderId]);
+
+  async function reprint(order, type) {
+    if (!order) return;
+    await onReprintOrder(order, type);
+    setPrintNotice(type === "RECEIPT" ? "เพิ่มคิวพิมพ์ใบเสร็จย้อนหลังแล้ว" : "เพิ่มคิวพิมพ์ใบออร์เดอร์ย้อนหลังแล้ว");
+    window.setTimeout(() => setPrintNotice(""), 1800);
+  }
+
+  return (
+    <section className="history-layout">
+      <div className="work-panel">
+        <div className="panel-title"><ReceiptText size={22} /><h3>ประวัติการขาย</h3></div>
+        <div className="table-list">
+          {orders.length ? orders.map((order) => (
+            <button
+              className={`table-row history-row history-order-button ${selectedOrder?.id === order.id ? "is-active" : ""}`}
+              key={order.id}
+              onClick={() => setSelectedOrderId(order.id)}
+              type="button"
+            >
+              <span>
+                {order.id}
+                <small>{new Date(order.createdAt).toLocaleString("th-TH")} · {order.paymentMethod === "CASH" ? "เงินสด" : "เงินโอน"}</small>
+              </span>
+              <strong>{money(order.totalAmount)} บาท</strong>
+            </button>
+          )) : <div className="empty-state">ยังไม่มีประวัติการขาย</div>}
+        </div>
+      </div>
+      <div className="work-panel">
+        {selectedOrder ? (
+          <OrderDetailPanel order={selectedOrder} onReprint={reprint} printNotice={printNotice} />
+        ) : (
+          <>
+            <div className="panel-title"><ClipboardList size={22} /><h3>สรุปกะล่าสุด</h3></div>
+            <div className="table-list">
+              {latestShifts.length ? latestShifts.map((shift) => {
+                const summary = shift.summary || calculateShiftSummary(shift, orders, shift.closingCash ?? null);
+                return (
+                  <div className="shift-summary-card" key={shift.id}>
+                    <strong>{shift.closedAt ? "ปิดกะแล้ว" : "กำลังเปิดกะ"}</strong>
+                    <span>เปิด {new Date(shift.openedAt).toLocaleString("th-TH")}</span>
+                    {shift.closedAt ? <span>ปิด {new Date(shift.closedAt).toLocaleString("th-TH")}</span> : null}
+                    <div className="shift-metrics compact">
+                      <span>เงินสด <strong>{money(summary.cashSales)} บาท</strong></span>
+                      <span>เงินโอน <strong>{money(summary.transferSales)} บาท</strong></span>
+                      <span>ส่วนต่าง <strong className={summary.cashDifference < 0 ? "text-danger" : ""}>{money(summary.cashDifference)} บาท</strong></span>
+                      <span>ออร์เดอร์ <strong>{summary.orderCount}</strong></span>
+                    </div>
+                  </div>
+                );
+              }) : <div className="empty-state">ยังไม่มีข้อมูลกะ</div>}
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function OrderDetailPanel({ onReprint, order, printNotice }) {
+  return (
+    <div className="order-detail-panel">
+      <div className="panel-title">
+        <ClipboardList size={22} />
+        <div>
+          <h3>{order.id}</h3>
+          <p>{new Date(order.createdAt).toLocaleString("th-TH")} · {order.paymentMethod === "CASH" ? "เงินสด" : "เงินโอน"}</p>
+        </div>
+      </div>
+      <div className="order-detail-list">
+        {order.items?.length ? order.items.map((item, index) => (
+          <div className="order-detail-item" key={`${item.productId}-${index}`}>
+            <span>
+              <strong>{item.quantity}x {item.name}</strong>
+              {item.modifiers?.length ? <small>{item.modifiers.map((modifier) => `- ${modifier}`).join(" · ")}</small> : null}
+              {item.note ? <small>หมายเหตุ: {item.note}</small> : null}
+            </span>
+            <b>{money(Number(item.unitPrice || 0) * Number(item.quantity || 0))} บาท</b>
+          </div>
+        )) : <div className="empty-compact">ไม่มีรายการสินค้าในออร์เดอร์นี้</div>}
+      </div>
+      {order.note ? <div className="order-detail-note">หมายเหตุทั้งออร์เดอร์: {order.note}</div> : null}
+      <div className="order-detail-total">
+        <span>รวมสุทธิ</span>
+        <strong>{money(order.totalAmount)} บาท</strong>
+      </div>
+      {order.paymentMethod === "CASH" ? (
+        <div className="order-detail-payment">
+          <span>รับเงินสด {money(order.cashReceived)} บาท</span>
+          <span>เงินทอน {money(order.changeDue)} บาท</span>
+        </div>
+      ) : null}
+      {printNotice ? <div className="inline-warning">{printNotice}</div> : null}
+      <div className="modal-actions">
+        <button className="primary-button" onClick={() => onReprint(order, "RECEIPT")} type="button"><Printer size={18} /> พิมพ์ใบเสร็จ</button>
+        <button className="ghost-button" onClick={() => onReprint(order, "KITCHEN")} type="button"><ReceiptText size={18} /> พิมพ์ใบออร์เดอร์</button>
+      </div>
+    </div>
   );
 }
 
