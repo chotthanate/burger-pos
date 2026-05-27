@@ -21,12 +21,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download static site
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl -L --retry 3 -o gh-pages.zip "https://github.com/${GITHUB_REPOSITORY}/archive/refs/heads/gh-pages.zip"
+          gh_pages_sha="$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/ref/heads/gh-pages" \
+            | jq -r '.object.sha')"
+          curl -fsSL --retry 3 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -o gh-pages.zip \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/zipball/${gh_pages_sha}"
           unzip -q gh-pages.zip
           mkdir site
-          top_dir="$(find . -maxdepth 1 -type d -name 'burger-pos-*' | head -n 1)"
+          top_dir="$(find . -maxdepth 1 -type d -name '*burger-pos-*' | head -n 1)"
           cp -a "${top_dir}/." site/
 
       - name: Upload artifact
