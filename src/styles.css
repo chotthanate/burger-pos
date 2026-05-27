@@ -3,25 +3,47 @@
 @tailwind utilities;
 
 @font-face {
-  font-family: "FC Mittraphap";
+  font-family: "FC Iconic";
   src:
-    url("/burger-pos/fonts/FC-Mittraphap.ttf") format("truetype"),
-    url("/burger-pos/fonts/FC-Mittraphap.otf") format("opentype");
+    url("/burger-pos/fonts/FC-Iconic-Regular.ttf") format("truetype"),
+    url("/burger-pos/fonts/FC-Iconic-Regular.otf") format("opentype");
   font-style: normal;
-  font-weight: 400 800;
+  font-weight: 400 599;
   font-display: swap;
-  size-adjust: 104%;
+  size-adjust: 132%;
 }
 
 @font-face {
-  font-family: "FC Mittraphap";
+  font-family: "FC Iconic";
   src:
-    url("/burger-pos/fonts/FC-Mittraphap.ttf") format("truetype"),
-    url("/burger-pos/fonts/FC-Mittraphap.otf") format("opentype");
-  font-style: italic;
-  font-weight: 400 800;
+    url("/burger-pos/fonts/FC-Iconic-Bold.ttf") format("truetype"),
+    url("/burger-pos/fonts/FC-Iconic-Bold.otf") format("opentype");
+  font-style: normal;
+  font-weight: 600 800;
   font-display: swap;
-  size-adjust: 104%;
+  size-adjust: 132%;
+}
+
+@font-face {
+  font-family: "FC Iconic";
+  src:
+    url("/burger-pos/fonts/FC-Iconic-Italic.ttf") format("truetype"),
+    url("/burger-pos/fonts/FC-Iconic-Italic.otf") format("opentype");
+  font-style: italic;
+  font-weight: 400 599;
+  font-display: swap;
+  size-adjust: 132%;
+}
+
+@font-face {
+  font-family: "FC Iconic";
+  src:
+    url("/burger-pos/fonts/FC-Iconic-Bold-Italic.ttf") format("truetype"),
+    url("/burger-pos/fonts/FC-Iconic-Bold-Italic.otf") format("opentype");
+  font-style: italic;
+  font-weight: 600 800;
+  font-display: swap;
+  size-adjust: 132%;
 }
 
 * {
@@ -51,7 +73,7 @@ body {
   min-width: 320px;
   background: #f3efe6;
   color: var(--boy-ink);
-  font-family: "FC Mittraphap", "Noto Sans Thai", Tahoma, Arial, sans-serif;
+  font-family: "FC Iconic", "Noto Sans Thai", Tahoma, Arial, sans-serif;
 }
 
 button,
@@ -3253,7 +3275,7 @@ option {
   background: #b45309;
 }
 
-/* FC Mittraphap reads heavier than the previous stack, so keep hierarchy without making the whole POS look bold. */
+/* FC Iconic uses separate Regular/Bold files; keep hierarchy without making the whole POS look bold. */
 body {
   font-weight: 400;
 }
