@@ -3,21 +3,25 @@
 @tailwind utilities;
 
 @font-face {
-  font-family: "Arabica";
-  src: url("/burger-pos/fonts/Arabica.ttf") format("truetype");
+  font-family: "FC Mittraphap";
+  src:
+    url("/burger-pos/fonts/FC-Mittraphap.ttf") format("truetype"),
+    url("/burger-pos/fonts/FC-Mittraphap.otf") format("opentype");
   font-style: normal;
-  font-weight: 400 950;
+  font-weight: 400 800;
   font-display: swap;
-  size-adjust: 135%;
+  size-adjust: 94%;
 }
 
 @font-face {
-  font-family: "Arabica";
-  src: url("/burger-pos/fonts/Arabica-Italic.ttf") format("truetype");
+  font-family: "FC Mittraphap";
+  src:
+    url("/burger-pos/fonts/FC-Mittraphap.ttf") format("truetype"),
+    url("/burger-pos/fonts/FC-Mittraphap.otf") format("opentype");
   font-style: italic;
-  font-weight: 400 950;
+  font-weight: 400 800;
   font-display: swap;
-  size-adjust: 135%;
+  size-adjust: 94%;
 }
 
 * {
@@ -47,7 +51,7 @@ body {
   min-width: 320px;
   background: #f3efe6;
   color: var(--boy-ink);
-  font-family: "Arabica", "Noto Sans Thai", Tahoma, Arial, sans-serif;
+  font-family: "FC Mittraphap", "Noto Sans Thai", Tahoma, Arial, sans-serif;
 }
 
 button,
@@ -3247,6 +3251,94 @@ option {
 
 .rank-list > div:nth-child(3) b {
   background: #b45309;
+}
+
+/* FC Mittraphap reads heavier than the previous stack, so keep hierarchy without making the whole POS look bold. */
+body {
+  font-weight: 400;
+}
+
+strong,
+b {
+  font-weight: 700;
+}
+
+.brand-block h1,
+.topbar h2 {
+  font-weight: 800;
+}
+
+.panel-title h3,
+.settings-card h3,
+.inventory-card h3,
+.admin-product strong,
+.modifier-admin-card strong,
+.product-tile span,
+.cart-row strong,
+.rank-list span,
+.table-row span,
+.queue-item span {
+  font-weight: 650;
+}
+
+.product-tile strong,
+.cart-row span,
+.cart-total strong,
+.pay-total strong,
+.metric-card strong,
+.expense-total,
+.stock-preview,
+.conversion-preview,
+.transfer-ready,
+.shift-metrics strong,
+.order-detail-total strong {
+  font-weight: 750;
+}
+
+.nav-button,
+.nav-sub-button,
+.category-button,
+.toolbar button,
+.payment-tabs button,
+.subnav-row button,
+.ghost-button,
+.checkout-button,
+.primary-button,
+.close-shift-button,
+.new-record-button,
+.cash-buttons button,
+.qty-control button,
+.table-row button,
+.queue-item button,
+.expense-mode-toggle button,
+.expense-entry-row > button,
+.recipe-line-row button,
+.purchase-unit-row button,
+.danger-mini-button,
+.check-row label,
+.top-status span {
+  font-weight: 600;
+}
+
+.brand-block p,
+.topbar p,
+.panel-title p,
+.cart-row p,
+.settings-card p,
+.metric-card span,
+.metric-card small,
+.summary-list span,
+.legend-list span,
+.table-row small,
+.queue-item small,
+.inventory-card p,
+.inventory-card small,
+.admin-product span,
+.admin-product em,
+.expense-table-head,
+.expense-field-label,
+.rank-list small {
+  font-weight: 400;
 }
 
 @media (max-width: 720px) {
