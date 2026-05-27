@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: "Arabica";
+  src: url("/burger-pos/fonts/Arabica.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400 950;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Arabica";
+  src: url("/burger-pos/fonts/Arabica-Italic.ttf") format("truetype");
+  font-style: italic;
+  font-weight: 400 950;
+  font-display: swap;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -29,7 +45,7 @@ body {
   min-width: 320px;
   background: #f3efe6;
   color: var(--boy-ink);
-  font-family: "Noto Sans Thai", Tahoma, Arial, sans-serif;
+  font-family: "Arabica", "Noto Sans Thai", Tahoma, Arial, sans-serif;
 }
 
 button,
