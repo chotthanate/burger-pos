@@ -18,6 +18,7 @@ import {
   Search,
   Settings,
   ShoppingCart,
+  SlidersHorizontal,
   Store,
   Trash2,
   Utensils,
@@ -50,6 +51,7 @@ const navItems = [
   { id: "pos", label: "ขาย", icon: Store },
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
   { id: "menu", label: "เมนู/สูตร", icon: Utensils },
+  { id: "modifiers", label: "ตัวเลือกเสริม", icon: SlidersHorizontal },
   { id: "inventory", label: "วัตถุดิบ", icon: Package },
   { id: "expense", label: "รายจ่าย", icon: ReceiptText },
   { id: "settings", label: "ตั้งค่า", icon: Settings },
@@ -82,8 +84,8 @@ export default function App() {
   const [purchaseUnits, setPurchaseUnits] = usePersistentState("burger-pos.purchaseUnits", seedPurchaseUnits);
   const [products, setProducts] = usePersistentState("burger-pos.products", seedProducts);
   const [recipes, setRecipes] = usePersistentState("burger-pos.recipes", seedRecipes);
-  const [modifiers] = usePersistentState("burger-pos.modifiers", seedModifiers);
-  const [modifierRecipes] = usePersistentState("burger-pos.modifierRecipes", seedModifierRecipes);
+  const [modifiers, setModifiers] = usePersistentState("burger-pos.modifiers", seedModifiers);
+  const [modifierRecipes, setModifierRecipes] = usePersistentState("burger-pos.modifierRecipes", seedModifierRecipes);
   const [orders, setOrders] = usePersistentState("burger-pos.orders", []);
   const [expenses, setExpenses] = usePersistentState("burger-pos.expenses", []);
   const [shifts, setShifts] = usePersistentState("burger-pos.shifts", []);
@@ -409,6 +411,16 @@ export default function App() {
               setRecipes={setRecipes}
             />
           ) : null}
+          {activeTab === "modifiers" ? (
+            <ModifierManagementScreen
+              ingredients={ingredients}
+              modifierRecipes={modifierRecipes}
+              modifiers={modifiers}
+              products={products}
+              setModifierRecipes={setModifierRecipes}
+              setModifiers={setModifiers}
+            />
+          ) : null}
           {activeTab === "expense" ? (
             <ExpenseScreen
               ingredients={ingredients}
@@ -461,6 +473,7 @@ function Header({ activeTab, lowStock, queueStats }) {
     dashboard: "Dashboard สรุปยอดขาย",
     inventory: "เช็ควัตถุดิบ",
     menu: "เมนูและสูตรอาหาร",
+    modifiers: "จัดการตัวเลือกเสริม",
     expense: "บันทึกรายจ่าย",
     settings: "ตั้งค่าระบบ",
   }[activeTab];
@@ -681,12 +694,13 @@ function PosScreen({
                 const available = openShift && canSellProduct(product.id, ingredients, [], catalog);
                 return (
                   <button
-                    className={`product-tile ${product.color || "bg-white"} ${available ? "" : "is-disabled"}`}
+                    className={`product-tile ${product.imageDataUrl ? "has-image" : ""} ${product.color || "bg-white"} ${available ? "" : "is-disabled"}`}
                     disabled={!available}
                     key={product.id}
                     onClick={() => onProduct(product)}
                     type="button"
                   >
+                    {product.imageDataUrl ? <img alt={product.name} className="product-tile-image" src={product.imageDataUrl} /> : null}
                     <span>{product.name}</span>
                     <strong>{money(getChannelPrice(product, "store"))} บาท</strong>
                     {!openShift ? <em>ต้องเปิดกะก่อนขาย</em> : !available ? <em>วัตถุดิบไม่พอ</em> : null}
@@ -1062,7 +1076,7 @@ function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, o
   const missing = getMissingIngredients(selectedRecipeLines, ingredients);
   return (
     <div className="modal-backdrop">
-      <div className="modal-card">
+      <div className="modal-card modifier-modal-card">
         <h3>{product.name}</h3>
         <p>เลือกคำสั่งพิเศษก่อนเพิ่มลงตะกร้า</p>
         <div className="modifier-list">
@@ -1471,6 +1485,26 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
     setEditorNotice("");
   }
 
+  function updateProductImage(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setDeleteArmed(false);
+      setProductForm((current) => ({
+        ...current,
+        imageDataUrl: String(reader.result || ""),
+        imageName: file.name,
+      }));
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removeProductImage() {
+    setDeleteArmed(false);
+    setProductForm((current) => ({ ...current, imageDataUrl: "", imageName: "" }));
+  }
+
   function addMenuCategory(event) {
     event.preventDefault();
     const name = newCategoryName.trim();
@@ -1583,6 +1617,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
               }}
               type="button"
             >
+              {product.imageDataUrl ? <img alt={product.name} className="admin-product-image" src={product.imageDataUrl} /> : null}
               <strong>{product.name}</strong>
               <span>{product.category} · หน้าร้าน {money(getChannelPrice(product, "store"))} บาท</span>
               <em>{product.active === false ? "ปิดขาย" : "เปิดขาย"}</em>
@@ -1599,6 +1634,27 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
         </div>
         {editorNotice ? <div className="inline-warning">{editorNotice}</div> : null}
         <label className={hasUnsavedChanges && normalizeProductForm(productForm).name !== normalizeProductForm(savedProductForm).name ? "is-dirty" : ""}>ชื่อเมนู<input value={productForm.name || ""} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, name: event.target.value })); }} /></label>
+        <div className={`menu-image-control ${hasUnsavedChanges && normalizeProductForm(productForm).imageDataUrl !== normalizeProductForm(savedProductForm).imageDataUrl ? "is-dirty" : ""}`}>
+          <strong>รูปเมนู</strong>
+          {productForm.imageDataUrl ? (
+            <div className="product-image-preview">
+              <img alt={productForm.name || "รูปเมนู"} src={productForm.imageDataUrl} />
+              <span>{productForm.imageName || "รูปเมนู"}</span>
+              <button onClick={removeProductImage} type="button">ลบรูป</button>
+            </div>
+          ) : (
+            <label className="image-upload-button">
+              เพิ่มรูปเมนู
+              <input accept="image/*" onChange={updateProductImage} type="file" />
+            </label>
+          )}
+          {productForm.imageDataUrl ? (
+            <label className="image-upload-button secondary">
+              เปลี่ยนรูป
+              <input accept="image/*" onChange={updateProductImage} type="file" />
+            </label>
+          ) : null}
+        </div>
         <label className={hasUnsavedChanges && normalizeProductForm(productForm).category !== normalizeProductForm(savedProductForm).category ? "is-dirty" : ""}>หมวด<select value={productForm.category || productCategories[0] || ""} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, category: event.target.value })); }}>
           {productCategories.map((category) => <option key={category} value={category}>{category}</option>)}
         </select></label>
@@ -1646,6 +1702,195 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
           {selected ? <button className={`danger-button ${deleteArmed ? "is-armed" : ""}`} onClick={removeProduct} type="button">{deleteArmed ? "ยืนยันลบ" : "ลบเมนู"}</button> : null}
         </div>
       </form>
+      ) : null}
+    </section>
+  );
+}
+
+function ModifierManagementScreen({ ingredients, modifierRecipes, modifiers, products, setModifierRecipes, setModifiers }) {
+  const [selectedId, setSelectedId] = useState(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [form, setForm] = useState(emptyModifier(products));
+  const [recipeDraft, setRecipeDraft] = useState({});
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const selected = selectedId ? modifiers.find((modifier) => modifier.id === selectedId) : null;
+  const recipeEntries = Object.entries(recipeDraft).filter(([, quantity]) => Number(quantity) !== 0);
+
+  useEffect(() => {
+    if (!selected) return;
+    setForm(selected);
+    setRecipeDraft(Object.fromEntries(modifierRecipes.filter((recipe) => recipe.modifierId === selected.id).map((recipe) => [recipe.ingredientId, recipe.quantity])));
+  }, [selectedId, selected?.price, modifierRecipes.length]);
+
+  function openEditorFor(modifier) {
+    setSelectedId(modifier.id);
+    setForm(modifier);
+    setRecipeDraft(Object.fromEntries(modifierRecipes.filter((recipe) => recipe.modifierId === modifier.id).map((recipe) => [recipe.ingredientId, recipe.quantity])));
+    setEditorOpen(true);
+    setDeleteArmed(false);
+  }
+
+  function startNewModifier() {
+    setSelectedId("");
+    setForm(emptyModifier(products));
+    setRecipeDraft({});
+    setEditorOpen(true);
+    setDeleteArmed(false);
+  }
+
+  function closeEditor() {
+    setSelectedId(null);
+    setEditorOpen(false);
+    setDeleteArmed(false);
+  }
+
+  function toggleProduct(productId) {
+    setDeleteArmed(false);
+    setForm((current) => {
+      const currentIds = current.productIds || [];
+      return {
+        ...current,
+        productIds: currentIds.includes(productId)
+          ? currentIds.filter((id) => id !== productId)
+          : [...currentIds, productId],
+      };
+    });
+  }
+
+  function addModifierRecipeLine() {
+    const nextIngredient = ingredients.find((ingredient) => !recipeDraft[ingredient.id]);
+    if (!nextIngredient) return;
+    setRecipeDraft((current) => ({ ...current, [nextIngredient.id]: 1 }));
+  }
+
+  function updateModifierRecipeIngredient(fromIngredientId, toIngredientId) {
+    if (!toIngredientId || fromIngredientId === toIngredientId) return;
+    setRecipeDraft((current) => {
+      const next = { ...current };
+      const quantity = next[fromIngredientId] || 1;
+      delete next[fromIngredientId];
+      next[toIngredientId] = quantity;
+      return next;
+    });
+  }
+
+  function saveModifier(event) {
+    event.preventDefault();
+    const next = {
+      ...form,
+      id: form.id || `mod_${Date.now()}`,
+      label: form.label.trim(),
+      price: Number(form.price || 0),
+      productIds: form.productIds?.length ? form.productIds : products.map((product) => product.id),
+    };
+    if (!next.label) return;
+    setModifiers((current) => {
+      const exists = current.some((modifier) => modifier.id === next.id);
+      return exists ? current.map((modifier) => (modifier.id === next.id ? next : modifier)) : [...current, next];
+    });
+    setModifierRecipes((current) => [
+      ...current.filter((recipe) => recipe.modifierId !== next.id),
+      ...recipeEntries.map(([ingredientId, quantity]) => ({ modifierId: next.id, ingredientId, quantity: Number(quantity) })),
+    ]);
+    closeEditor();
+  }
+
+  function removeModifier() {
+    if (!selected) return;
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      return;
+    }
+    setModifiers((current) => current.filter((modifier) => modifier.id !== selected.id));
+    setModifierRecipes((current) => current.filter((recipe) => recipe.modifierId !== selected.id));
+    closeEditor();
+  }
+
+  return (
+    <section className={`management-layout ${editorOpen ? "" : "is-single"}`}>
+      <div className="work-panel">
+        <div className="toolbar management-toolbar">
+          <button className="new-record-button toolbar-add-button" onClick={startNewModifier} type="button">
+            <Plus size={20} />
+            เพิ่มตัวเลือกเสริม
+          </button>
+        </div>
+        <div className="modifier-admin-grid">
+          {modifiers.map((modifier) => (
+            <button
+              className={`modifier-admin-card ${selectedId === modifier.id ? "is-active" : ""}`}
+              key={modifier.id}
+              onClick={() => {
+                if (editorOpen && selectedId === modifier.id) closeEditor();
+                else openEditorFor(modifier);
+              }}
+              type="button"
+            >
+              <strong>{modifier.label}</strong>
+              <span>{modifier.price ? `+${money(modifier.price)} บาท` : "ไม่คิดเงิน"}</span>
+              <small>ใช้กับ {modifier.productIds?.length || 0} เมนู</small>
+            </button>
+          ))}
+        </div>
+      </div>
+      {editorOpen ? (
+        <form className="side-editor" onSubmit={saveModifier}>
+          <div className="panel-title">
+            <SlidersHorizontal size={20} />
+            <h3>ตั้งค่าตัวเลือกเสริม</h3>
+            <button className="icon-close-button" onClick={closeEditor} type="button">ปิด</button>
+          </div>
+          <label>ชื่อตัวเลือก<input value={form.label || ""} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, label: event.target.value })); }} /></label>
+          <label>ราคาเพิ่ม<input inputMode="decimal" type="number" value={form.price ?? 0} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, price: event.target.value })); }} /></label>
+          <div className="modifier-product-picker">
+            <div>
+              <strong>ใช้กับเมนู</strong>
+              <div>
+                <button onClick={() => setForm((current) => ({ ...current, productIds: products.map((product) => product.id) }))} type="button">เลือกทั้งหมด</button>
+                <button onClick={() => setForm((current) => ({ ...current, productIds: [] }))} type="button">ล้างทั้งหมด</button>
+              </div>
+            </div>
+            {products.map((product) => (
+              <label className="check-line" key={product.id}>
+                <input checked={(form.productIds || []).includes(product.id)} onChange={() => toggleProduct(product.id)} type="checkbox" />
+                {product.name}
+              </label>
+            ))}
+          </div>
+          <div className="recipe-toggle-box">
+            <strong>ผลต่อสต็อกวัตถุดิบ</strong>
+            <div className="recipe-line-list">
+              {recipeEntries.map(([ingredientId, quantity]) => {
+                const ingredient = ingredients.find((item) => item.id === ingredientId);
+                return (
+                  <div className="recipe-line-row" key={ingredientId}>
+                    <select value={ingredientId} onChange={(event) => updateModifierRecipeIngredient(ingredientId, event.target.value)}>
+                      {ingredients.map((item) => <option disabled={Boolean(recipeDraft[item.id]) && item.id !== ingredientId} key={item.id} value={item.id}>{item.name}</option>)}
+                    </select>
+                    <input
+                      inputMode="decimal"
+                      type="number"
+                      value={quantity}
+                      onChange={(event) => setRecipeDraft((current) => ({ ...current, [ingredientId]: event.target.value }))}
+                      placeholder="+ / -"
+                    />
+                    <span>{ingredient?.unit || ""}</span>
+                    <button onClick={() => setRecipeDraft((current) => {
+                      const next = { ...current };
+                      delete next[ingredientId];
+                      return next;
+                    })} type="button"><Trash2 size={16} /></button>
+                  </div>
+                );
+              })}
+              <button className="ghost-button" onClick={addModifierRecipeLine} type="button">เพิ่มผลต่อสต็อก</button>
+            </div>
+          </div>
+          <div className="modal-actions">
+            <button className="primary-button" type="submit"><Save size={18} /> บันทึกตัวเลือก</button>
+            {selected ? <button className={`danger-button ${deleteArmed ? "is-armed" : ""}`} onClick={removeModifier} type="button">{deleteArmed ? "ยืนยันลบ" : "ลบตัวเลือก"}</button> : null}
+          </div>
+        </form>
       ) : null}
     </section>
   );
@@ -2228,7 +2473,7 @@ function normalizeIngredientForm(item) {
 }
 
 function emptyProduct(category = categories[0]) {
-  return { id: "", name: "", category, price: 0, channelPrices: Object.fromEntries(salesChannels.map((channel) => [channel.id, 0])), active: true, color: "bg-white" };
+  return { id: "", name: "", category, price: 0, channelPrices: Object.fromEntries(salesChannels.map((channel) => [channel.id, 0])), active: true, color: "bg-white", imageDataUrl: "", imageName: "" };
 }
 
 function normalizeProductForm(product) {
@@ -2240,6 +2485,17 @@ function normalizeProductForm(product) {
     channelPrices: normalizeChannelPrices(product),
     active: product?.active !== false,
     color: product?.color || "bg-white",
+    imageDataUrl: product?.imageDataUrl || "",
+    imageName: product?.imageName || "",
+  };
+}
+
+function emptyModifier(products = []) {
+  return {
+    id: "",
+    label: "",
+    price: 0,
+    productIds: products.map((product) => product.id),
   };
 }
 

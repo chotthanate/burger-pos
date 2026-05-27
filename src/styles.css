@@ -734,6 +734,24 @@ button {
   background: #ffe7cf;
 }
 
+.modifier-modal-card .modifier-list {
+  margin-bottom: 18px;
+}
+
+.modifier-modal-card .modal-actions {
+  border-top: 1px solid var(--boy-border);
+  padding-top: 16px;
+  justify-content: flex-end;
+}
+
+.modifier-modal-card .ghost-button,
+.modifier-modal-card .primary-button {
+  min-height: 46px;
+  border-radius: 12px;
+  padding: 0 18px;
+  box-shadow: none;
+}
+
 .payment-card {
   width: min(640px, 100%);
 }
@@ -1143,7 +1161,8 @@ button {
 
 .side-editor label.is-dirty,
 .recipe-toggle-box.is-dirty,
-.channel-price-grid.is-dirty {
+.channel-price-grid.is-dirty,
+.menu-image-control.is-dirty {
   border: 1px solid #efc16d;
   border-radius: 8px;
   padding: 8px;
@@ -1408,6 +1427,140 @@ button {
   display: grid;
   gap: 8px;
   box-shadow: 3px 3px 0 rgba(22, 20, 17, 0.06);
+}
+
+.admin-product-image {
+  width: 100%;
+  height: 74px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #2b2b2b;
+}
+
+.menu-image-control {
+  border: 1px solid var(--boy-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fffaf0;
+  display: grid;
+  gap: 10px;
+}
+
+.product-image-preview {
+  border: 1px solid var(--boy-border);
+  border-radius: 8px;
+  padding: 8px;
+  background: #fffdf8;
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.product-image-preview img {
+  width: 76px;
+  height: 58px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.product-image-preview span {
+  min-width: 0;
+  color: var(--boy-muted);
+  font-size: 12px;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-image-preview button,
+.image-upload-button {
+  min-height: 40px;
+  border: 1px solid var(--boy-border);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fffdf8;
+  color: var(--boy-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.image-upload-button input {
+  display: none;
+}
+
+.image-upload-button.secondary {
+  width: fit-content;
+}
+
+.modifier-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.modifier-admin-card {
+  min-height: 118px;
+  border: 1px solid var(--boy-border);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fffdf8;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  box-shadow: 3px 3px 0 rgba(22, 20, 17, 0.06);
+}
+
+.modifier-admin-card.is-active {
+  border-color: var(--boy-red);
+  background: #fff1dc;
+  box-shadow: inset 0 0 0 1px var(--boy-red), 4px 4px 0 rgba(22, 20, 17, 0.12);
+}
+
+.modifier-admin-card strong {
+  font-size: 18px;
+}
+
+.modifier-admin-card span,
+.modifier-admin-card small {
+  color: var(--boy-muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.modifier-product-picker {
+  border: 1px solid var(--boy-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fffaf0;
+  display: grid;
+  gap: 10px;
+}
+
+.modifier-product-picker > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.modifier-product-picker > div > div {
+  display: flex;
+  gap: 8px;
+}
+
+.modifier-product-picker button {
+  min-height: 34px;
+  border: 1px solid var(--boy-border);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #fffdf8;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .admin-product.is-active {
@@ -1806,6 +1959,7 @@ button {
 .cart-row,
 .inventory-card,
 .admin-product,
+.modifier-admin-card,
 .small-list div,
 .queue-item,
 .table-row,
@@ -2245,6 +2399,19 @@ body {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 
+.product-tile.has-image::before {
+  display: none;
+}
+
+.product-tile-image {
+  width: 100%;
+  height: 104px;
+  border-radius: 16px;
+  object-fit: cover;
+  background: #2b2b2b;
+  display: block;
+}
+
 .product-tile:nth-child(2n)::before {
   background:
     radial-gradient(ellipse at center 23%, #f7c666 0 25%, transparent 26%),
@@ -2465,7 +2632,7 @@ body {
   }
 
   .nav-list {
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(7, 1fr);
     height: 100%;
   }
 
