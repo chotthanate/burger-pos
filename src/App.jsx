@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   Banknote,
+  BarChart3,
   Bell,
   Check,
   ClipboardList,
@@ -47,10 +48,18 @@ import { usePersistentState } from "./lib/storage.js";
 
 const navItems = [
   { id: "pos", label: "ขาย", icon: Store },
-  { id: "inventory", label: "วัตถุดิบ", icon: Package },
+  { id: "dashboard", label: "Dashboard", icon: BarChart3 },
   { id: "menu", label: "เมนู/สูตร", icon: Utensils },
+  { id: "inventory", label: "วัตถุดิบ", icon: Package },
   { id: "expense", label: "รายจ่าย", icon: ReceiptText },
   { id: "settings", label: "ตั้งค่า", icon: Settings },
+];
+
+const salesChannels = [
+  { id: "store", label: "หน้าร้าน" },
+  { id: "grab", label: "Grab" },
+  { id: "lineman", label: "Lineman" },
+  { id: "shopee", label: "Shopee Food" },
 ];
 
 const defaultSettings = {
@@ -68,6 +77,7 @@ const defaultSettings = {
 export default function App() {
   const [activeTab, setActiveTab] = useState("pos");
   const [activeCategory, setActiveCategory] = useState(categories[0]);
+  const [menuCategories, setMenuCategories] = usePersistentState("burger-pos.menuCategories", categories);
   const [ingredients, setIngredients] = usePersistentState("burger-pos.ingredients", seedIngredients);
   const [purchaseUnits, setPurchaseUnits] = usePersistentState("burger-pos.purchaseUnits", seedPurchaseUnits);
   const [products, setProducts] = usePersistentState("burger-pos.products", seedProducts);
@@ -105,9 +115,9 @@ export default function App() {
 
   useEffect(() => {
     if (!activeProducts.some((product) => product.category === activeCategory)) {
-      setActiveCategory(activeProducts[0]?.category || categories[0]);
+      setActiveCategory(activeProducts[0]?.category || menuCategories[0] || categories[0]);
     }
-  }, [activeCategory, activeProducts]);
+  }, [activeCategory, activeProducts, menuCategories]);
 
   async function refreshQueues() {
     const [print, sheet] = await Promise.all([
@@ -130,7 +140,7 @@ export default function App() {
 
   function addToCart(product, selectedModifierIds) {
     const selectedModifiers = modifiers.filter((modifier) => selectedModifierIds.includes(modifier.id));
-    const unitPrice = product.price + selectedModifiers.reduce((sum, modifier) => sum + Number(modifier.price || 0), 0);
+    const unitPrice = getChannelPrice(product, "store") + selectedModifiers.reduce((sum, modifier) => sum + Number(modifier.price || 0), 0);
     setCart((current) => [
       ...current,
       {
@@ -347,6 +357,7 @@ export default function App() {
               catalog={catalog}
               changeQuantity={changeQuantity}
               ingredients={ingredients}
+              menuCategories={menuCategories}
               onCategory={setActiveCategory}
               onCheckout={() => setPaymentOpen(true)}
               onCloseShift={closeCurrentShift}
@@ -367,6 +378,15 @@ export default function App() {
               updateCartNote={updateCartNote}
             />
           ) : null}
+          {activeTab === "dashboard" ? (
+            <DashboardScreen
+              expenses={expenses}
+              ingredients={ingredients}
+              orders={orders}
+              products={products}
+              shifts={shifts}
+            />
+          ) : null}
           {activeTab === "inventory" ? (
             <InventoryScreen
               adjustStock={adjustStock}
@@ -380,9 +400,11 @@ export default function App() {
           {activeTab === "menu" ? (
             <MenuRecipeScreen
               ingredients={ingredients}
+              menuCategories={menuCategories}
               products={products}
               recipes={recipes}
               deleteProduct={deleteProduct}
+              setMenuCategories={setMenuCategories}
               setProducts={setProducts}
               setRecipes={setRecipes}
             />
@@ -436,6 +458,7 @@ export default function App() {
 function Header({ activeTab, lowStock, queueStats }) {
   const title = {
     pos: "ขายหน้าร้าน",
+    dashboard: "Dashboard สรุปยอดขาย",
     inventory: "เช็ควัตถุดิบ",
     menu: "เมนูและสูตรอาหาร",
     expense: "บันทึกรายจ่าย",
@@ -467,12 +490,133 @@ function StatusPanel({ lowStock, queueStats }) {
   );
 }
 
+function DashboardScreen({ expenses, ingredients, orders, products, shifts }) {
+  const data = useMemo(() => buildDashboardData(orders, expenses, ingredients, products, shifts), [orders, expenses, ingredients, products, shifts]);
+  return (
+    <section className="dashboard-screen">
+      <div className="dashboard-metrics">
+        <article className="metric-card">
+          <span>ยอดขายทั้งหมด</span>
+          <strong>{money(data.totalSales)} บาท</strong>
+          <small>{data.orderCount} ออร์เดอร์</small>
+        </article>
+        <article className="metric-card">
+          <span>บิลเฉลี่ย</span>
+          <strong>{money(data.averageOrder)} บาท</strong>
+          <small>เฉลี่ยต่อออร์เดอร์</small>
+        </article>
+        <article className="metric-card">
+          <span>เงินสด</span>
+          <strong>{money(data.cashSales)} บาท</strong>
+          <small>{data.cashOrders} ออร์เดอร์</small>
+        </article>
+        <article className="metric-card">
+          <span>เงินโอน</span>
+          <strong>{money(data.transferSales)} บาท</strong>
+          <small>{data.transferOrders} ออร์เดอร์</small>
+        </article>
+      </div>
+
+      <div className="dashboard-grid">
+        <article className="chart-card span-2">
+          <div className="panel-title">
+            <BarChart3 size={22} />
+            <div>
+              <h3>ยอดขายรายวัน 7 วันล่าสุด</h3>
+              <p>รวมยอดขายจากออร์เดอร์ที่บันทึกในเครื่องนี้</p>
+            </div>
+          </div>
+          <div className="bar-chart">
+            {data.dailySales.map((day) => (
+              <div className="bar-row" key={day.key}>
+                <span>{day.label}</span>
+                <div className="bar-track"><i style={{ width: `${day.percent}%` }} /></div>
+                <strong>{money(day.total)}</strong>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="chart-card">
+          <div className="panel-title">
+            <WalletCards size={22} />
+            <div>
+              <h3>ช่องทางชำระเงิน</h3>
+              <p>เงินสดเทียบกับเงินโอน</p>
+            </div>
+          </div>
+          <div className="payment-donut" style={{ "--cash": `${data.cashPercent}%` }}>
+            <span>{data.cashPercent}%</span>
+          </div>
+          <div className="legend-list">
+            <span><i className="legend-cash" /> เงินสด {money(data.cashSales)} บาท</span>
+            <span><i className="legend-transfer" /> เงินโอน {money(data.transferSales)} บาท</span>
+          </div>
+        </article>
+
+        <article className="chart-card">
+          <div className="panel-title">
+            <Utensils size={22} />
+            <div>
+              <h3>เมนูขายดี</h3>
+              <p>เรียงจากจำนวนชิ้น</p>
+            </div>
+          </div>
+          <div className="rank-list">
+            {data.topProducts.length ? data.topProducts.map((item, index) => (
+              <div key={item.name}>
+                <b>{index + 1}</b>
+                <span>{item.name}<small>{item.quantity} ชิ้น</small></span>
+                <strong>{money(item.total)} บาท</strong>
+              </div>
+            )) : <div className="empty-compact">ยังไม่มีข้อมูลขาย</div>}
+          </div>
+        </article>
+
+        <article className="chart-card">
+          <div className="panel-title">
+            <ReceiptText size={22} />
+            <div>
+              <h3>รายจ่าย</h3>
+              <p>ข้อมูลจากหน้าบันทึกรายจ่าย</p>
+            </div>
+          </div>
+          <div className="summary-list">
+            <span>รายจ่ายรวม <strong>{money(data.expenseTotal)} บาท</strong></span>
+            <span>จำนวนรายการ <strong>{data.expenseCount}</strong></span>
+            <span>ยอดสุทธิหลังรายจ่าย <strong>{money(data.netAfterExpenses)} บาท</strong></span>
+          </div>
+        </article>
+
+        <article className="chart-card">
+          <div className="panel-title">
+            <AlertTriangle size={22} />
+            <div>
+              <h3>วัตถุดิบใกล้หมด</h3>
+              <p>ต่ำกว่าจุดแจ้งเตือน</p>
+            </div>
+          </div>
+          <div className="rank-list compact">
+            {data.lowStock.length ? data.lowStock.map((item) => (
+              <div key={item.id}>
+                <span>{item.name}<small>ขั้นต่ำ {money(item.minimumStock)} {item.unit}</small></span>
+                <strong>{money(item.stock)} {item.unit}</strong>
+              </div>
+            )) : <div className="empty-compact">สต็อกยังปกติ</div>}
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
 function PosScreen({
   activeCategory,
   cart,
   catalog,
   changeQuantity,
   ingredients,
+  menuCategories,
   onCategory,
   onCheckout,
   onCloseShift,
@@ -494,7 +638,7 @@ function PosScreen({
 }) {
   const [shiftPanelOpen, setShiftPanelOpen] = useState(false);
   const [closedShiftSummary, setClosedShiftSummary] = useState(null);
-  const productCategories = Array.from(new Set([...categories, ...products.map((product) => product.category)]));
+  const productCategories = Array.from(new Set([...(menuCategories || categories), ...products.map((product) => product.category)]));
   const visibleProducts = products.filter((product) => product.category === activeCategory);
   const currentSummary = openShift ? calculateShiftSummary(openShift, orders) : null;
   function submitCloseShift(closingCash) {
@@ -544,7 +688,7 @@ function PosScreen({
                     type="button"
                   >
                     <span>{product.name}</span>
-                    <strong>{money(product.price)} บาท</strong>
+                    <strong>{money(getChannelPrice(product, "store"))} บาท</strong>
                     {!openShift ? <em>ต้องเปิดกะก่อนขาย</em> : !available ? <em>วัตถุดิบไม่พอ</em> : null}
                   </button>
                 );
@@ -1001,6 +1145,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
   const [form, setForm] = useState(emptyIngredient());
   const [adjustment, setAdjustment] = useState({ quantityDelta: "", reason: "" });
   const [unitForm, setUnitForm] = useState({ label: "แพ็ค", ratio: 1 });
+  const [editingUnitId, setEditingUnitId] = useState("");
   const [editorNotice, setEditorNotice] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
 
@@ -1023,6 +1168,8 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
     }
     setSelectedId(item.id);
     setForm(item);
+    setEditingUnitId("");
+    setUnitForm({ label: "แพ็ค", ratio: 1 });
     setEditorOpen(true);
     setDeleteArmed(false);
     setEditorNotice("");
@@ -1035,6 +1182,8 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
     }
     setSelectedId("");
     setForm(emptyIngredient());
+    setEditingUnitId("");
+    setUnitForm({ label: "แพ็ค", ratio: 1 });
     setEditorOpen(true);
     setDeleteArmed(false);
     setEditorNotice("");
@@ -1047,6 +1196,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
     }
     setSelectedId(null);
     setEditorOpen(false);
+    setEditingUnitId("");
     setDeleteArmed(false);
     setEditorNotice("");
   }
@@ -1069,6 +1219,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
     saveIngredient(next);
     setSelectedId(null);
     setEditorOpen(false);
+    setEditingUnitId("");
     setDeleteArmed(false);
     setEditorNotice("");
   }
@@ -1084,6 +1235,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
     setSelectedId(null);
     setForm(emptyIngredient());
     setEditorOpen(false);
+    setEditingUnitId("");
     setDeleteArmed(false);
     setEditorNotice("");
   }
@@ -1091,17 +1243,34 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
   function addUnit(event) {
     event.preventDefault();
     if (!selected) return;
-    onAddPurchaseUnit((current) => [
-      ...current,
-      {
-        id: `unit_${Date.now()}`,
-        ingredientId: selected.id,
-        label: unitForm.label,
-        ratio: Number(unitForm.ratio || 1),
-        baseUnit: selected.unit,
-      },
-    ]);
+    const nextUnit = {
+      id: editingUnitId || `unit_${Date.now()}`,
+      ingredientId: selected.id,
+      label: unitForm.label.trim() || selected.unit,
+      ratio: Number(unitForm.ratio || 1),
+      baseUnit: selected.unit,
+    };
+    onAddPurchaseUnit((current) => {
+      if (editingUnitId) {
+        return current.map((unit) => (unit.id === editingUnitId ? nextUnit : unit));
+      }
+      return [...current, nextUnit];
+    });
+    setEditingUnitId("");
     setUnitForm({ label: "แพ็ค", ratio: 1 });
+  }
+
+  function editUnit(unit) {
+    setEditingUnitId(unit.id);
+    setUnitForm({ label: unit.label, ratio: unit.ratio });
+  }
+
+  function removeUnit(unitId) {
+    onAddPurchaseUnit((current) => current.filter((unit) => unit.id !== unitId));
+    if (editingUnitId === unitId) {
+      setEditingUnitId("");
+      setUnitForm({ label: "แพ็ค", ratio: 1 });
+    }
   }
 
   function submitAdjustment(event) {
@@ -1175,12 +1344,19 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
               <h3>หน่วยซื้อ</h3>
               <div className="small-list">
                 {purchaseUnits.filter((unit) => unit.ingredientId === selected.id).map((unit) => (
-                  <div key={unit.id}>1 {unit.label} = {money(unit.ratio)} {unit.baseUnit}</div>
+                  <div className="purchase-unit-row" key={unit.id}>
+                    <span>1 {unit.label} = {money(unit.ratio)} {unit.baseUnit}</span>
+                    <button onClick={() => editUnit(unit)} type="button">แก้ไข</button>
+                    <button className="danger-mini-button" onClick={() => removeUnit(unit.id)} type="button">ลบ</button>
+                  </div>
                 ))}
               </div>
               <label>ชื่อหน่วยซื้อ<input value={unitForm.label} onChange={(event) => setUnitForm((current) => ({ ...current, label: event.target.value }))} /></label>
               <label>ตัวคูณ<input inputMode="decimal" type="number" value={unitForm.ratio} onChange={(event) => setUnitForm((current) => ({ ...current, ratio: event.target.value }))} /></label>
-              <button className="ghost-button" type="submit">เพิ่มหน่วยซื้อ</button>
+              <div className="modal-actions compact-actions">
+                <button className="ghost-button" type="submit">{editingUnitId ? "บันทึกหน่วยซื้อ" : "เพิ่มหน่วยซื้อ"}</button>
+                {editingUnitId ? <button className="ghost-button" onClick={() => { setEditingUnitId(""); setUnitForm({ label: "แพ็ค", ratio: 1 }); }} type="button">ยกเลิกแก้ไข</button> : null}
+              </div>
             </form>
             <form onSubmit={submitAdjustment}>
               <h3>ปรับ stock manual</h3>
@@ -1196,17 +1372,19 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
   );
 }
 
-function MenuRecipeScreen({ deleteProduct, ingredients, products, recipes, setProducts, setRecipes }) {
+function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products, recipes, setMenuCategories, setProducts, setRecipes }) {
   const [selectedId, setSelectedId] = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [categoryNotice, setCategoryNotice] = useState("");
   const selected = selectedId ? products.find((product) => product.id === selectedId) : null;
   const [productForm, setProductForm] = useState(emptyProduct());
   const [recipeDraft, setRecipeDraft] = useState({});
   const [hasRecipe, setHasRecipe] = useState(false);
   const [editorNotice, setEditorNotice] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
-  const productCategories = Array.from(new Set(products.map((product) => product.category).filter(Boolean)));
+  const productCategories = Array.from(new Set([...(menuCategories || []), ...products.map((product) => product.category).filter(Boolean)]));
   const visibleProducts = categoryFilter === "all" ? products : products.filter((product) => product.category === categoryFilter);
   const savedProductForm = selected || emptyProduct();
   const savedRecipeDraft = selected
@@ -1251,7 +1429,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, products, recipes, setPr
       return;
     }
     setSelectedId("");
-    setProductForm(emptyProduct());
+    setProductForm(emptyProduct(productCategories[0] || categories[0]));
     setRecipeDraft({});
     setHasRecipe(false);
     setEditorOpen(true);
@@ -1275,7 +1453,8 @@ function MenuRecipeScreen({ deleteProduct, ingredients, products, recipes, setPr
     const next = {
       ...productForm,
       id: productForm.id || `prod_${Date.now()}`,
-      price: Number(productForm.price || 0),
+      channelPrices: normalizeChannelPrices(productForm),
+      price: getChannelPrice(productForm, "store"),
       active: productForm.active !== false,
     };
     setProducts((current) => {
@@ -1290,6 +1469,31 @@ function MenuRecipeScreen({ deleteProduct, ingredients, products, recipes, setPr
     setEditorOpen(false);
     setDeleteArmed(false);
     setEditorNotice("");
+  }
+
+  function addMenuCategory(event) {
+    event.preventDefault();
+    const name = newCategoryName.trim();
+    if (!name) return;
+    if (productCategories.includes(name)) {
+      setCategoryNotice("มีหมวดนี้อยู่แล้ว");
+      window.setTimeout(() => setCategoryNotice(""), 1600);
+      return;
+    }
+    setMenuCategories((current) => [...current, name]);
+    setNewCategoryName("");
+    setCategoryFilter(name);
+  }
+
+  function removeMenuCategory(category) {
+    const isUsed = products.some((product) => product.category === category);
+    if (isUsed) {
+      setCategoryNotice("ลบไม่ได้: ยังมีเมนูอยู่ในหมวดนี้");
+      window.setTimeout(() => setCategoryNotice(""), 1800);
+      return;
+    }
+    setMenuCategories((current) => current.filter((item) => item !== category));
+    if (categoryFilter === category) setCategoryFilter("all");
   }
 
   function addRecipeLine() {
@@ -1347,6 +1551,27 @@ function MenuRecipeScreen({ deleteProduct, ingredients, products, recipes, setPr
             เพิ่มเมนูใหม่
           </button>
         </div>
+        <form className="category-manager" onSubmit={addMenuCategory}>
+          <div>
+            <strong>หมวดหมู่เมนู</strong>
+            {categoryNotice ? <small>{categoryNotice}</small> : null}
+          </div>
+          <input
+            aria-label="เพิ่มหมวดหมู่เมนู"
+            onChange={(event) => setNewCategoryName(event.target.value)}
+            placeholder="เพิ่มหมวด เช่น เบอร์เกอร์, เครื่องดื่ม"
+            value={newCategoryName}
+          />
+          <button className="ghost-button" type="submit">เพิ่มหมวด</button>
+          <div className="category-chip-row">
+            {productCategories.map((category) => (
+              <span className="category-chip" key={category}>
+                {category}
+                <button aria-label={`ลบหมวด ${category}`} onClick={() => removeMenuCategory(category)} type="button"><Trash2 size={14} /></button>
+              </span>
+            ))}
+          </div>
+        </form>
         <div className="product-admin-grid">
           {visibleProducts.map((product) => (
             <button
@@ -1359,7 +1584,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, products, recipes, setPr
               type="button"
             >
               <strong>{product.name}</strong>
-              <span>{product.category} · {money(product.price)} บาท</span>
+              <span>{product.category} · หน้าร้าน {money(getChannelPrice(product, "store"))} บาท</span>
               <em>{product.active === false ? "ปิดขาย" : "เปิดขาย"}</em>
             </button>
           ))}
@@ -1374,8 +1599,15 @@ function MenuRecipeScreen({ deleteProduct, ingredients, products, recipes, setPr
         </div>
         {editorNotice ? <div className="inline-warning">{editorNotice}</div> : null}
         <label className={hasUnsavedChanges && normalizeProductForm(productForm).name !== normalizeProductForm(savedProductForm).name ? "is-dirty" : ""}>ชื่อเมนู<input value={productForm.name || ""} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, name: event.target.value })); }} /></label>
-        <label className={hasUnsavedChanges && normalizeProductForm(productForm).category !== normalizeProductForm(savedProductForm).category ? "is-dirty" : ""}>หมวด<input value={productForm.category || ""} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, category: event.target.value })); }} /></label>
-        <label className={hasUnsavedChanges && normalizeProductForm(productForm).price !== normalizeProductForm(savedProductForm).price ? "is-dirty" : ""}>ราคา<input inputMode="decimal" type="number" value={productForm.price ?? 0} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, price: event.target.value })); }} /></label>
+        <label className={hasUnsavedChanges && normalizeProductForm(productForm).category !== normalizeProductForm(savedProductForm).category ? "is-dirty" : ""}>หมวด<select value={productForm.category || productCategories[0] || ""} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, category: event.target.value })); }}>
+          {productCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+        </select></label>
+        <div className={`channel-price-grid ${hasUnsavedChanges && JSON.stringify(normalizeProductForm(productForm).channelPrices) !== JSON.stringify(normalizeProductForm(savedProductForm).channelPrices) ? "is-dirty" : ""}`}>
+          <strong>ราคาตามช่องทางการขาย</strong>
+          {salesChannels.map((channel) => (
+            <label key={channel.id}>{channel.label}<input inputMode="decimal" type="number" value={getChannelPrice(productForm, channel.id)} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, channelPrices: { ...normalizeChannelPrices(current), [channel.id]: event.target.value }, price: channel.id === "store" ? event.target.value : current.price })); }} /></label>
+          ))}
+        </div>
         <label className="check-line"><input checked={productForm.active !== false} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, active: event.target.checked })); }} type="checkbox" /> เปิดขาย</label>
         <div className={`recipe-toggle-box ${hasUnsavedChanges && (hasRecipe !== savedHasRecipe || JSON.stringify(normalizeRecipeDraft(recipeDraft)) !== JSON.stringify(normalizeRecipeDraft(savedRecipeDraft))) ? "is-dirty" : ""}`}>
           <label className="check-line"><input checked={hasRecipe} onChange={(event) => { setDeleteArmed(false); setHasRecipe(event.target.checked); }} type="checkbox" /> มีวัตถุดิบในสูตร</label>
@@ -1423,7 +1655,7 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
   const firstIngredientId = ingredients[0]?.id || "";
   const firstIngredientName = ingredients[0]?.name || "";
   const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [rows, setRows] = useState(() => Array.from({ length: 5 }, () => blankExpenseRow(firstIngredientId, firstIngredientName)));
+  const [rows, setRows] = useState(() => Array.from({ length: 1 }, () => blankExpenseRow(firstIngredientId, firstIngredientName)));
   const [ingredientModalOpen, setIngredientModalOpen] = useState(false);
   const previewItems = rows.map((row) => buildExpenseItem(row, ingredients, purchaseUnits)).filter(Boolean);
   const totalAmount = previewItems.reduce((sum, item) => sum + item.lineTotal, 0);
@@ -1432,8 +1664,8 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
     setRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   }
 
-  function addRows(count = 3) {
-    setRows((current) => [...current, ...Array.from({ length: count }, () => blankExpenseRow(firstIngredientId, firstIngredientName))]);
+  function addRow() {
+    setRows((current) => [...current, blankExpenseRow(firstIngredientId, firstIngredientName)]);
   }
 
   async function submitExpenses() {
@@ -1450,7 +1682,7 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
       items: previewItems,
     };
     await onRecord(expense);
-    setRows(Array.from({ length: 5 }, () => blankExpenseRow(firstIngredientId, firstIngredientName)));
+    setRows(Array.from({ length: 1 }, () => blankExpenseRow(firstIngredientId, firstIngredientName)));
   }
 
   function createIngredientFromExpense({ name, unit, purchaseLabel, ratio }) {
@@ -1474,8 +1706,8 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
           <div className="panel-title">
             <WalletCards size={22} />
             <div>
-              <h3>ลงรายจ่ายหลายรายการ</h3>
-              <p>เลือกวันที่ครั้งเดียว แล้วกรอกรายการต่อเนื่องได้ทันที</p>
+              <h3>บันทึกรายจ่าย</h3>
+              <p>รายการซื้อวัตถุดิบและรายจ่ายทั่วไป</p>
             </div>
           </div>
           <label>
@@ -1508,7 +1740,7 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
         </div>
 
         <div className="expense-actions">
-          <button className="ghost-button" onClick={() => addRows(3)} type="button">เพิ่ม 3 แถว</button>
+          <button className="ghost-button" onClick={addRow} type="button">เพิ่มแถว</button>
           <button className="ghost-button" onClick={() => setIngredientModalOpen(true)} type="button">เพิ่มวัตถุดิบใหม่</button>
           <div className="expense-total">รวม {money(totalAmount)} บาท</div>
           <button className="primary-button" onClick={submitExpenses} type="button">บันทึกทั้งหมด</button>
@@ -1872,6 +2104,61 @@ function calculateShiftSummary(shift, orders, closingCash = null) {
   };
 }
 
+function buildDashboardData(orders, expenses, ingredients, products, shifts) {
+  const totalSales = orders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const cashOrders = orders.filter((order) => order.paymentMethod === "CASH");
+  const transferOrders = orders.filter((order) => order.paymentMethod === "TRANSFER");
+  const cashSales = cashOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const transferSales = transferOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const expenseTotal = expenses.reduce((sum, expense) => sum + Number(expense.totalAmount || 0), 0);
+  const productMap = new Map(products.map((product) => [product.id, product.name]));
+  const topProductMap = new Map();
+
+  orders.forEach((order) => {
+    (order.items || []).forEach((item) => {
+      const name = item.name || productMap.get(item.productId) || item.productId;
+      const previous = topProductMap.get(name) || { name, quantity: 0, total: 0 };
+      previous.quantity += Number(item.quantity || 0);
+      previous.total += Number(item.quantity || 0) * Number(item.unitPrice || 0);
+      topProductMap.set(name, previous);
+    });
+  });
+
+  const dailyRaw = new Map();
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const date = new Date();
+    date.setDate(date.getDate() - offset);
+    const key = date.toISOString().slice(0, 10);
+    dailyRaw.set(key, { key, label: date.toLocaleDateString("th-TH", { day: "2-digit", month: "short" }), total: 0 });
+  }
+  orders.forEach((order) => {
+    const key = new Date(order.createdAt).toISOString().slice(0, 10);
+    if (dailyRaw.has(key)) {
+      dailyRaw.get(key).total += Number(order.totalAmount || 0);
+    }
+  });
+  const maxDaily = Math.max(1, ...Array.from(dailyRaw.values()).map((day) => day.total));
+  const dailySales = Array.from(dailyRaw.values()).map((day) => ({ ...day, percent: Math.max(4, Math.round((day.total / maxDaily) * 100)) }));
+
+  return {
+    totalSales,
+    orderCount: orders.length,
+    averageOrder: orders.length ? totalSales / orders.length : 0,
+    cashSales,
+    cashOrders: cashOrders.length,
+    transferSales,
+    transferOrders: transferOrders.length,
+    cashPercent: totalSales ? Math.round((cashSales / totalSales) * 100) : 0,
+    dailySales,
+    topProducts: Array.from(topProductMap.values()).sort((a, b) => b.quantity - a.quantity).slice(0, 5),
+    expenseTotal,
+    expenseCount: expenses.reduce((sum, expense) => sum + Number(expense.items?.length || 0), 0),
+    netAfterExpenses: totalSales - expenseTotal,
+    lowStock: ingredients.filter((item) => Number(item.stock || 0) <= Number(item.minimumStock || 0)).slice(0, 6),
+    shiftCount: shifts.length,
+  };
+}
+
 function blankExpenseRow(ingredientId = "", ingredientSearch = "") {
   return {
     id: `row_${Date.now()}_${Math.random().toString(36).slice(2)}`,
@@ -1940,8 +2227,8 @@ function normalizeIngredientForm(item) {
   };
 }
 
-function emptyProduct() {
-  return { id: "", name: "", category: "เบอร์เกอร์", price: 0, active: true, color: "bg-white" };
+function emptyProduct(category = categories[0]) {
+  return { id: "", name: "", category, price: 0, channelPrices: Object.fromEntries(salesChannels.map((channel) => [channel.id, 0])), active: true, color: "bg-white" };
 }
 
 function normalizeProductForm(product) {
@@ -1949,10 +2236,21 @@ function normalizeProductForm(product) {
     id: product?.id || "",
     name: (product?.name || "").trim(),
     category: (product?.category || "").trim(),
-    price: Number(product?.price || 0),
+    price: getChannelPrice(product, "store"),
+    channelPrices: normalizeChannelPrices(product),
     active: product?.active !== false,
     color: product?.color || "bg-white",
   };
+}
+
+function normalizeChannelPrices(product) {
+  return Object.fromEntries(salesChannels.map((channel) => [channel.id, getChannelPrice(product, channel.id)]));
+}
+
+function getChannelPrice(product, channelId) {
+  const raw = product?.channelPrices?.[channelId];
+  if (raw !== undefined && raw !== null && raw !== "") return Number(raw || 0);
+  return Number(product?.price || 0);
 }
 
 function normalizeRecipeDraft(draft) {
