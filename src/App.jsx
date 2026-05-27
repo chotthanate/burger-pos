@@ -824,9 +824,11 @@ function CartPanel({
           <div className="cart-row cart-row-full" key={item.key}>
             <div className="cart-row-head">
               <div>
-                <strong>{item.product.name}</strong>
+                <div className="cart-item-title">
+                  <strong>{item.product.name}</strong>
+                  <span>{money(item.unitPrice)} บาท</span>
+                </div>
                 {item.modifiers.length ? <p>{item.modifiers.map((modifier) => modifier.label).join(", ")}</p> : null}
-                <span>{money(item.unitPrice)} บาท</span>
               </div>
               <div className="qty-control">
                 <button onClick={() => changeQuantity(item.key, -1)} type="button"><Minus size={16} /></button>
@@ -1203,6 +1205,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
   const [adjustment, setAdjustment] = useState({ quantityDelta: "", reason: "" });
   const [unitForm, setUnitForm] = useState({ label: "แพ็ค", ratio: 1 });
   const [editingUnitId, setEditingUnitId] = useState("");
+  const [unitEditorOpen, setUnitEditorOpen] = useState(false);
   const [editorNotice, setEditorNotice] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
 
@@ -1226,6 +1229,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
     setSelectedId(item.id);
     setForm(item);
     setEditingUnitId("");
+    setUnitEditorOpen(false);
     setUnitForm({ label: "แพ็ค", ratio: 1 });
     setEditorOpen(true);
     setDeleteArmed(false);
@@ -1240,6 +1244,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
     setSelectedId("");
     setForm(emptyIngredient());
     setEditingUnitId("");
+    setUnitEditorOpen(false);
     setUnitForm({ label: "แพ็ค", ratio: 1 });
     setEditorOpen(true);
     setDeleteArmed(false);
@@ -1254,6 +1259,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
     setSelectedId(null);
     setEditorOpen(false);
     setEditingUnitId("");
+    setUnitEditorOpen(false);
     setDeleteArmed(false);
     setEditorNotice("");
   }
@@ -1277,6 +1283,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
     setSelectedId(null);
     setEditorOpen(false);
     setEditingUnitId("");
+    setUnitEditorOpen(false);
     setDeleteArmed(false);
     setEditorNotice("");
   }
@@ -1293,6 +1300,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
     setForm(emptyIngredient());
     setEditorOpen(false);
     setEditingUnitId("");
+    setUnitEditorOpen(false);
     setDeleteArmed(false);
     setEditorNotice("");
   }
@@ -1314,18 +1322,37 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
       return [...current, nextUnit];
     });
     setEditingUnitId("");
+    setUnitEditorOpen(false);
     setUnitForm({ label: "แพ็ค", ratio: 1 });
   }
 
   function editUnit(unit) {
     setEditingUnitId(unit.id);
+    setUnitEditorOpen(true);
     setUnitForm({ label: unit.label, ratio: unit.ratio });
+  }
+
+  function startAddUnit() {
+    const firstUnit = purchaseUnits.find((unit) => unit.ingredientId === selected?.id);
+    setEditingUnitId("");
+    setUnitEditorOpen(true);
+    setUnitForm({
+      label: firstUnit?.label || "แพ็ค",
+      ratio: firstUnit?.ratio || 1,
+    });
+  }
+
+  function cancelUnitEdit() {
+    setEditingUnitId("");
+    setUnitEditorOpen(false);
+    setUnitForm({ label: "แพ็ค", ratio: 1 });
   }
 
   function removeUnit(unitId) {
     onAddPurchaseUnit((current) => current.filter((unit) => unit.id !== unitId));
     if (editingUnitId === unitId) {
       setEditingUnitId("");
+      setUnitEditorOpen(false);
       setUnitForm({ label: "แพ็ค", ratio: 1 });
     }
   }
@@ -1408,12 +1435,18 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
                   </div>
                 ))}
               </div>
-              <label>ชื่อหน่วยซื้อ<input value={unitForm.label} onChange={(event) => setUnitForm((current) => ({ ...current, label: event.target.value }))} /></label>
-              <label>ตัวคูณ<input inputMode="decimal" type="number" value={unitForm.ratio} onChange={(event) => setUnitForm((current) => ({ ...current, ratio: event.target.value }))} /></label>
-              <div className="modal-actions compact-actions">
-                <button className="ghost-button" type="submit">{editingUnitId ? "บันทึกหน่วยซื้อ" : "เพิ่มหน่วยซื้อ"}</button>
-                {editingUnitId ? <button className="ghost-button" onClick={() => { setEditingUnitId(""); setUnitForm({ label: "แพ็ค", ratio: 1 }); }} type="button">ยกเลิกแก้ไข</button> : null}
-              </div>
+              {unitEditorOpen ? (
+                <div className="purchase-unit-form">
+                  <label>ชื่อหน่วยซื้อ<input value={unitForm.label} onChange={(event) => setUnitForm((current) => ({ ...current, label: event.target.value }))} /></label>
+                  <label>ตัวคูณ<input inputMode="decimal" type="number" value={unitForm.ratio} onChange={(event) => setUnitForm((current) => ({ ...current, ratio: event.target.value }))} /></label>
+                  <div className="modal-actions compact-actions">
+                    <button className="ghost-button" type="submit">{editingUnitId ? "บันทึกหน่วยซื้อ" : "บันทึกหน่วยซื้อใหม่"}</button>
+                    <button className="ghost-button" onClick={cancelUnitEdit} type="button">ยกเลิก</button>
+                  </div>
+                </div>
+              ) : (
+                <button className="ghost-button" onClick={startAddUnit} type="button">เพิ่มหน่วยซื้อ</button>
+              )}
             </form>
             <form onSubmit={submitAdjustment}>
               <h3>ปรับ stock manual</h3>
@@ -2094,7 +2127,7 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
           <button className="ghost-button" onClick={addRow} type="button">เพิ่มแถว</button>
           <button className="ghost-button" onClick={() => setIngredientModalOpen(true)} type="button">เพิ่มวัตถุดิบใหม่</button>
           <div className="expense-total">รวม {money(totalAmount)} บาท</div>
-          <button className="primary-button" onClick={submitExpenses} type="button">บันทึกทั้งหมด</button>
+          <button className="primary-button expense-submit-button" onClick={submitExpenses} type="button">บันทึกทั้งหมด</button>
         </div>
       </div>
       <div className="work-panel">
@@ -2120,12 +2153,16 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
 }
 
 function ExpenseEntryRow({ ingredients, onRemove, purchaseUnits, row, rowNumber, updateRow }) {
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const selectedIngredient = ingredients.find((item) => item.id === row.ingredientId);
   const availableUnits = purchaseUnits.filter((unit) => unit.ingredientId === row.ingredientId);
   const selectedUnit = availableUnits.find((unit) => unit.id === row.purchaseUnitId) || availableUnits[0];
   const quantity = Number(row.quantity || 0);
   const stockQuantity = row.mode === "ingredient" ? quantity * Number(selectedUnit?.ratio || 1) : 0;
   const ingredientSearch = row.ingredientSearch ?? selectedIngredient?.name ?? "";
+  const ingredientSuggestions = ingredients
+    .filter((ingredient) => !ingredientSearch || ingredient.name.toLowerCase().includes(ingredientSearch.trim().toLowerCase()))
+    .slice(0, 6);
 
   function selectMode(mode) {
     if (mode === "ingredient") {
@@ -2162,20 +2199,39 @@ function ExpenseEntryRow({ ingredients, onRemove, purchaseUnits, row, rowNumber,
           <span className="expense-field-label">รายการ</span>
           <input
             aria-label={`วัตถุดิบแถว ${rowNumber}`}
-            list={`ingredient-options-${row.id}`}
-            onBlur={(event) => updateIngredientSearch(event.target.value, true)}
-            onChange={(event) => updateIngredientSearch(event.target.value)}
+            onBlur={(event) => {
+              window.setTimeout(() => setSuggestionsOpen(false), 120);
+              updateIngredientSearch(event.target.value, true);
+            }}
+            onChange={(event) => {
+              setSuggestionsOpen(true);
+              updateIngredientSearch(event.target.value);
+            }}
+            onFocus={() => setSuggestionsOpen(true)}
             placeholder="พิมพ์ค้นหาวัตถุดิบ"
             value={ingredientSearch}
           />
-          <datalist id={`ingredient-options-${row.id}`}>
-            {ingredients
-              .filter((ingredient) => !ingredientSearch || ingredient.name.toLowerCase().includes(ingredientSearch.trim().toLowerCase()))
-              .map((ingredient) => <option key={ingredient.id} value={ingredient.name} />)}
-          </datalist>
+          {suggestionsOpen && ingredientSuggestions.length ? (
+            <div className="ingredient-suggestion-list">
+              {ingredientSuggestions.map((ingredient) => (
+                <button
+                  key={ingredient.id}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    updateRow(row.id, { ingredientId: ingredient.id, ingredientSearch: ingredient.name, purchaseUnitId: "" });
+                    setSuggestionsOpen(false);
+                  }}
+                  type="button"
+                >
+                  {ingredient.name}
+                  <small>{money(ingredient.stock)} {ingredient.unit}</small>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </label>
       ) : (
-        <label className="expense-field">
+        <label className="expense-field ingredient-combobox">
           <span className="expense-field-label">รายการ</span>
           <input
             aria-label={`รายการทั่วไปแถว ${rowNumber}`}

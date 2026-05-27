@@ -2343,7 +2343,7 @@ button {
   --boy-surface: #fffaf0;
   --boy-card: #fffefb;
   --boy-shadow: 0 18px 40px rgba(30, 24, 18, 0.08);
-  --boy-checker: conic-gradient(rgba(0, 0, 0, 0.38) 25%, rgba(255, 255, 255, 0.62) 0 50%, rgba(0, 0, 0, 0.38) 0 75%, rgba(255, 255, 255, 0.62) 0);
+  --boy-checker: conic-gradient(rgba(0, 0, 0, 0.48) 25%, rgba(255, 255, 255, 0.76) 0 50%, rgba(0, 0, 0, 0.48) 0 75%, rgba(255, 255, 255, 0.76) 0);
 }
 
 body {
@@ -3089,6 +3089,146 @@ body {
 .side-editor .danger-button {
   border-color: rgba(198, 40, 40, 0.2);
   background: #fff7f5;
+}
+
+select,
+option {
+  background: #fffefb;
+  color: var(--boy-ink);
+}
+
+.menu-area::before,
+.cart-panel::before,
+.work-panel::before,
+.settings-card::before,
+.side-editor::before {
+  opacity: 0.64;
+}
+
+.cart-item-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cart-item-title span {
+  white-space: nowrap;
+}
+
+.purchase-unit-form {
+  display: grid;
+  gap: 10px;
+}
+
+.ingredient-combobox {
+  position: relative;
+}
+
+.ingredient-suggestion-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 230px;
+  overflow: auto;
+  border: 1px solid var(--boy-border);
+  border-radius: 14px;
+  padding: 6px;
+  background: #fffefb;
+  box-shadow: 0 18px 34px rgba(30, 24, 18, 0.16);
+}
+
+.ingredient-suggestion-list button {
+  width: 100%;
+  min-height: 42px;
+  border: 0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--boy-ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  font-weight: 850;
+}
+
+.ingredient-suggestion-list button:hover,
+.ingredient-suggestion-list button:focus-visible {
+  background: #fff3d8;
+  outline: none;
+}
+
+.ingredient-suggestion-list small {
+  color: var(--boy-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.expense-submit-button {
+  min-height: 48px;
+  padding: 0 18px;
+  box-shadow: 0 5px 0 #8f1713, 0 12px 20px rgba(217, 45, 39, 0.18);
+}
+
+.dashboard-metrics .metric-card {
+  position: relative;
+  overflow: hidden;
+  border-top: 4px solid var(--metric-accent, var(--boy-red));
+}
+
+.dashboard-metrics .metric-card::after {
+  content: "";
+  position: absolute;
+  inset: auto -34px -46px auto;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--metric-accent, var(--boy-red)) 12%, transparent);
+  pointer-events: none;
+}
+
+.dashboard-metrics .metric-card:nth-child(1) {
+  --metric-accent: #8f1d1a;
+}
+
+.dashboard-metrics .metric-card:nth-child(2) {
+  --metric-accent: #0f766e;
+}
+
+.dashboard-metrics .metric-card:nth-child(3) {
+  --metric-accent: #b45309;
+}
+
+.dashboard-metrics .metric-card:nth-child(4) {
+  --metric-accent: #2563eb;
+}
+
+.dashboard-metrics .metric-card strong {
+  color: var(--metric-accent);
+}
+
+.bar-track i {
+  background: linear-gradient(90deg, #0f766e 0%, #edb83d 58%, #c62828 100%);
+}
+
+.payment-donut {
+  background: conic-gradient(#c62828 var(--cash), #2563eb 0);
+}
+
+.legend-transfer {
+  background: #2563eb;
+}
+
+.rank-list > div:nth-child(2) b {
+  background: #0f766e;
+}
+
+.rank-list > div:nth-child(3) b {
+  background: #b45309;
 }
 
 @media (max-width: 720px) {
