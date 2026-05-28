@@ -3831,3 +3831,297 @@ b {
     min-height: 42px;
   }
 }
+
+/* Final drawer/POS overrides placed last to beat earlier responsive rules. */
+.app-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.main-pane {
+  padding-left: 72px !important;
+}
+
+.hamburger-button {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  z-index: 52;
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(30, 24, 18, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 253, 248, 0.92);
+  color: var(--boy-ink);
+  box-shadow: 0 12px 30px rgba(30, 24, 18, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.nav-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+  border: 0;
+  background: rgba(28, 24, 21, 0.48);
+}
+
+.nav-close-button {
+  margin-left: auto;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff8df;
+}
+
+.nav-rail {
+  position: fixed !important;
+  top: 0 !important;
+  right: auto !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  z-index: 50 !important;
+  width: min(320px, calc(100vw - 42px)) !important;
+  height: 100dvh !important;
+  display: flex !important;
+  transform: translateX(-105%) !important;
+  transition: transform 220ms ease !important;
+  border-radius: 0 18px 18px 0;
+  box-shadow: 24px 0 50px rgba(25, 21, 18, 0.28);
+}
+
+.app-grid.is-nav-open .nav-rail {
+  transform: translateX(0) !important;
+}
+
+.nav-rail .brand-block,
+.nav-rail .status-card {
+  display: flex !important;
+}
+
+.nav-rail .brand-block div,
+.nav-rail .nav-button span {
+  display: block !important;
+}
+
+.nav-rail .nav-list {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 8px !important;
+}
+
+.nav-rail .nav-button {
+  min-height: 50px !important;
+  flex-direction: row !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  padding: 0 16px !important;
+}
+
+.nav-rail .nav-button span {
+  font-size: 15px !important;
+}
+
+.nav-rail .nav-group.is-open .nav-sub-list {
+  display: grid !important;
+  position: static !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  width: auto !important;
+  padding: 0 0 0 40px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.pos-screen .menu-area,
+.pos-screen .cart-panel {
+  border-color: rgba(30, 24, 18, 0.06) !important;
+  border-radius: 14px !important;
+  background: rgba(255, 254, 250, 0.9) !important;
+  box-shadow: 0 12px 34px rgba(30, 24, 18, 0.08) !important;
+}
+
+.pos-screen .menu-area::before,
+.pos-screen .cart-panel::before {
+  display: none !important;
+}
+
+.pos-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  gap: 12px;
+}
+
+.pos-menu-toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.pos-search-box {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  padding: 0 14px;
+  border: 1px solid rgba(30, 24, 18, 0.09);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--boy-muted);
+}
+
+.pos-search-box input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--boy-ink);
+  font: inherit;
+}
+
+.pos-search-box:focus-within {
+  border-color: rgba(198, 40, 40, 0.32);
+  box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.08);
+}
+
+.pos-screen .category-row {
+  gap: 8px;
+}
+
+.pos-screen .category-button {
+  min-height: 42px;
+  border-radius: 12px;
+  padding: 0 16px;
+  box-shadow: none;
+}
+
+.pos-screen .product-grid {
+  grid-template-columns: repeat(auto-fill, minmax(148px, 172px)) !important;
+  gap: 10px !important;
+  margin-top: 10px !important;
+  justify-content: start !important;
+}
+
+.pos-screen .product-tile {
+  min-height: 136px !important;
+  padding: 10px !important;
+  padding-bottom: 42px !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 20px rgba(30, 24, 18, 0.08) !important;
+}
+
+.pos-screen .product-tile::before {
+  height: 52px !important;
+  border-radius: 11px !important;
+}
+
+.pos-screen .product-tile-image {
+  height: 62px !important;
+  border-radius: 11px !important;
+}
+
+.pos-screen .product-tile span {
+  font-size: 15px !important;
+  line-height: 1.15 !important;
+}
+
+.pos-screen .product-tile strong {
+  font-size: 20px !important;
+}
+
+.pos-screen .cart-panel {
+  min-height: calc(100vh - 104px) !important;
+  padding: 18px 14px 14px !important;
+}
+
+.product-empty {
+  grid-column: 1 / -1;
+  min-height: 120px;
+}
+
+.pos-screen .cart-list {
+  gap: 8px;
+}
+
+.pos-screen .cart-row {
+  padding: 10px;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.pos-screen .cart-row-head {
+  align-items: start;
+}
+
+.pos-screen .cart-item-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.pos-screen .cart-item-title span {
+  white-space: nowrap;
+}
+
+.pos-screen .cart-row input {
+  min-height: 34px;
+  margin-top: 6px;
+  font-size: 14px;
+}
+
+.pos-screen .order-note {
+  min-height: 52px;
+}
+
+.pos-screen .check-row label {
+  min-height: 40px;
+}
+
+.pos-screen .checkout-button {
+  min-height: 56px;
+  border-radius: 12px;
+  box-shadow: 0 6px 0 #8b1c19, 0 16px 28px rgba(198, 40, 40, 0.16);
+}
+
+@media (max-width: 720px) {
+  .app-grid {
+    display: grid !important;
+    padding-bottom: 0 !important;
+  }
+
+  .main-pane {
+    padding: 10px 10px 18px !important;
+  }
+
+  .hamburger-button {
+    top: 12px !important;
+    left: 10px !important;
+    width: 42px !important;
+    height: 42px !important;
+  }
+
+  .pos-screen .product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .pos-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .pos-screen > .subnav-row {
+    padding-left: 54px !important;
+  }
+
+  .pos-screen .cart-panel {
+    min-height: 0 !important;
+  }
+}

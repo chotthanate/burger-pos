@@ -9,6 +9,7 @@ import {
   Database,
   Edit3,
   FileImage,
+  Menu,
   Minus,
   Package,
   Plus,
@@ -304,6 +305,7 @@ export default function App() {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [modifierIds, setModifierIds] = useState([]);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [isNavOpen, setIsNavOpen] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
   const [queueLists, setQueueLists] = useState({ print: [], sheet: [] });
   const [cartMotionKey, setCartMotionKey] = useState("");
@@ -576,12 +578,14 @@ export default function App() {
     setActiveTab(tabId);
     if (tabId === "pos") setPosView("sale");
     if (tabId === "expense") setExpenseView("entry");
+    setIsNavOpen(false);
   }
 
   function navigateSub(item) {
     setActiveTab(item.tab);
     if (item.tab === "pos") setPosView(item.view || "sale");
     if (item.tab === "expense") setExpenseView(item.view || "entry");
+    setIsNavOpen(false);
   }
 
   function isNavActive(item) {
@@ -602,14 +606,21 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-soft text-ink">
-      <div className="app-grid">
-        <aside className="nav-rail">
+      <div className={`app-grid ${isNavOpen ? "is-nav-open" : ""}`}>
+        <button className="hamburger-button" onClick={() => setIsNavOpen(true)} type="button" aria-label="เปิดเมนูหลัก">
+          <Menu size={24} />
+        </button>
+        {isNavOpen ? <button className="nav-scrim" onClick={() => setIsNavOpen(false)} type="button" aria-label="ปิดเมนูหลัก" /> : null}
+        <aside className="nav-rail" aria-hidden={!isNavOpen}>
           <div className="brand-block">
             <img className="brand-mark" src={`${import.meta.env.BASE_URL}boy-burger-logo.png`} alt="BOY Burger & BBQ" />
             <div>
               <h1>BOY Burger POS</h1>
               <p>Burger & BBQ counter</p>
             </div>
+            <button className="nav-close-button" onClick={() => setIsNavOpen(false)} type="button" aria-label="ปิดเมนู">
+              <X size={20} />
+            </button>
           </div>
           <nav className="nav-list">
             {navItems.map((item) => {
@@ -999,8 +1010,14 @@ function PosScreen({
 }) {
   const [shiftPanelOpen, setShiftPanelOpen] = useState(false);
   const [closedShiftSummary, setClosedShiftSummary] = useState(null);
+  const [productSearch, setProductSearch] = useState("");
   const productCategories = Array.from(new Set([...(menuCategories || categories), ...products.map((product) => product.category)]));
-  const visibleProducts = products.filter((product) => product.category === activeCategory);
+  const normalizedProductSearch = productSearch.trim().toLocaleLowerCase("th-TH");
+  const visibleProducts = products.filter((product) => {
+    const matchesCategory = product.category === activeCategory;
+    if (!normalizedProductSearch) return matchesCategory;
+    return matchesCategory && product.name.toLocaleLowerCase("th-TH").includes(normalizedProductSearch);
+  });
   const currentSummary = openShift ? calculateShiftSummary(openShift, orders) : null;
   function submitCloseShift(closingCash) {
     const closed = onCloseShift(closingCash);
@@ -1024,6 +1041,18 @@ function PosScreen({
       ) : (
         <div className="pos-layout">
           <section className="menu-area">
+            <div className="pos-menu-toolbar">
+              <label className="pos-search-box">
+                <Search size={18} />
+                <input
+                  disabled={!openShift}
+                  onChange={(event) => setProductSearch(event.target.value)}
+                  placeholder="ค้นหาเมนู"
+                  type="search"
+                  value={productSearch}
+                />
+              </label>
+            </div>
             <div className="category-row">
               {productCategories.map((category) => (
                 <button
@@ -1055,8 +1084,8 @@ function PosScreen({
                   </button>
                 );
               })}
+              {!visibleProducts.length ? <div className="empty-state product-empty">ไม่พบเมนูที่ค้นหา</div> : null}
             </div>
-            <RecentOrders orders={orders} />
           </section>
           <CartPanel
             cart={cart}
