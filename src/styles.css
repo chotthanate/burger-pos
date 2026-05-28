@@ -4500,3 +4500,365 @@ b {
     aspect-ratio: 1 / 0.92 !important;
   }
 }
+
+/* Tablet POS density pass. Keep the active selling surface above the fold. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.main-pane {
+  min-height: 0;
+  padding-top: 10px !important;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 35;
+  min-height: 58px;
+  display: flex !important;
+  grid-template-columns: none !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin: 0 0 10px !important;
+  padding: 8px 0 !important;
+  border: 0 !important;
+  background: rgba(246, 247, 251, 0.88);
+  backdrop-filter: blur(14px);
+}
+
+.topbar .hamburger-button {
+  position: static !important;
+  inset: auto !important;
+  flex: 0 0 auto;
+  width: 48px !important;
+  height: 48px !important;
+  box-shadow: 0 8px 20px rgba(30, 24, 18, 0.08) !important;
+}
+
+.topbar h2 {
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: clamp(22px, 2.6vw, 34px) !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sales-channel-select {
+  flex: 0 1 230px;
+  min-width: 150px;
+  max-width: 260px;
+}
+
+.sales-channel-select select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 38px 0 14px;
+  border: 1px solid rgba(30, 24, 18, 0.1);
+  border-radius: 14px;
+  background: #fffdf8;
+  color: #171412;
+  font: inherit;
+  font-weight: 800;
+  box-shadow: 0 8px 20px rgba(30, 24, 18, 0.07);
+}
+
+.topbar .top-status {
+  margin-left: auto;
+  display: flex !important;
+  gap: 8px !important;
+}
+
+.topbar .top-status span {
+  min-height: 42px !important;
+  padding: 0 12px !important;
+  white-space: nowrap;
+}
+
+.topbar-kebab {
+  flex: 0 0 auto;
+  margin-left: 0 !important;
+}
+
+.topbar-kebab .kebab-menu {
+  z-index: 45;
+}
+
+.pos-screen {
+  min-height: 0;
+}
+
+.pos-action-row.is-sale {
+  display: none !important;
+}
+
+.pos-layout {
+  height: calc(100dvh - 104px);
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px) !important;
+}
+
+.pos-screen .menu-area {
+  min-height: 0 !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.pos-screen .product-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  align-content: start;
+  justify-content: stretch !important;
+}
+
+.pos-screen .product-tile {
+  width: 100%;
+  aspect-ratio: 0.9 / 1 !important;
+  padding: 10px !important;
+  padding-bottom: 38px !important;
+}
+
+.pos-screen .product-tile::before,
+.pos-screen .product-tile-image {
+  height: clamp(44px, 5.2vw, 66px) !important;
+}
+
+.pos-screen .product-tile span {
+  font-size: clamp(13px, 1.35vw, 17px) !important;
+}
+
+.pos-screen .product-tile strong {
+  font-size: clamp(16px, 1.75vw, 22px) !important;
+}
+
+.pos-screen .product-tile::after {
+  right: 10px !important;
+  bottom: 10px !important;
+  width: 34px !important;
+  height: 34px !important;
+  font-size: 20px !important;
+}
+
+.pos-screen .cart-panel {
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  display: flex !important;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pos-screen .cart-list {
+  flex: 1 1 auto;
+  min-height: 90px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.pos-screen .order-note,
+.pos-screen .check-row,
+.pos-screen .cart-total,
+.pos-screen .checkout-button {
+  flex: 0 0 auto;
+}
+
+.pos-screen .order-note {
+  min-height: 58px !important;
+  max-height: 84px;
+}
+
+.pos-screen .checkout-button {
+  margin-top: 8px;
+}
+
+.inventory-grid {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 168px)) !important;
+}
+
+.nav-rail .status-card div {
+  color: #514b43 !important;
+}
+
+.nav-rail .status-card .text-danger {
+  color: #9d1f1b !important;
+}
+
+@media (max-width: 1366px) {
+  .management-layout:not(.is-single)::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 38;
+    background: rgba(33, 27, 23, 0.46);
+  }
+
+  .management-layout:not(.is-single) .side-editor {
+    position: fixed !important;
+    top: 50% !important;
+    right: 14px !important;
+    left: 14px !important;
+    z-index: 39 !important;
+    width: auto !important;
+    max-width: 760px;
+    max-height: calc(100dvh - 70px);
+    margin: 0 auto;
+    overflow: auto;
+    transform: translateY(-50%);
+    border-radius: 18px;
+  }
+}
+
+@media (max-width: 720px) {
+  .main-pane {
+    padding: 8px 8px 14px !important;
+  }
+
+  .topbar {
+    min-height: 54px;
+    gap: 7px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .topbar .hamburger-button,
+  .topbar .kebab-button {
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: 13px !important;
+  }
+
+  .sales-channel-select {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .sales-channel-select select {
+    min-height: 42px;
+    padding-left: 10px;
+    padding-right: 26px;
+    font-size: 15px;
+  }
+
+  .topbar .top-status span {
+    min-height: 38px !important;
+    padding: 0 9px !important;
+    font-size: 13px;
+  }
+
+  .pos-layout {
+    height: auto;
+    min-height: 0;
+    grid-template-columns: 1fr !important;
+  }
+
+  .pos-screen .menu-area {
+    overflow: visible;
+  }
+
+  .pos-screen .product-grid,
+  .inventory-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+
+  .pos-screen .product-tile,
+  .inventory-card {
+    aspect-ratio: 0.76 / 1 !important;
+    padding: 7px !important;
+    padding-bottom: 30px !important;
+    border-radius: 12px !important;
+  }
+
+  .pos-screen .product-tile::before,
+  .pos-screen .product-tile-image {
+    height: 34px !important;
+    border-radius: 9px !important;
+  }
+
+  .pos-screen .product-tile span,
+  .inventory-card h3 {
+    font-size: 11.5px !important;
+    line-height: 1.12 !important;
+  }
+
+  .pos-screen .product-tile strong,
+  .inventory-card > strong {
+    font-size: 14px !important;
+  }
+
+  .pos-screen .product-tile::after {
+    width: 26px !important;
+    height: 26px !important;
+    right: 7px !important;
+    bottom: 7px !important;
+    border-radius: 9px !important;
+    font-size: 16px !important;
+  }
+
+  .inventory-card p,
+  .inventory-card > span,
+  .inventory-card small {
+    font-size: 10.5px !important;
+  }
+
+  .pos-screen .cart-panel {
+    max-height: min(52dvh, 430px) !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    left: 0;
+    min-height: 56px;
+  }
+
+  .main-pane {
+    padding: 8px 8px 14px !important;
+  }
+
+  .pos-layout {
+    height: auto !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .pos-screen .menu-area {
+    overflow: visible;
+  }
+
+  .pos-screen .product-grid,
+  .inventory-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    justify-content: stretch !important;
+  }
+
+  .pos-screen .product-tile,
+  .inventory-card {
+    aspect-ratio: 0.86 / 1 !important;
+  }
+
+  .pos-screen .cart-panel {
+    max-height: min(52dvh, 440px) !important;
+  }
+
+  .sales-channel-select {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .pos-screen .product-tile,
+  .inventory-card {
+    aspect-ratio: 0.76 / 1 !important;
+  }
+}

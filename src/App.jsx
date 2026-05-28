@@ -300,6 +300,7 @@ export default function App() {
   const resolvedSettings = useMemo(() => ({ ...defaultSettings, ...settings }), [settings]);
   const [cart, setCart] = useState([]);
   const [posView, setPosView] = useState("sale");
+  const [salesChannel, setSalesChannel] = useState("store");
   const [expenseView, setExpenseView] = useState("entry");
   const [orderNote, setOrderNote] = useState("");
   const [printOptions, setPrintOptions] = useState({ kitchen: true, receipt: false });
@@ -308,6 +309,7 @@ export default function App() {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
+  const [closeShiftToken, setCloseShiftToken] = useState(0);
   const [queueLists, setQueueLists] = useState({ print: [], sheet: [] });
   const [cartLeavingKeys, setCartLeavingKeys] = useState([]);
 
@@ -365,7 +367,7 @@ export default function App() {
   function addToCart(product, selectedModifierIds) {
     preserveScrollPosition();
     const selectedModifiers = modifiers.filter((modifier) => selectedModifierIds.includes(modifier.id));
-    const unitPrice = getChannelPrice(product, "store") + selectedModifiers.reduce((sum, modifier) => sum + Number(modifier.price || 0), 0);
+    const unitPrice = getChannelPrice(product, salesChannel) + selectedModifiers.reduce((sum, modifier) => sum + Number(modifier.price || 0), 0);
     const key = `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setCart((current) => [
       ...current,
@@ -415,6 +417,7 @@ export default function App() {
     }
     const order = {
       ...makeOrderPayload({ cart, total, ...payment }),
+      salesChannel,
       shiftId: openShift.id,
       note: orderNote,
       printOptions,
@@ -580,9 +583,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-soft text-ink">
       <div className={`app-grid ${isNavOpen ? "is-nav-open" : ""}`}>
-        <button className="hamburger-button" onClick={() => setIsNavOpen(true)} type="button" aria-label="เปิดเมนูหลัก">
-          <Menu size={24} />
-        </button>
         {isNavOpen ? <button className="nav-scrim" onClick={() => setIsNavOpen(false)} type="button" aria-label="ปิดเมนูหลัก" /> : null}
         <aside className="nav-rail" aria-hidden={!isNavOpen}>
           <div className="brand-block">
@@ -630,13 +630,24 @@ export default function App() {
         </aside>
 
         <main className="main-pane">
-          <Header activeTab={activeTab} expenseView={expenseView} lowStock={lowStock.length} posView={posView} queueStats={queueStats} />
+          <Header
+            activeTab={activeTab}
+            expenseView={expenseView}
+            lowStock={lowStock.length}
+            onOpenNav={() => setIsNavOpen(true)}
+            onRequestCloseShift={() => setCloseShiftToken((token) => token + 1)}
+            openShift={openShift}
+            posView={posView}
+            salesChannel={salesChannel}
+            setSalesChannel={setSalesChannel}
+          />
           <MobileSubnav activeTab={activeTab} expenseView={expenseView} navigateMain={navigateMain} navigateSub={navigateSub} />
           {activeTab === "pos" ? (
             <PosScreen
               activeCategory={activeCategory}
               cart={cart}
               cartLeavingKeys={cartLeavingKeys}
+              closeShiftToken={closeShiftToken}
               catalog={catalog}
               changeQuantity={changeQuantity}
               ingredients={ingredients}
@@ -653,6 +664,7 @@ export default function App() {
               printOptions={printOptions}
               products={activeProducts}
               posView={posView}
+              salesChannel={salesChannel}
               setOrderNote={setOrderNote}
               setPrintOptions={setPrintOptions}
               setPosView={setPosView}
@@ -750,7 +762,8 @@ export default function App() {
   );
 }
 
-function Header({ activeTab, expenseView, lowStock, posView, queueStats }) {
+function Header({ activeTab, expenseView, lowStock, onOpenNav, onRequestCloseShift, openShift, posView, salesChannel, setSalesChannel }) {
+  const [topMenuOpen, setTopMenuOpen] = useState(false);
   const title = {
     pos: posView === "history" ? "ประวัติการขาย" : "ขายหน้าร้าน",
     dashboard: "Dashboard สรุปยอดขาย",
@@ -760,16 +773,54 @@ function Header({ activeTab, expenseView, lowStock, posView, queueStats }) {
     expense: expenseView === "history" ? "ประวัติรายจ่าย" : "บันทึกรายจ่าย",
     settings: "ตั้งค่าระบบ",
   }[activeTab];
+  const channelLabel = getSalesChannelLabel(salesChannel);
+  const showPosControls = activeTab === "pos" && posView === "sale";
   return (
     <header className={`topbar topbar-${activeTab}`}>
-      <div>
+      <button className="hamburger-button" onClick={onOpenNav} type="button" aria-label="เปิดเมนูหลัก">
+        <Menu size={24} />
+      </button>
+      {showPosControls ? (
+        <label className="sales-channel-select">
+          <span className="sr-only">ช่องทางขาย</span>
+          <select value={salesChannel} onChange={(event) => setSalesChannel(event.target.value)}>
+            {salesChannels.map((channel) => (
+              <option key={channel.id} value={channel.id}>{getSalesChannelLabel(channel.id)}</option>
+            ))}
+          </select>
+        </label>
+      ) : (
         <h2>{title}</h2>
-      </div>
+      )}
       <div className="top-status">
-        <span><Wifi size={16} /> Supabase พร้อมเชื่อมต่อ</span>
-        <span><Database size={16} /> Sheet queue {queueStats.sheet}</span>
         <span className={lowStock ? "text-danger" : ""}><Bell size={16} /> ใกล้หมด {lowStock}</span>
       </div>
+      {showPosControls && openShift ? (
+        <div className="pos-kebab topbar-kebab">
+          <button
+            aria-expanded={topMenuOpen}
+            aria-label={`เมนูเพิ่มเติม ${channelLabel}`}
+            className="kebab-button"
+            onClick={() => setTopMenuOpen((current) => !current)}
+            type="button"
+          >
+            <MoreVertical size={22} />
+          </button>
+          {topMenuOpen ? (
+            <div className="kebab-menu">
+              <button
+                onClick={() => {
+                  setTopMenuOpen(false);
+                  onRequestCloseShift();
+                }}
+                type="button"
+              >
+                ปิดกะ
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </header>
   );
 }
@@ -955,6 +1006,7 @@ function PosScreen({
   activeCategory,
   cart,
   cartLeavingKeys,
+  closeShiftToken,
   catalog,
   changeQuantity,
   ingredients,
@@ -971,6 +1023,7 @@ function PosScreen({
   printOptions,
   products,
   posView,
+  salesChannel,
   setOrderNote,
   setPrintOptions,
   setPosView,
@@ -981,7 +1034,6 @@ function PosScreen({
   const [shiftPanelOpen, setShiftPanelOpen] = useState(false);
   const [closedShiftSummary, setClosedShiftSummary] = useState(null);
   const [productSearch, setProductSearch] = useState("");
-  const [posMenuOpen, setPosMenuOpen] = useState(false);
   const productCategories = Array.from(new Set([...(menuCategories || categories), ...products.map((product) => product.category)]));
   const normalizedProductSearch = productSearch.trim().toLocaleLowerCase("th-TH");
   const visibleProducts = products.filter((product) => {
@@ -990,6 +1042,9 @@ function PosScreen({
     return matchesCategory && product.name.toLocaleLowerCase("th-TH").includes(normalizedProductSearch);
   });
   const currentSummary = openShift ? calculateShiftSummary(openShift, orders) : null;
+  useEffect(() => {
+    if (closeShiftToken && openShift && posView === "sale") setShiftPanelOpen(true);
+  }, [closeShiftToken, openShift, posView]);
   function submitCloseShift(closingCash) {
     const closed = onCloseShift(closingCash);
     if (closed) {
@@ -1007,37 +1062,11 @@ function PosScreen({
         ) : null}
       </div>
 
-      <div className={`pos-action-row ${posView === "sale" ? "is-sale" : ""}`}>
-        {posView === "history" ? (
+      {posView === "history" ? (
+      <div className="pos-action-row">
           <button className="ghost-button compact-control" onClick={() => setPosView("sale")} type="button">กลับหน้าขาย</button>
-        ) : <span />}
-        {openShift && posView === "sale" ? (
-          <div className="pos-kebab">
-            <button
-              aria-expanded={posMenuOpen}
-              aria-label="เมนูเพิ่มเติมหน้าขาย"
-              className="kebab-button"
-              onClick={() => setPosMenuOpen((current) => !current)}
-              type="button"
-            >
-              <MoreVertical size={22} />
-            </button>
-            {posMenuOpen ? (
-              <div className="kebab-menu">
-                <button
-                  onClick={() => {
-                    setPosMenuOpen(false);
-                    setShiftPanelOpen(true);
-                  }}
-                  type="button"
-                >
-                  ปิดกะ
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
       </div>
+      ) : null}
 
       {posView === "history" ? (
         <SalesHistoryPanel onReprintOrder={onReprintOrder} orders={orders} shifts={shifts} />
@@ -1082,7 +1111,7 @@ function PosScreen({
                   >
                     {product.imageDataUrl ? <img alt={product.name} className="product-tile-image" src={product.imageDataUrl} /> : null}
                     <span>{product.name}</span>
-                    <strong>{money(getChannelPrice(product, "store"))} บาท</strong>
+                    <strong>{money(getChannelPrice(product, salesChannel))} บาท</strong>
                     {!openShift ? <em>ต้องเปิดกะก่อนขาย</em> : !available ? <em>วัตถุดิบไม่พอ</em> : null}
                   </button>
                 );
@@ -3182,6 +3211,11 @@ function emptyModifier(products = []) {
 
 function normalizeChannelPrices(product) {
   return Object.fromEntries(salesChannels.map((channel) => [channel.id, getChannelPrice(product, channel.id)]));
+}
+
+function getSalesChannelLabel(channelId) {
+  if (channelId === "store") return "ขายหน้าร้าน";
+  return salesChannels.find((channel) => channel.id === channelId)?.label || "ขายหน้าร้าน";
 }
 
 function getChannelPrice(product, channelId) {
