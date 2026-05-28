@@ -3550,3 +3550,284 @@ b {
     gap: 12px;
   }
 }
+
+.mobile-child-tabs {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .app-grid {
+    padding-bottom: calc(86px + env(safe-area-inset-bottom));
+  }
+
+  .main-pane {
+    padding: 10px 10px calc(92px + env(safe-area-inset-bottom));
+  }
+
+  .topbar {
+    margin-bottom: 8px;
+  }
+
+  .topbar-pos {
+    display: none;
+  }
+
+  .topbar-pos h2,
+  .topbar p,
+  .top-status {
+    display: none;
+  }
+
+  .topbar h2 {
+    font-size: 22px;
+    line-height: 1.1;
+  }
+
+  .nav-group.is-open .nav-sub-list {
+    display: none !important;
+  }
+
+  .mobile-child-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 0 0 10px;
+  }
+
+  .mobile-child-tabs button {
+    flex: 1 1 0;
+    min-height: 42px;
+    border: 1px solid rgba(30, 24, 18, 0.1);
+    border-radius: 12px;
+    background: rgba(255, 254, 251, 0.88);
+    color: var(--boy-ink);
+    font-weight: 750;
+  }
+
+  .mobile-child-tabs button.is-active {
+    border-color: transparent;
+    background: linear-gradient(180deg, #d83a35 0%, var(--boy-red) 100%);
+    color: #fff;
+    box-shadow: 0 10px 18px rgba(198, 40, 40, 0.16);
+  }
+
+  .subnav-row {
+    position: relative;
+    z-index: 3;
+    margin-bottom: 8px;
+  }
+
+  .pos-screen > .subnav-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .subnav-row button {
+    min-height: 42px;
+    padding: 0 14px;
+  }
+
+  .close-shift-button {
+    min-height: 44px;
+    width: auto;
+    margin-left: 0;
+    padding-inline: 14px;
+  }
+
+  .menu-area,
+  .work-panel,
+  .cart-panel,
+  .settings-card {
+    padding: 18px 12px 12px;
+  }
+
+  .menu-area::before,
+  .work-panel::before,
+  .cart-panel::before,
+  .settings-card::before,
+  .side-editor::before {
+    top: 0;
+    opacity: 0.58;
+  }
+
+  .category-row {
+    gap: 8px;
+  }
+
+  .category-button {
+    min-height: 44px;
+    padding: 0 10px;
+  }
+
+  .product-grid {
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .product-tile {
+    min-height: 142px;
+  }
+
+  .modal-backdrop {
+    padding: 14px;
+    place-items: center;
+  }
+
+  .modal-card {
+    align-self: center;
+    width: min(100%, 520px);
+    max-height: calc(100dvh - 150px);
+    margin: auto;
+  }
+
+  .modifier-modal-card {
+    padding: 22px 16px 16px;
+  }
+
+  .modifier-modal-card .modifier-list {
+    gap: 8px;
+  }
+
+  .modifier-modal-card .modal-actions {
+    justify-content: flex-end;
+  }
+
+  .modifier-modal-card .ghost-button,
+  .modifier-modal-card .primary-button {
+    min-height: 42px;
+    padding: 0 14px;
+  }
+
+  .management-layout:not(.is-single)::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 38;
+    background: rgba(33, 27, 23, 0.46);
+  }
+
+  .management-layout:not(.is-single) .side-editor {
+    position: fixed;
+    top: 50%;
+    right: 12px;
+    left: 12px;
+    z-index: 39;
+    max-height: calc(100dvh - 184px);
+    overflow: auto;
+    transform: translateY(-50%);
+    border-radius: 18px;
+    padding: 22px 14px 14px;
+  }
+
+  .side-editor .panel-title {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .expense-wide-layout {
+    gap: 10px;
+  }
+
+  .expense-header {
+    gap: 10px;
+  }
+
+  .expense-header .panel-title p {
+    display: none;
+  }
+
+  .expense-header label {
+    min-width: 0;
+  }
+
+  .expense-table {
+    gap: 8px;
+  }
+
+  .expense-entry-row,
+  .expense-entry-row.is-custom {
+    grid-template-columns: minmax(0, 1fr) 78px 82px 40px;
+    gap: 5px;
+    align-items: end;
+    padding: 6px;
+    border-radius: 14px;
+  }
+
+  .expense-mode-toggle {
+    grid-column: 1 / -1;
+    min-height: 34px;
+  }
+
+  .expense-mode-toggle button {
+    height: 28px;
+    font-size: 12px;
+  }
+
+  .expense-entry-row > .expense-field:nth-child(2) {
+    grid-column: 1 / span 2;
+  }
+
+  .expense-entry-row > .expense-field:nth-child(3) {
+    grid-column: 3 / span 2;
+  }
+
+  .expense-entry-row > .expense-field:nth-child(4) {
+    grid-column: 1;
+  }
+
+  .expense-entry-row > .expense-field:nth-child(5) {
+    grid-column: 2;
+  }
+
+  .expense-entry-row > .stock-preview {
+    grid-column: 3;
+  }
+
+  .expense-entry-row.is-custom > .expense-field:nth-child(3) {
+    grid-column: 3;
+  }
+
+  .expense-entry-row.is-custom > .expense-field:nth-child(4) {
+    grid-column: 1;
+  }
+
+  .expense-entry-row.is-custom > .expense-field:nth-child(5) {
+    grid-column: 2 / span 2;
+  }
+
+  .expense-field {
+    gap: 2px;
+  }
+
+  .expense-field-label {
+    display: none !important;
+  }
+
+  .expense-entry-row input,
+  .expense-entry-row select,
+  .stock-preview {
+    min-height: 34px;
+    border-radius: 12px;
+    padding: 0 8px;
+    font-size: 15px;
+  }
+
+  .stock-preview {
+    font-size: 13px;
+    justify-content: center;
+  }
+
+  .expense-entry-row > button {
+    grid-column: 4;
+    width: 36px;
+    height: 36px;
+  }
+
+  .expense-actions {
+    gap: 8px;
+  }
+
+  .expense-actions .ghost-button,
+  .expense-submit-button {
+    min-height: 42px;
+  }
+}

@@ -344,6 +344,22 @@ export default function App() {
     setQueueLists({ print, sheet });
   }
 
+  function preserveScrollPosition() {
+    if (typeof window === "undefined") return;
+    const scrollY = window.scrollY;
+    const restore = () => {
+      const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      window.scrollTo(0, Math.min(scrollY, maxScroll));
+    };
+    window.requestAnimationFrame(() => {
+      restore();
+      window.setTimeout(restore, 80);
+      window.setTimeout(restore, 260);
+      window.setTimeout(restore, 620);
+      window.setTimeout(restore, 920);
+    });
+  }
+
   function openProduct(product) {
     if (!canSellProduct(product.id, ingredients, [], catalog)) return;
     const productModifiers = modifiers.filter((modifier) => modifier.productIds.includes(product.id));
@@ -356,6 +372,7 @@ export default function App() {
   }
 
   function addToCart(product, selectedModifierIds) {
+    preserveScrollPosition();
     const selectedModifiers = modifiers.filter((modifier) => selectedModifierIds.includes(modifier.id));
     const unitPrice = getChannelPrice(product, "store") + selectedModifiers.reduce((sum, modifier) => sum + Number(modifier.price || 0), 0);
     const key = `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -378,6 +395,7 @@ export default function App() {
   }
 
   function changeQuantity(key, delta) {
+    preserveScrollPosition();
     if (delta > 0) {
       setCartMotionKey(key);
       if (cartMotionTimer.current) window.clearTimeout(cartMotionTimer.current);
@@ -629,6 +647,7 @@ export default function App() {
 
         <main className="main-pane">
           <Header activeTab={activeTab} expenseView={expenseView} lowStock={lowStock.length} posView={posView} queueStats={queueStats} />
+          <MobileSubnav activeTab={activeTab} expenseView={expenseView} navigateMain={navigateMain} navigateSub={navigateSub} />
           {activeTab === "pos" ? (
             <PosScreen
               activeCategory={activeCategory}
@@ -759,7 +778,7 @@ function Header({ activeTab, expenseView, lowStock, posView, queueStats }) {
     settings: "ตั้งค่าระบบ",
   }[activeTab];
   return (
-    <header className="topbar">
+    <header className={`topbar topbar-${activeTab}`}>
       <div>
         <h2>{title}</h2>
         <p>ออกแบบสำหรับ Galaxy Tab A9+, iPad, iPhone และ Android phone</p>
@@ -770,6 +789,40 @@ function Header({ activeTab, expenseView, lowStock, posView, queueStats }) {
         <span className={lowStock ? "text-danger" : ""}><Bell size={16} /> ใกล้หมด {lowStock}</span>
       </div>
     </header>
+  );
+}
+
+function MobileSubnav({ activeTab, expenseView, navigateMain, navigateSub }) {
+  if (activeTab === "pos") return null;
+  const menuChildren = [
+    { id: "menu-main", label: "เมนู/สูตร", tab: "menu" },
+    { id: "modifiers-main", label: "ตัวเลือกเสริม", tab: "modifiers" },
+  ];
+  const expenseChildren = [
+    { id: "expense-entry-main", label: "บันทึกรายจ่าย", tab: "expense", view: "entry" },
+    { id: "expense-history-main", label: "ประวัติรายจ่าย", tab: "expense", view: "history" },
+  ];
+  const items = activeTab === "menu" || activeTab === "modifiers" ? menuChildren : activeTab === "expense" ? expenseChildren : [];
+  if (!items.length) return null;
+  return (
+    <div className="mobile-child-tabs">
+      {items.map((item) => {
+        const active = item.tab === "expense" ? activeTab === "expense" && expenseView === item.view : activeTab === item.tab;
+        return (
+          <button
+            className={active ? "is-active" : ""}
+            key={item.id}
+            onClick={() => {
+              if (item.view) navigateSub(item);
+              else navigateMain(item.tab);
+            }}
+            type="button"
+          >
+            {item.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1374,7 +1427,7 @@ function SalesHistory({ orders, shifts }) {
 }
 
 function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, onClose, onConfirm, onToggle, product }) {
-  const { backdropRef, closeWithAnimation } = useAnimeModal(onClose, modifierModalChildren);
+  const { backdropRef } = useAnimeModal(onClose, modifierModalChildren);
   const productModifiers = modifiers.filter((modifier) => modifier.productIds.includes(product.id));
   const selectedRecipeLines = modifierRecipes
     .filter((recipe) => modifierIds.includes(recipe.modifierId))
@@ -1400,7 +1453,7 @@ function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, o
         </div>
         {missing.length ? <div className="warning-box">วัตถุดิบไม่พอ: {missing.map((item) => item.name).join(", ")}</div> : null}
         <div className="modal-actions">
-          <button className="ghost-button" onClick={closeWithAnimation} type="button">ยกเลิก</button>
+          <button className="ghost-button" onClick={onClose} type="button">ยกเลิก</button>
           <button className="primary-button" disabled={missing.length > 0} onClick={onConfirm} type="button">เพิ่มลงตะกร้า</button>
         </div>
       </div>
@@ -2472,8 +2525,22 @@ function ExpenseEntryRow({ ingredients, isLeaving, onRemove, purchaseUnits, row,
     });
   }
 
+  function focusNextExpenseField(event) {
+    if (event.key !== "Enter" || !event.target.matches("input, select")) return;
+    event.preventDefault();
+    const root = event.currentTarget.closest(".expense-table");
+    const fields = Array.from(root?.querySelectorAll(".expense-entry-row input, .expense-entry-row select") || [])
+      .filter((field) => !field.disabled && field.offsetParent !== null);
+    const currentIndex = fields.indexOf(event.target);
+    const nextField = fields[currentIndex + 1];
+    if (nextField) {
+      nextField.focus();
+      if (nextField.select) nextField.select();
+    }
+  }
+
   return (
-    <div className={`expense-entry-row ${row.mode === "custom" ? "is-custom" : ""} ${isLeaving ? "is-hidden" : ""}`}>
+    <div className={`expense-entry-row ${row.mode === "custom" ? "is-custom" : ""} ${isLeaving ? "is-hidden" : ""}`} onKeyDown={focusNextExpenseField}>
       <div className="expense-mode-toggle" aria-label={`ประเภทรายจ่ายแถว ${rowNumber}`}>
         <button className={row.mode === "ingredient" ? "is-active" : ""} onClick={() => selectMode("ingredient")} type="button">วัตถุดิบ</button>
         <button className={row.mode === "custom" ? "is-active" : ""} onClick={() => selectMode("custom")} type="button">ทั่วไป</button>
