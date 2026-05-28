@@ -11,6 +11,7 @@ import {
   FileImage,
   Menu,
   Minus,
+  MoreVertical,
   Package,
   Plus,
   Printer,
@@ -308,10 +309,7 @@ export default function App() {
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
   const [queueLists, setQueueLists] = useState({ print: [], sheet: [] });
-  const [cartMotionKey, setCartMotionKey] = useState("");
   const [cartLeavingKeys, setCartLeavingKeys] = useState([]);
-  const cartMotionTimer = useRef(null);
-  const cartLeaveTimers = useRef(new Map());
 
   const catalog = useMemo(() => ({ recipes, modifierRecipes }), [recipes, modifierRecipes]);
   const activeProducts = useMemo(() => products.filter((product) => product.active !== false), [products]);
@@ -324,12 +322,6 @@ export default function App() {
 
   useEffect(() => {
     refreshQueues();
-  }, []);
-
-  useEffect(() => () => {
-    if (cartMotionTimer.current) window.clearTimeout(cartMotionTimer.current);
-    cartLeaveTimers.current.forEach((timer) => window.clearTimeout(timer));
-    cartLeaveTimers.current.clear();
   }, []);
 
   useEffect(() => {
@@ -356,9 +348,6 @@ export default function App() {
     window.requestAnimationFrame(() => {
       restore();
       window.setTimeout(restore, 80);
-      window.setTimeout(restore, 260);
-      window.setTimeout(restore, 620);
-      window.setTimeout(restore, 920);
     });
   }
 
@@ -390,35 +379,19 @@ export default function App() {
         note: "",
       },
     ]);
-    setCartMotionKey(key);
-    if (cartMotionTimer.current) window.clearTimeout(cartMotionTimer.current);
-    cartMotionTimer.current = window.setTimeout(() => setCartMotionKey(""), 420);
     setSelectedProduct(null);
   }
 
   function changeQuantity(key, delta) {
     preserveScrollPosition();
-    if (delta > 0) {
-      setCartMotionKey(key);
-      if (cartMotionTimer.current) window.clearTimeout(cartMotionTimer.current);
-      cartMotionTimer.current = window.setTimeout(() => setCartMotionKey(""), 320);
-    }
     setCart((current) => {
       const target = current.find((item) => item.key === key);
       if (!target) return current;
 
       const nextQuantity = target.quantity + delta;
       if (nextQuantity <= 0) {
-        setCartLeavingKeys((keys) => (keys.includes(key) ? keys : [...keys, key]));
-        if (!cartLeaveTimers.current.has(key)) {
-          const timer = window.setTimeout(() => {
-            setCart((latest) => latest.filter((item) => item.key !== key));
-            setCartLeavingKeys((keys) => keys.filter((item) => item !== key));
-            cartLeaveTimers.current.delete(key);
-          }, 560);
-          cartLeaveTimers.current.set(key, timer);
-        }
-        return current;
+        setCartLeavingKeys((keys) => keys.filter((item) => item !== key));
+        return current.filter((item) => item.key !== key);
       }
 
       return current.map((item) => (item.key === key ? { ...item, quantity: nextQuantity } : item));
@@ -664,7 +637,6 @@ export default function App() {
               activeCategory={activeCategory}
               cart={cart}
               cartLeavingKeys={cartLeavingKeys}
-              cartMotionKey={cartMotionKey}
               catalog={catalog}
               changeQuantity={changeQuantity}
               ingredients={ingredients}
@@ -773,7 +745,7 @@ export default function App() {
         <PaymentModal cart={cart} onClose={() => setPaymentOpen(false)} onSubmit={completeOrder} total={total} />
       ) : null}
 
-      {lastOrder ? <OrderToast order={lastOrder} onClose={() => setLastOrder(null)} /> : null}
+      {lastOrder ? <OrderSuccessDialog order={lastOrder} onClose={() => setLastOrder(null)} /> : null}
     </div>
   );
 }
@@ -792,7 +764,6 @@ function Header({ activeTab, expenseView, lowStock, posView, queueStats }) {
     <header className={`topbar topbar-${activeTab}`}>
       <div>
         <h2>{title}</h2>
-        <p>ออกแบบสำหรับ Galaxy Tab A9+, iPad, iPhone และ Android phone</p>
       </div>
       <div className="top-status">
         <span><Wifi size={16} /> Supabase พร้อมเชื่อมต่อ</span>
@@ -984,7 +955,6 @@ function PosScreen({
   activeCategory,
   cart,
   cartLeavingKeys,
-  cartMotionKey,
   catalog,
   changeQuantity,
   ingredients,
@@ -1011,6 +981,7 @@ function PosScreen({
   const [shiftPanelOpen, setShiftPanelOpen] = useState(false);
   const [closedShiftSummary, setClosedShiftSummary] = useState(null);
   const [productSearch, setProductSearch] = useState("");
+  const [posMenuOpen, setPosMenuOpen] = useState(false);
   const productCategories = Array.from(new Set([...(menuCategories || categories), ...products.map((product) => product.category)]));
   const normalizedProductSearch = productSearch.trim().toLocaleLowerCase("th-TH");
   const visibleProducts = products.filter((product) => {
@@ -1033,6 +1004,38 @@ function PosScreen({
         <button className={posView === "history" ? "is-active" : ""} onClick={() => setPosView("history")} type="button">ประวัติการขาย</button>
         {openShift && posView === "sale" ? (
           <button className="close-shift-button" onClick={() => setShiftPanelOpen(true)} type="button">ปิดกะ</button>
+        ) : null}
+      </div>
+
+      <div className={`pos-action-row ${posView === "sale" ? "is-sale" : ""}`}>
+        {posView === "history" ? (
+          <button className="ghost-button compact-control" onClick={() => setPosView("sale")} type="button">กลับหน้าขาย</button>
+        ) : <span />}
+        {openShift && posView === "sale" ? (
+          <div className="pos-kebab">
+            <button
+              aria-expanded={posMenuOpen}
+              aria-label="เมนูเพิ่มเติมหน้าขาย"
+              className="kebab-button"
+              onClick={() => setPosMenuOpen((current) => !current)}
+              type="button"
+            >
+              <MoreVertical size={22} />
+            </button>
+            {posMenuOpen ? (
+              <div className="kebab-menu">
+                <button
+                  onClick={() => {
+                    setPosMenuOpen(false);
+                    setShiftPanelOpen(true);
+                  }}
+                  type="button"
+                >
+                  ปิดกะ
+                </button>
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
@@ -1090,7 +1093,6 @@ function PosScreen({
           <CartPanel
             cart={cart}
             cartLeavingKeys={cartLeavingKeys}
-            cartMotionKey={cartMotionKey}
             changeQuantity={changeQuantity}
             disabled={!openShift}
             onCheckout={onCheckout}
@@ -1137,7 +1139,6 @@ function PosScreen({
 function CartPanel({
   cart,
   cartLeavingKeys,
-  cartMotionKey,
   changeQuantity,
   disabled,
   onCheckout,
@@ -1148,10 +1149,6 @@ function CartPanel({
   total,
   updateCartNote,
 }) {
-  const cartListRef = useRef(null);
-  const cartLayoutSignature = cart.map((item) => `${item.key}:${item.quantity}:${cartLeavingKeys.includes(item.key) ? "leaving" : "visible"}`).join("|");
-  useAnimeLayout(cartListRef, cartLayoutSignature, cartLayoutParams);
-
   return (
     <aside className="cart-panel">
       <div className="panel-title">
@@ -1161,9 +1158,9 @@ function CartPanel({
           <p>{cart.length} รายการ</p>
         </div>
       </div>
-      <div className="cart-list" ref={cartListRef}>
+      <div className="cart-list">
         {cart.length ? cart.map((item) => (
-          <div className={`cart-row cart-row-full ${cartMotionKey === item.key ? "is-cart-motion" : ""} ${cartLeavingKeys.includes(item.key) ? "is-hidden" : ""}`} key={item.key}>
+          <div className={`cart-row cart-row-full ${cartLeavingKeys.includes(item.key) ? "is-hidden" : ""}`} key={item.key}>
             <div className="cart-row-head">
               <div>
                 <div className="cart-item-title">
@@ -1492,9 +1489,18 @@ function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, o
 
 function PaymentModal({ cart, onClose, onSubmit, total }) {
   const { backdropRef, closeWithAnimation } = useAnimeModal(onClose, paymentModalChildren);
-  const [method, setMethod] = useState("TRANSFER");
-  const [cash, setCash] = useState(0);
+  const [method, setMethod] = useState("CASH");
+  const [cash, setCash] = useState(() => Number(total || 0));
+  const [quickCashTouched, setQuickCashTouched] = useState(false);
   const change = Math.max(0, cash - total);
+  function addCash(amount) {
+    setCash((current) => (quickCashTouched ? Number(current || 0) + amount : amount));
+    setQuickCashTouched(true);
+  }
+  function updateCash(value) {
+    setCash(Number(value || 0));
+    setQuickCashTouched(true);
+  }
   return (
     <div className="modal-backdrop anime-modal" ref={backdropRef}>
       <div className="modal-card payment-card">
@@ -1508,17 +1514,33 @@ function PaymentModal({ cart, onClose, onSubmit, total }) {
           </button>
         </div>
         <div className="receipt-preview">
-          {cart.map((item) => <span key={item.key}>{item.quantity}x {item.product.name}</span>)}
+          {cart.map((item) => (
+            <span key={item.key}>
+              <b>{item.quantity}x {item.product.name}</b>
+              {item.modifiers.length ? <small>{item.modifiers.map((modifier) => modifier.label).join(", ")}</small> : null}
+              {item.note ? <small>{item.note}</small> : null}
+            </span>
+          ))}
         </div>
         <div className="pay-total"><span>ยอดที่ต้องชำระ</span><strong>{money(total)} บาท</strong></div>
         {method === "CASH" ? (
           <>
             <div className="cash-display">{money(cash)} บาท</div>
+            <label className="cash-input-wrap">
+              <span>จำนวนเงินที่ได้รับ</span>
+              <input
+                inputMode="decimal"
+                min="0"
+                onChange={(event) => updateCash(event.target.value)}
+                type="number"
+                value={cash}
+              />
+            </label>
             <div className="cash-buttons">
               {[20, 50, 100, 500, 1000].map((amount) => (
-                <button key={amount} onClick={() => setCash((current) => current + amount)} type="button">+{amount}</button>
+                <button key={amount} onClick={() => addCash(amount)} type="button">+{amount}</button>
               ))}
-              <button onClick={() => setCash(0)} type="button">ล้าง</button>
+              <button onClick={() => { setCash(0); setQuickCashTouched(true); }} type="button">ล้าง</button>
             </div>
             <div className="change-line">เงินทอน {money(change)} บาท</div>
           </>
@@ -1528,7 +1550,7 @@ function PaymentModal({ cart, onClose, onSubmit, total }) {
           <button
             className="primary-button"
             disabled={method === "CASH" && cash < total}
-            onClick={() => onSubmit({ paymentMethod: method, cashReceived: cash })}
+            onClick={() => onSubmit({ paymentMethod: method, cashReceived: method === "CASH" ? cash : total })}
             type="button"
           >
             ยืนยันออเดอร์
@@ -2382,17 +2404,8 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
   const [rows, setRows] = useState(() => Array.from({ length: 1 }, () => blankExpenseRow(firstIngredientId, firstIngredientName)));
   const [leavingRowIds, setLeavingRowIds] = useState([]);
   const [ingredientModalOpen, setIngredientModalOpen] = useState(false);
-  const expenseTableRef = useRef(null);
-  const expenseRowTimers = useRef(new Map());
   const previewItems = rows.map((row) => buildExpenseItem(row, ingredients, purchaseUnits)).filter(Boolean);
   const totalAmount = previewItems.reduce((sum, item) => sum + item.lineTotal, 0);
-  const expenseLayoutSignature = rows.map((row) => `${row.id}:${leavingRowIds.includes(row.id) ? "leaving" : "visible"}`).join("|");
-  useAnimeLayout(expenseTableRef, expenseLayoutSignature, expenseLayoutParams);
-
-  useEffect(() => () => {
-    expenseRowTimers.current.forEach((timer) => window.clearTimeout(timer));
-    expenseRowTimers.current.clear();
-  }, []);
 
   function updateRow(id, patch) {
     setRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
@@ -2403,14 +2416,8 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
   }
 
   function removeRow(id) {
-    setLeavingRowIds((current) => (current.includes(id) ? current : [...current, id]));
-    if (expenseRowTimers.current.has(id)) return;
-    const timer = window.setTimeout(() => {
-      setRows((current) => current.filter((row) => row.id !== id));
-      setLeavingRowIds((current) => current.filter((rowId) => rowId !== id));
-      expenseRowTimers.current.delete(id);
-    }, 560);
-    expenseRowTimers.current.set(id, timer);
+    setRows((current) => current.filter((row) => row.id !== id));
+    setLeavingRowIds((current) => current.filter((rowId) => rowId !== id));
   }
 
   async function submitExpenses() {
@@ -2465,7 +2472,7 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
           </label>
         </div>
 
-        <div className="expense-table" ref={expenseTableRef}>
+        <div className="expense-table">
           <div className="expense-table-head">
             <span>ประเภท</span>
             <span>รายการ</span>
@@ -2929,6 +2936,31 @@ function ExpenseHistoryPanel({ expenses, onBack }) {
         </div>
       </div>
     </section>
+  );
+}
+
+function OrderSuccessDialog({ order, onClose }) {
+  return (
+    <div className="modal-backdrop order-success-backdrop">
+      <div className="modal-card order-success-modal">
+        <div className="success-icon"><Check size={28} /></div>
+        <div>
+          <h3>ทำรายการสำเร็จ</h3>
+          <p>{order.id}</p>
+        </div>
+        <div className="success-summary">
+          <span>ยอดรวม</span>
+          <strong>{money(order.totalAmount)} บาท</strong>
+        </div>
+        {order.paymentMethod === "CASH" ? (
+          <div className="success-summary is-change">
+            <span>เงินทอน</span>
+            <strong>{money(order.changeDue)} บาท</strong>
+          </div>
+        ) : null}
+        <button className="primary-button" onClick={onClose} type="button">ตกลง</button>
+      </div>
+    </div>
   );
 }
 

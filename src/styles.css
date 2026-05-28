@@ -4125,3 +4125,378 @@ b {
     min-height: 0 !important;
   }
 }
+
+/* Latest POS usability pass: compact drawer, lighter sale controls, smoother tap flows. */
+.nav-rail {
+  gap: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: #fffef9 !important;
+  color: #24211d !important;
+}
+
+.nav-rail .brand-block {
+  min-height: 132px !important;
+  align-items: center !important;
+  padding: 18px 16px !important;
+  border-radius: 0 !important;
+  background:
+    linear-gradient(135deg, rgba(210, 43, 38, 0.94), rgba(119, 28, 20, 0.96)),
+    #c62828 !important;
+  color: #fff8df !important;
+}
+
+.nav-rail .brand-mark {
+  width: 56px !important;
+  height: 56px !important;
+}
+
+.nav-rail .brand-block h1 {
+  margin: 0 !important;
+  font-size: 18px !important;
+  line-height: 1.1 !important;
+  color: #fdce89 !important;
+  -webkit-text-stroke: 0.35px rgba(0, 0, 0, 0.65);
+}
+
+.nav-rail .brand-block p {
+  margin-top: 3px !important;
+  font-size: 13px !important;
+  opacity: 0.72 !important;
+  color: #fff8df !important;
+}
+
+.nav-rail .nav-list {
+  display: block !important;
+  padding: 10px 0 !important;
+  gap: 0 !important;
+}
+
+.nav-rail .nav-group {
+  margin: 0 !important;
+  border-bottom: 1px solid rgba(36, 33, 29, 0.06);
+}
+
+.nav-rail .nav-button {
+  width: 100% !important;
+  min-height: 52px !important;
+  display: grid !important;
+  grid-template-columns: 34px minmax(0, 1fr) !important;
+  align-items: center !important;
+  justify-content: stretch !important;
+  gap: 10px !important;
+  padding: 0 18px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #332f2a !important;
+}
+
+.nav-rail .nav-button svg {
+  color: #7a756c !important;
+}
+
+.nav-rail .nav-button.is-active,
+.nav-rail .nav-group.is-open > .nav-button {
+  background: #f7efe3 !important;
+  color: #9d1f1b !important;
+}
+
+.nav-rail .nav-button.is-active svg,
+.nav-rail .nav-group.is-open > .nav-button svg {
+  color: #9d1f1b !important;
+}
+
+.nav-rail .nav-button span {
+  font-size: 17px !important;
+  line-height: 1.1 !important;
+  text-align: left !important;
+}
+
+.nav-rail .nav-sub-list {
+  padding: 2px 0 8px 62px !important;
+}
+
+.nav-rail .nav-group.is-open .nav-sub-list {
+  display: grid !important;
+  gap: 0 !important;
+}
+
+.nav-rail .nav-sub-button {
+  min-height: 34px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #4d4841 !important;
+  text-align: left !important;
+  font-size: 15px !important;
+  box-shadow: none !important;
+}
+
+.nav-rail .nav-sub-button.is-active {
+  color: #c62828 !important;
+  font-weight: 700 !important;
+}
+
+.nav-rail .status-card {
+  margin-top: auto !important;
+  padding: 12px 18px !important;
+  border: 0 !important;
+  border-top: 1px solid rgba(36, 33, 29, 0.08) !important;
+  border-radius: 0 !important;
+  background: #fffef9 !important;
+  color: #514b43 !important;
+  box-shadow: none !important;
+}
+
+.pos-screen > .subnav-row {
+  display: none !important;
+}
+
+.pos-action-row {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.pos-action-row.is-sale {
+  justify-content: flex-end;
+}
+
+.compact-control {
+  min-height: 40px !important;
+  padding: 0 14px !important;
+  border-radius: 12px !important;
+}
+
+.pos-kebab {
+  position: relative;
+  margin-left: auto;
+}
+
+.kebab-button {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(36, 33, 29, 0.1);
+  border-radius: 14px;
+  background: #fffdf8;
+  color: #2b2b2b;
+  box-shadow: 0 8px 20px rgba(30, 24, 18, 0.08);
+}
+
+.kebab-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 12;
+  min-width: 138px;
+  padding: 6px;
+  border: 1px solid rgba(36, 33, 29, 0.1);
+  border-radius: 14px;
+  background: #fffdf8;
+  box-shadow: 0 18px 38px rgba(30, 24, 18, 0.16);
+}
+
+.kebab-menu button {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #9d1f1b;
+  text-align: left;
+  font-weight: 700;
+}
+
+.kebab-menu button:hover {
+  background: #f8eee2;
+}
+
+.pos-screen .product-grid {
+  grid-template-columns: repeat(auto-fill, minmax(148px, 168px)) !important;
+  align-items: start !important;
+}
+
+.pos-screen .product-tile {
+  aspect-ratio: 1 / 1 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  grid-template-rows: auto min-content min-content !important;
+}
+
+.pos-screen .product-tile::before {
+  height: 48px !important;
+}
+
+.pos-screen .product-tile-image {
+  height: 56px !important;
+}
+
+.cart-row,
+.expense-entry-row {
+  animation: none !important;
+  transition: none !important;
+}
+
+.cash-display {
+  display: none !important;
+}
+
+.cash-input-wrap {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0;
+  color: #4c453d;
+  font-weight: 700;
+}
+
+.cash-input-wrap input {
+  min-height: 52px;
+  width: 100%;
+  border: 1px solid rgba(36, 33, 29, 0.12);
+  border-radius: 14px;
+  background: #fff !important;
+  color: #1f2937 !important;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.receipt-preview span {
+  display: grid;
+  gap: 2px;
+}
+
+.receipt-preview small {
+  color: #736b62;
+  font-size: 14px;
+  padding-left: 18px;
+}
+
+.order-success-backdrop {
+  z-index: 90;
+}
+
+.order-success-modal {
+  max-width: 420px;
+  display: grid;
+  justify-items: stretch;
+  gap: 14px;
+  text-align: center;
+}
+
+.success-icon {
+  width: 58px;
+  height: 58px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  border-radius: 50%;
+  background: #edf8ee;
+  color: #207a36;
+}
+
+.order-success-modal h3 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.order-success-modal p {
+  margin: 2px 0 0;
+  color: #746a60;
+}
+
+.success-summary {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border: 1px solid rgba(36, 33, 29, 0.1);
+  border-radius: 14px;
+  background: #fffdf8;
+}
+
+.success-summary.is-change strong {
+  color: #9d1f1b;
+  font-size: 24px;
+}
+
+.inventory-grid {
+  grid-template-columns: repeat(auto-fill, minmax(148px, 168px)) !important;
+  align-items: start !important;
+  gap: 10px !important;
+}
+
+.inventory-card {
+  aspect-ratio: 1 / 1 !important;
+  min-height: 0 !important;
+  padding: 12px !important;
+  border-radius: 14px !important;
+  gap: 6px !important;
+  box-shadow: 0 8px 20px rgba(30, 24, 18, 0.08) !important;
+}
+
+.inventory-card h3 {
+  font-size: 17px !important;
+  line-height: 1.15 !important;
+}
+
+.inventory-card p {
+  font-size: 13px !important;
+}
+
+.inventory-card > strong {
+  font-size: 22px !important;
+}
+
+.inventory-card > span {
+  font-size: 13px !important;
+}
+
+@media (max-width: 720px) {
+  .nav-rail {
+    width: min(330px, calc(100vw - 34px)) !important;
+  }
+
+  .pos-action-row {
+    min-height: 40px;
+    margin-bottom: 8px;
+    padding-left: 50px;
+  }
+
+  .pos-action-row.is-sale {
+    padding-left: 0;
+  }
+
+  .pos-screen .product-grid,
+  .inventory-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .pos-screen .product-tile {
+    padding: 10px !important;
+    padding-bottom: 38px !important;
+  }
+
+  .pos-screen .product-tile span {
+    font-size: 16px !important;
+  }
+
+  .pos-screen .product-tile strong {
+    font-size: 21px !important;
+  }
+
+  .inventory-card {
+    aspect-ratio: 1 / 0.92 !important;
+  }
+}
