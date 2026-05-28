@@ -4862,3 +4862,241 @@ b {
     aspect-ratio: 0.76 / 1 !important;
   }
 }
+
+/* Current tablet/phone cleanup pass. Keep global gutters even and POS controls in one row. */
+.main-pane {
+  padding: 10px 16px 18px !important;
+}
+
+.topbar {
+  width: 100%;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+}
+
+.topbar h2 {
+  flex: 1 1 auto;
+}
+
+.topbar .top-status {
+  display: flex !important;
+  flex: 0 0 auto;
+  margin-left: auto !important;
+  flex-wrap: nowrap !important;
+}
+
+.nav-rail .brand-block {
+  position: relative;
+  padding-bottom: 30px !important;
+}
+
+.nav-rail .brand-block::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 12px;
+  background: var(--boy-checker) left top / 16px 16px;
+  opacity: 0.82;
+}
+
+.nav-rail .status-card::before {
+  display: none !important;
+}
+
+.pos-screen .pos-menu-toolbar {
+  display: none !important;
+}
+
+.pos-screen .cart-row-head {
+  align-items: flex-start !important;
+  gap: 12px;
+}
+
+.pos-screen .cart-item-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
+}
+
+.pos-screen .cart-item-title span {
+  white-space: nowrap;
+  line-height: 1.15;
+}
+
+.pos-screen .qty-control {
+  align-self: flex-start;
+}
+
+.cart-item-note {
+  color: #6f675d !important;
+}
+
+.pos-screen .cart-row > input,
+.pos-screen .order-note,
+.pos-screen .check-row {
+  display: none !important;
+}
+
+.print-default-note {
+  flex: 0 0 auto;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(30, 24, 18, 0.08);
+  border-radius: 10px;
+  color: #6b6258;
+  background: rgba(255, 253, 248, 0.82);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.modifier-note-field {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  color: #4d463d;
+  font-weight: 750;
+}
+
+.modifier-note-field textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.settings-subsection {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(30, 24, 18, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.72);
+}
+
+.settings-subsection p {
+  margin: 0;
+  color: #6f675d;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.channel-price-grid .channel-price-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) minmax(90px, 120px);
+  gap: 8px;
+  align-items: center;
+}
+
+.channel-price-grid .channel-price-row input[type="number"] {
+  min-width: 0;
+}
+
+.channel-active-toggle {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #5f574f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .main-pane {
+    padding: 8px 10px 14px !important;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    min-height: 52px !important;
+    margin-bottom: 8px !important;
+    padding: 6px 0 !important;
+  }
+
+  .topbar h2 {
+    font-size: clamp(19px, 3vw, 26px) !important;
+    text-align: left !important;
+  }
+
+  .topbar .hamburger-button,
+  .topbar .kebab-button {
+    width: 42px !important;
+    height: 42px !important;
+  }
+
+  .sales-channel-select {
+    flex: 0 1 180px !important;
+  }
+
+  .topbar .top-status span {
+    min-height: 38px !important;
+    padding: 0 9px !important;
+    font-size: 13px !important;
+  }
+
+  .pos-layout {
+    gap: 10px !important;
+  }
+
+  .pos-screen .product-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .pos-screen .product-tile {
+    aspect-ratio: 1 / 0.88 !important;
+    min-height: 0 !important;
+  }
+
+  .inventory-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .inventory-card {
+    aspect-ratio: auto !important;
+    min-height: 132px !important;
+    padding: 10px !important;
+  }
+
+  .pos-screen .cart-panel {
+    max-height: min(52dvh, 430px) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .main-pane {
+    padding-right: 8px !important;
+    padding-left: 8px !important;
+  }
+
+  .topbar {
+    gap: 6px !important;
+  }
+
+  .sales-channel-select {
+    flex-basis: 148px !important;
+  }
+
+  .sales-channel-select select {
+    font-size: 14px !important;
+  }
+
+  .topbar .top-status span {
+    padding: 0 7px !important;
+    font-size: 12px !important;
+  }
+
+  .pos-screen .product-tile {
+    aspect-ratio: 1 / 1.35 !important;
+  }
+
+  .inventory-card {
+    min-height: 112px !important;
+  }
+}

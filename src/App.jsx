@@ -74,6 +74,7 @@ const defaultSettings = {
   printerIp: "192.168.1.150",
   paperSize: "80mm",
   buzzerEnabled: true,
+  defaultPrintOptions: { kitchen: true, receipt: false },
   sheetId: "1-JJ9u2NjqBrQtgrBb4sUsmwdV36GP25g-rJPrwv8mpI",
   kitchenTemplate: "[ORDER_NO]\nรายการอาหาร: ตัวหนา\n  - ตัวเลือกเสริม: ตัวบางและเยื้อง\nหมายเหตุ\nเวลาสั่ง",
   receiptLogoDataUrl: "",
@@ -302,10 +303,9 @@ export default function App() {
   const [posView, setPosView] = useState("sale");
   const [salesChannel, setSalesChannel] = useState("store");
   const [expenseView, setExpenseView] = useState("entry");
-  const [orderNote, setOrderNote] = useState("");
-  const [printOptions, setPrintOptions] = useState({ kitchen: true, receipt: false });
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [modifierIds, setModifierIds] = useState([]);
+  const [modifierNote, setModifierNote] = useState("");
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
@@ -314,7 +314,8 @@ export default function App() {
   const [cartLeavingKeys, setCartLeavingKeys] = useState([]);
 
   const catalog = useMemo(() => ({ recipes, modifierRecipes }), [recipes, modifierRecipes]);
-  const activeProducts = useMemo(() => products.filter((product) => product.active !== false), [products]);
+  const printOptions = resolvedSettings.defaultPrintOptions || defaultSettings.defaultPrintOptions;
+  const activeProducts = useMemo(() => products.filter((product) => isProductActiveForChannel(product, salesChannel)), [products, salesChannel]);
   const lowStock = useMemo(
     () => ingredients.filter((item) => Number(item.stock) <= Number(item.minimumStock)),
     [ingredients],
@@ -362,26 +363,40 @@ export default function App() {
     }
     setSelectedProduct(product);
     setModifierIds([]);
+    setModifierNote("");
   }
 
-  function addToCart(product, selectedModifierIds) {
+  function addToCart(product, selectedModifierIds, note = "") {
     preserveScrollPosition();
     const selectedModifiers = modifiers.filter((modifier) => selectedModifierIds.includes(modifier.id));
     const unitPrice = getChannelPrice(product, salesChannel) + selectedModifiers.reduce((sum, modifier) => sum + Number(modifier.price || 0), 0);
-    const key = `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setCart((current) => [
-      ...current,
-      {
-        key,
-        product,
-        quantity: 1,
-        unitPrice,
-        modifierIds: selectedModifierIds,
-        modifiers: selectedModifiers,
-        note: "",
-      },
-    ]);
+    const normalizedModifierIds = [...selectedModifierIds].sort();
+    const normalizedNote = note.trim();
+    setCart((current) => {
+      const existing = current.find((item) =>
+        item.product.id === product.id &&
+        normalizeModifierKey(item.modifierIds) === normalizeModifierKey(normalizedModifierIds) &&
+        (item.note || "") === normalizedNote
+      );
+      if (existing) {
+        return current.map((item) => (item.key === existing.key ? { ...item, quantity: item.quantity + 1 } : item));
+      }
+      const key = `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      return [
+        ...current,
+        {
+          key,
+          product,
+          quantity: 1,
+          unitPrice,
+          modifierIds: normalizedModifierIds,
+          modifiers: selectedModifiers,
+          note: normalizedNote,
+        },
+      ];
+    });
     setSelectedProduct(null);
+    setModifierNote("");
   }
 
   function changeQuantity(key, delta) {
@@ -400,10 +415,6 @@ export default function App() {
     });
   }
 
-  function updateCartNote(key, note) {
-    setCart((current) => current.map((item) => (item.key === key ? { ...item, note } : item)));
-  }
-
   async function completeOrder(payment) {
     if (!openShift) {
       alert("กรุณาเปิดกะก่อนเริ่มขาย");
@@ -419,7 +430,7 @@ export default function App() {
       ...makeOrderPayload({ cart, total, ...payment }),
       salesChannel,
       shiftId: openShift.id,
-      note: orderNote,
+      note: "",
       printOptions,
     };
     const movements = makeSaleMovements(requirements, ingredients, order.id);
@@ -429,7 +440,6 @@ export default function App() {
     setStockMovements((current) => [...movements, ...current].slice(0, 500));
     setLastOrder(order);
     setCart([]);
-    setOrderNote("");
     setPaymentOpen(false);
 
     if (printOptions.kitchen) await addLocalJob("printJobs", { type: "KITCHEN", order });
@@ -658,19 +668,15 @@ export default function App() {
               onOpenShift={openNewShift}
               onProduct={openProduct}
               onReprintOrder={queueHistoricalPrint}
-              orderNote={orderNote}
               orders={orders}
               openShift={openShift}
               printOptions={printOptions}
               products={activeProducts}
               posView={posView}
               salesChannel={salesChannel}
-              setOrderNote={setOrderNote}
-              setPrintOptions={setPrintOptions}
               setPosView={setPosView}
               shifts={shifts}
               total={total}
-              updateCartNote={updateCartNote}
             />
           ) : null}
           {activeTab === "dashboard" ? (
@@ -744,8 +750,13 @@ export default function App() {
           modifierIds={modifierIds}
           modifierRecipes={modifierRecipes}
           modifiers={modifiers}
-          onClose={() => setSelectedProduct(null)}
-          onConfirm={() => addToCart(selectedProduct, modifierIds)}
+          onClose={() => {
+            setSelectedProduct(null);
+            setModifierNote("");
+          }}
+          note={modifierNote}
+          onConfirm={() => addToCart(selectedProduct, modifierIds, modifierNote)}
+          onNoteChange={setModifierNote}
           onToggle={(id) =>
             setModifierIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))
           }
@@ -1017,19 +1028,15 @@ function PosScreen({
   onOpenShift,
   onProduct,
   onReprintOrder,
-  orderNote,
   orders,
   openShift,
   printOptions,
   products,
   posView,
   salesChannel,
-  setOrderNote,
-  setPrintOptions,
   setPosView,
   shifts,
   total,
-  updateCartNote,
 }) {
   const [shiftPanelOpen, setShiftPanelOpen] = useState(false);
   const [closedShiftSummary, setClosedShiftSummary] = useState(null);
@@ -1073,18 +1080,6 @@ function PosScreen({
       ) : (
         <div className="pos-layout">
           <section className="menu-area">
-            <div className="pos-menu-toolbar">
-              <label className="pos-search-box">
-                <Search size={18} />
-                <input
-                  disabled={!openShift}
-                  onChange={(event) => setProductSearch(event.target.value)}
-                  placeholder="ค้นหาเมนู"
-                  type="search"
-                  value={productSearch}
-                />
-              </label>
-            </div>
             <div className="category-row">
               {productCategories.map((category) => (
                 <button
@@ -1125,12 +1120,8 @@ function PosScreen({
             changeQuantity={changeQuantity}
             disabled={!openShift}
             onCheckout={onCheckout}
-            orderNote={orderNote}
             printOptions={printOptions}
-            setOrderNote={setOrderNote}
-            setPrintOptions={setPrintOptions}
             total={total}
-            updateCartNote={updateCartNote}
           />
         </div>
       )}
@@ -1171,12 +1162,8 @@ function CartPanel({
   changeQuantity,
   disabled,
   onCheckout,
-  orderNote,
   printOptions,
-  setOrderNote,
-  setPrintOptions,
   total,
-  updateCartNote,
 }) {
   return (
     <aside className="cart-panel">
@@ -1197,6 +1184,7 @@ function CartPanel({
                   <span>{money(item.unitPrice)} บาท</span>
                 </div>
                 {item.modifiers.length ? <p>{item.modifiers.map((modifier) => modifier.label).join(", ")}</p> : null}
+                {item.note ? <p className="cart-item-note">หมายเหตุ: {item.note}</p> : null}
               </div>
               <div className="qty-control">
                 <button onClick={() => changeQuantity(item.key, -1)} type="button"><Minus size={16} /></button>
@@ -1204,25 +1192,11 @@ function CartPanel({
                 <button onClick={() => changeQuantity(item.key, 1)} type="button"><Plus size={16} /></button>
               </div>
             </div>
-            <input
-              aria-label={`หมายเหตุ ${item.product.name}`}
-              onChange={(event) => updateCartNote(item.key, event.target.value)}
-              placeholder="หมายเหตุรายการ เช่น ไม่เผ็ด"
-              value={item.note}
-            />
           </div>
         )) : <div className="empty-state">แตะเมนูเพื่อเริ่มออเดอร์</div>}
       </div>
-      <textarea
-        aria-label="หมายเหตุทั้งออเดอร์"
-        className="order-note"
-        onChange={(event) => setOrderNote(event.target.value)}
-        placeholder="หมายเหตุทั้งออเดอร์"
-        value={orderNote}
-      />
-      <div className="check-row">
-        <label><input checked={printOptions.kitchen} onChange={(event) => setPrintOptions((current) => ({ ...current, kitchen: event.target.checked }))} type="checkbox" /> ใบครัว</label>
-        <label><input checked={printOptions.receipt} onChange={(event) => setPrintOptions((current) => ({ ...current, receipt: event.target.checked }))} type="checkbox" /> ใบเสร็จ</label>
+      <div className="print-default-note">
+        พิมพ์ตามค่าเริ่มต้น: {printOptions.kitchen ? "ใบครัว" : ""}{printOptions.kitchen && printOptions.receipt ? " + " : ""}{printOptions.receipt ? "ใบเสร็จ" : ""}{!printOptions.kitchen && !printOptions.receipt ? "ปิดทั้งหมด" : ""}
       </div>
       <div className="cart-total">
         <span>รวมสุทธิ</span>
@@ -1481,7 +1455,7 @@ function SalesHistory({ orders, shifts }) {
   );
 }
 
-function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, onClose, onConfirm, onToggle, product }) {
+function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, note, onClose, onConfirm, onNoteChange, onToggle, product }) {
   const { backdropRef } = useAnimeModal(onClose, modifierModalChildren);
   const productModifiers = modifiers.filter((modifier) => modifier.productIds.includes(product.id));
   const selectedRecipeLines = modifierRecipes
@@ -1506,6 +1480,14 @@ function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, o
             </button>
           ))}
         </div>
+        <label className="modifier-note-field">
+          หมายเหตุรายการ
+          <textarea
+            onChange={(event) => onNoteChange(event.target.value)}
+            placeholder="เช่น ไม่เผ็ด ขอเกรียมๆ"
+            value={note}
+          />
+        </label>
         {missing.length ? <div className="warning-box">วัตถุดิบไม่พอ: {missing.map((item) => item.name).join(", ")}</div> : null}
         <div className="modal-actions">
           <button className="ghost-button" onClick={onClose} type="button">ยกเลิก</button>
@@ -1943,7 +1925,8 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
       id: productForm.id || `prod_${Date.now()}`,
       channelPrices: normalizeChannelPrices(productForm),
       price: getChannelPrice(productForm, "store"),
-      active: productForm.active !== false,
+      channelAvailability: normalizeChannelAvailability(productForm),
+      active: Object.values(normalizeChannelAvailability(productForm)).some(Boolean),
     };
     setProducts((current) => {
       const exists = current.some((product) => product.id === next.id);
@@ -2137,10 +2120,13 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
         <div className={`channel-price-grid ${hasUnsavedChanges && JSON.stringify(normalizeProductForm(productForm).channelPrices) !== JSON.stringify(normalizeProductForm(savedProductForm).channelPrices) ? "is-dirty" : ""}`}>
           <strong>ราคาตามช่องทางการขาย</strong>
           {salesChannels.map((channel) => (
-            <label key={channel.id}>{channel.label}<input inputMode="decimal" type="number" value={getChannelPrice(productForm, channel.id)} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, channelPrices: { ...normalizeChannelPrices(current), [channel.id]: event.target.value }, price: channel.id === "store" ? event.target.value : current.price })); }} /></label>
+            <label className="channel-price-row" key={channel.id}>
+              <span>{channel.label}</span>
+              <input inputMode="decimal" type="number" value={getChannelPrice(productForm, channel.id)} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, channelPrices: { ...normalizeChannelPrices(current), [channel.id]: event.target.value }, price: channel.id === "store" ? event.target.value : current.price })); }} />
+              <span className="channel-active-toggle"><input checked={normalizeChannelAvailability(productForm)[channel.id] !== false} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, channelAvailability: { ...normalizeChannelAvailability(current), [channel.id]: event.target.checked }, active: true })); }} type="checkbox" /> เปิดขาย</span>
+            </label>
           ))}
         </div>
-        <label className="check-line"><input checked={productForm.active !== false} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, active: event.target.checked })); }} type="checkbox" /> เปิดขาย</label>
         <div className={`recipe-toggle-box ${hasUnsavedChanges && (hasRecipe !== savedHasRecipe || JSON.stringify(normalizeRecipeDraft(recipeDraft)) !== JSON.stringify(normalizeRecipeDraft(savedRecipeDraft))) ? "is-dirty" : ""}`}>
           <label className="check-line"><input checked={hasRecipe} onChange={(event) => { setDeleteArmed(false); setHasRecipe(event.target.checked); }} type="checkbox" /> มีวัตถุดิบในสูตร</label>
           {hasRecipe ? (
@@ -2759,6 +2745,17 @@ function SettingsScreen({ orders, queueLists, refreshQueues, setSettings, settin
     setSettings((current) => ({ ...current, [key]: value }));
   }
 
+  function updateDefaultPrintOption(key, checked) {
+    setSettings((current) => ({
+      ...current,
+      defaultPrintOptions: {
+        ...(defaultSettings.defaultPrintOptions || {}),
+        ...(current.defaultPrintOptions || {}),
+        [key]: checked,
+      },
+    }));
+  }
+
   function updateReceiptLogo(event) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -2787,6 +2784,12 @@ function SettingsScreen({ orders, queueLists, refreshQueues, setSettings, settin
         <label>IP เครื่องพิมพ์ Wi-Fi<input value={settings.printerIp} onChange={(event) => update("printerIp", event.target.value)} /></label>
         <label>ขนาดกระดาษ<select value={settings.paperSize} onChange={(event) => update("paperSize", event.target.value)}><option value="80mm">80mm</option><option value="58mm">58mm</option></select></label>
         <label className="check-line"><input checked={settings.buzzerEnabled} onChange={(event) => update("buzzerEnabled", event.target.checked)} type="checkbox" /> เปิด Kitchen Buzzer</label>
+        <div className="settings-subsection">
+          <strong>ค่าเริ่มต้นการพิมพ์ตอนปิดออเดอร์</strong>
+          <p>เลือกไว้ตรงนี้แทนการโชว์ตัวเลือกในตะกร้า เพื่อให้หน้าขายโล่งและกดชำระเงินได้เร็วขึ้น</p>
+          <label className="check-line"><input checked={settings.defaultPrintOptions?.kitchen !== false} onChange={(event) => updateDefaultPrintOption("kitchen", event.target.checked)} type="checkbox" /> พิมพ์ใบครัวอัตโนมัติ</label>
+          <label className="check-line"><input checked={settings.defaultPrintOptions?.receipt === true} onChange={(event) => updateDefaultPrintOption("receipt", event.target.checked)} type="checkbox" /> พิมพ์ใบเสร็จอัตโนมัติ</label>
+        </div>
       </article>
       <article className="settings-card">
         <Database size={24} />
@@ -3168,7 +3171,19 @@ function normalizeIngredientForm(item) {
 }
 
 function emptyProduct(category = categories[0]) {
-  return { id: "", name: "", category, price: 0, channelPrices: Object.fromEntries(salesChannels.map((channel) => [channel.id, 0])), active: true, color: "bg-white", imageDataUrl: "", imageName: "", imageSize: 0 };
+  return {
+    id: "",
+    name: "",
+    category,
+    price: 0,
+    channelPrices: Object.fromEntries(salesChannels.map((channel) => [channel.id, 0])),
+    channelAvailability: Object.fromEntries(salesChannels.map((channel) => [channel.id, true])),
+    active: true,
+    color: "bg-white",
+    imageDataUrl: "",
+    imageName: "",
+    imageSize: 0,
+  };
 }
 
 function normalizeProductForm(product) {
@@ -3178,6 +3193,7 @@ function normalizeProductForm(product) {
     category: (product?.category || "").trim(),
     price: getChannelPrice(product, "store"),
     channelPrices: normalizeChannelPrices(product),
+    channelAvailability: normalizeChannelAvailability(product),
     active: product?.active !== false,
     color: product?.color || "bg-white",
     imageDataUrl: product?.imageDataUrl || "",
@@ -3211,6 +3227,21 @@ function emptyModifier(products = []) {
 
 function normalizeChannelPrices(product) {
   return Object.fromEntries(salesChannels.map((channel) => [channel.id, getChannelPrice(product, channel.id)]));
+}
+
+function normalizeChannelAvailability(product) {
+  return Object.fromEntries(salesChannels.map((channel) => {
+    const saved = product?.channelAvailability?.[channel.id];
+    return [channel.id, saved === undefined ? product?.active !== false : saved !== false];
+  }));
+}
+
+function isProductActiveForChannel(product, channelId) {
+  return normalizeChannelAvailability(product)[channelId] !== false;
+}
+
+function normalizeModifierKey(ids = []) {
+  return [...ids].sort().join("|");
 }
 
 function getSalesChannelLabel(channelId) {
