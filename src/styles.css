@@ -3445,6 +3445,30 @@ b {
   transform-origin: center;
 }
 
+.modal-backdrop.anime-modal {
+  --overlay-alpha: 0;
+  animation: none;
+  background: rgba(33, 27, 23, var(--overlay-alpha));
+}
+
+.modal-backdrop.anime-modal .modal-card {
+  animation: none;
+}
+
+.modal-backdrop.anime-modal.is-open {
+  --overlay-alpha: 0.52;
+}
+
+.modal-backdrop.anime-modal.is-closing {
+  --overlay-alpha: 0;
+}
+
+.modal-backdrop.anime-modal.is-closing .modal-card,
+.cart-row.is-hidden,
+.expense-entry-row.is-hidden {
+  display: none;
+}
+
 .modifier-modal-card .modal-actions {
   margin-top: 18px;
   padding-top: 10px;

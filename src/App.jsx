@@ -28,7 +28,8 @@ import {
   Wifi,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createLayout } from "animejs";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   categories,
   modifierRecipes as seedModifierRecipes,
@@ -134,6 +135,151 @@ function useAnimatedNumber(value, { duration = 700, prefersReducedMotion = false
   return display;
 }
 
+function useAnimeLayout(rootRef, signature, params) {
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const layoutRef = useRef(null);
+  const readyRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || prefersReducedMotion) return undefined;
+    layoutRef.current = createLayout(root, params);
+    layoutRef.current.record();
+    readyRef.current = false;
+    return () => {
+      layoutRef.current?.revert?.();
+      layoutRef.current = null;
+      readyRef.current = false;
+    };
+  }, [params, prefersReducedMotion, rootRef]);
+
+  useLayoutEffect(() => {
+    if (!layoutRef.current || prefersReducedMotion) return;
+    if (!readyRef.current) {
+      readyRef.current = true;
+      layoutRef.current.record();
+      return;
+    }
+    layoutRef.current.animate();
+  }, [prefersReducedMotion, signature]);
+}
+
+function useAnimeModal(onClose, children) {
+  const backdropRef = useRef(null);
+  const layoutRef = useRef(null);
+  const closeTimerRef = useRef(null);
+  const didCloseRef = useRef(false);
+  const prefersReducedMotion = usePrefersReducedMotion();
+
+  useLayoutEffect(() => {
+    const root = backdropRef.current;
+    if (!root) return undefined;
+    if (prefersReducedMotion) {
+      root.classList.add("is-open");
+      return undefined;
+    }
+
+    const layout = createLayout(root, {
+      children,
+      properties: ["--overlay-alpha"],
+      duration: 240,
+      ease: "outQuad",
+      enterFrom: {
+        transform: "translateY(100px) scale(.25)",
+        opacity: 0,
+        duration: 350,
+        ease: "out(3)",
+      },
+      leaveTo: {
+        transform: "translateY(-100px) scale(.25)",
+        opacity: 0,
+        duration: 280,
+        ease: "out(3)",
+      },
+    });
+    layoutRef.current = layout;
+    layout.update(({ root: layoutRoot }) => {
+      layoutRoot.classList.add("is-open");
+    });
+
+    return () => {
+      if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+      layoutRef.current?.revert?.();
+      layoutRef.current = null;
+    };
+  }, [children, prefersReducedMotion]);
+
+  function closeWithAnimation() {
+    if (didCloseRef.current) return;
+    const root = backdropRef.current;
+    const layout = layoutRef.current;
+    const finish = () => {
+      if (didCloseRef.current) return;
+      didCloseRef.current = true;
+      onClose();
+    };
+
+    if (prefersReducedMotion || !root || !layout) {
+      finish();
+      return;
+    }
+
+    layout.update(({ root: layoutRoot }) => {
+      layoutRoot.classList.add("is-closing");
+    }, {
+      duration: 260,
+      leaveTo: {
+        transform: "translateY(-100px) scale(.25)",
+        opacity: 0,
+        duration: 280,
+        ease: "out(3)",
+      },
+    });
+    closeTimerRef.current = window.setTimeout(finish, 360);
+  }
+
+  return { backdropRef, closeWithAnimation };
+}
+
+const cartLayoutParams = {
+  children: [".cart-row"],
+  duration: 250,
+  ease: "outQuad",
+  enterFrom: {
+    transform: "translateY(100px) scale(.25)",
+    opacity: 0,
+    duration: 350,
+    ease: "out(3)",
+  },
+  leaveTo: {
+    transform: "translateY(-100px) scale(.25)",
+    opacity: 0,
+    duration: 300,
+    ease: "out(3)",
+  },
+};
+
+const expenseLayoutParams = {
+  children: [".expense-entry-row"],
+  duration: 250,
+  ease: "outQuad",
+  enterFrom: {
+    transform: "translateY(100px) scale(.25)",
+    opacity: 0,
+    duration: 350,
+    ease: "out(3)",
+  },
+  leaveTo: {
+    transform: "translateY(-100px) scale(.25)",
+    opacity: 0,
+    duration: 300,
+    ease: "out(3)",
+  },
+};
+
+const modifierModalChildren = [".modal-card", "h3", "p", ".modifier-row", ".modal-actions button"];
+const paymentModalChildren = [".modal-card", "h3", ".payment-tabs button", ".receipt-preview", ".pay-total", ".modal-actions button"];
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("pos");
   const [activeCategory, setActiveCategory] = useState(categories[0]);
@@ -161,7 +307,9 @@ export default function App() {
   const [lastOrder, setLastOrder] = useState(null);
   const [queueLists, setQueueLists] = useState({ print: [], sheet: [] });
   const [cartMotionKey, setCartMotionKey] = useState("");
+  const [cartLeavingKeys, setCartLeavingKeys] = useState([]);
   const cartMotionTimer = useRef(null);
+  const cartLeaveTimers = useRef(new Map());
 
   const catalog = useMemo(() => ({ recipes, modifierRecipes }), [recipes, modifierRecipes]);
   const activeProducts = useMemo(() => products.filter((product) => product.active !== false), [products]);
@@ -178,6 +326,8 @@ export default function App() {
 
   useEffect(() => () => {
     if (cartMotionTimer.current) window.clearTimeout(cartMotionTimer.current);
+    cartLeaveTimers.current.forEach((timer) => window.clearTimeout(timer));
+    cartLeaveTimers.current.clear();
   }, []);
 
   useEffect(() => {
@@ -233,11 +383,26 @@ export default function App() {
       if (cartMotionTimer.current) window.clearTimeout(cartMotionTimer.current);
       cartMotionTimer.current = window.setTimeout(() => setCartMotionKey(""), 320);
     }
-    setCart((current) =>
-      current
-        .map((item) => (item.key === key ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item))
-        .filter((item) => item.quantity > 0),
-    );
+    setCart((current) => {
+      const target = current.find((item) => item.key === key);
+      if (!target) return current;
+
+      const nextQuantity = target.quantity + delta;
+      if (nextQuantity <= 0) {
+        setCartLeavingKeys((keys) => (keys.includes(key) ? keys : [...keys, key]));
+        if (!cartLeaveTimers.current.has(key)) {
+          const timer = window.setTimeout(() => {
+            setCart((latest) => latest.filter((item) => item.key !== key));
+            setCartLeavingKeys((keys) => keys.filter((item) => item !== key));
+            cartLeaveTimers.current.delete(key);
+          }, 560);
+          cartLeaveTimers.current.set(key, timer);
+        }
+        return current;
+      }
+
+      return current.map((item) => (item.key === key ? { ...item, quantity: nextQuantity } : item));
+    });
   }
 
   function updateCartNote(key, note) {
@@ -468,6 +633,7 @@ export default function App() {
             <PosScreen
               activeCategory={activeCategory}
               cart={cart}
+              cartLeavingKeys={cartLeavingKeys}
               cartMotionKey={cartMotionKey}
               catalog={catalog}
               changeQuantity={changeQuantity}
@@ -753,6 +919,7 @@ function DashboardScreen({ expenses, ingredients, orders, products, shifts }) {
 function PosScreen({
   activeCategory,
   cart,
+  cartLeavingKeys,
   cartMotionKey,
   catalog,
   changeQuantity,
@@ -840,6 +1007,7 @@ function PosScreen({
           </section>
           <CartPanel
             cart={cart}
+            cartLeavingKeys={cartLeavingKeys}
             cartMotionKey={cartMotionKey}
             changeQuantity={changeQuantity}
             disabled={!openShift}
@@ -886,6 +1054,7 @@ function PosScreen({
 
 function CartPanel({
   cart,
+  cartLeavingKeys,
   cartMotionKey,
   changeQuantity,
   disabled,
@@ -897,6 +1066,10 @@ function CartPanel({
   total,
   updateCartNote,
 }) {
+  const cartListRef = useRef(null);
+  const cartLayoutSignature = cart.map((item) => `${item.key}:${item.quantity}:${cartLeavingKeys.includes(item.key) ? "leaving" : "visible"}`).join("|");
+  useAnimeLayout(cartListRef, cartLayoutSignature, cartLayoutParams);
+
   return (
     <aside className="cart-panel">
       <div className="panel-title">
@@ -906,9 +1079,9 @@ function CartPanel({
           <p>{cart.length} รายการ</p>
         </div>
       </div>
-      <div className="cart-list">
+      <div className="cart-list" ref={cartListRef}>
         {cart.length ? cart.map((item) => (
-          <div className={`cart-row cart-row-full ${cartMotionKey === item.key ? "is-cart-motion" : ""}`} key={item.key}>
+          <div className={`cart-row cart-row-full ${cartMotionKey === item.key ? "is-cart-motion" : ""} ${cartLeavingKeys.includes(item.key) ? "is-hidden" : ""}`} key={item.key}>
             <div className="cart-row-head">
               <div>
                 <div className="cart-item-title">
@@ -1201,13 +1374,14 @@ function SalesHistory({ orders, shifts }) {
 }
 
 function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, onClose, onConfirm, onToggle, product }) {
+  const { backdropRef, closeWithAnimation } = useAnimeModal(onClose, modifierModalChildren);
   const productModifiers = modifiers.filter((modifier) => modifier.productIds.includes(product.id));
   const selectedRecipeLines = modifierRecipes
     .filter((recipe) => modifierIds.includes(recipe.modifierId))
     .map((recipe) => ({ ingredientId: recipe.ingredientId, quantity: Math.max(0, recipe.quantity) }));
   const missing = getMissingIngredients(selectedRecipeLines, ingredients);
   return (
-    <div className="modal-backdrop">
+    <div className="modal-backdrop anime-modal" ref={backdropRef}>
       <div className="modal-card modifier-modal-card">
         <h3>{product.name}</h3>
         <p>เลือกคำสั่งพิเศษก่อนเพิ่มลงตะกร้า</p>
@@ -1226,7 +1400,7 @@ function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, o
         </div>
         {missing.length ? <div className="warning-box">วัตถุดิบไม่พอ: {missing.map((item) => item.name).join(", ")}</div> : null}
         <div className="modal-actions">
-          <button className="ghost-button" onClick={onClose} type="button">ยกเลิก</button>
+          <button className="ghost-button" onClick={closeWithAnimation} type="button">ยกเลิก</button>
           <button className="primary-button" disabled={missing.length > 0} onClick={onConfirm} type="button">เพิ่มลงตะกร้า</button>
         </div>
       </div>
@@ -1235,11 +1409,12 @@ function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, o
 }
 
 function PaymentModal({ cart, onClose, onSubmit, total }) {
+  const { backdropRef, closeWithAnimation } = useAnimeModal(onClose, paymentModalChildren);
   const [method, setMethod] = useState("TRANSFER");
   const [cash, setCash] = useState(0);
   const change = Math.max(0, cash - total);
   return (
-    <div className="modal-backdrop">
+    <div className="modal-backdrop anime-modal" ref={backdropRef}>
       <div className="modal-card payment-card">
         <h3>ชำระเงิน</h3>
         <div className="payment-tabs">
@@ -1267,7 +1442,7 @@ function PaymentModal({ cart, onClose, onSubmit, total }) {
           </>
         ) : <div className="transfer-ready"><Check size={20} /> เงินโอนสำเร็จได้ทันทีเมื่อกดยืนยัน</div>}
         <div className="modal-actions">
-          <button className="ghost-button" onClick={onClose} type="button">ยกเลิก</button>
+          <button className="ghost-button" onClick={closeWithAnimation} type="button">ยกเลิก</button>
           <button
             className="primary-button"
             disabled={method === "CASH" && cash < total}
@@ -2123,9 +2298,19 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
   const firstIngredientName = ingredients[0]?.name || "";
   const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [rows, setRows] = useState(() => Array.from({ length: 1 }, () => blankExpenseRow(firstIngredientId, firstIngredientName)));
+  const [leavingRowIds, setLeavingRowIds] = useState([]);
   const [ingredientModalOpen, setIngredientModalOpen] = useState(false);
+  const expenseTableRef = useRef(null);
+  const expenseRowTimers = useRef(new Map());
   const previewItems = rows.map((row) => buildExpenseItem(row, ingredients, purchaseUnits)).filter(Boolean);
   const totalAmount = previewItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  const expenseLayoutSignature = rows.map((row) => `${row.id}:${leavingRowIds.includes(row.id) ? "leaving" : "visible"}`).join("|");
+  useAnimeLayout(expenseTableRef, expenseLayoutSignature, expenseLayoutParams);
+
+  useEffect(() => () => {
+    expenseRowTimers.current.forEach((timer) => window.clearTimeout(timer));
+    expenseRowTimers.current.clear();
+  }, []);
 
   function updateRow(id, patch) {
     setRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
@@ -2133,6 +2318,17 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
 
   function addRow() {
     setRows((current) => [...current, blankExpenseRow(firstIngredientId, firstIngredientName)]);
+  }
+
+  function removeRow(id) {
+    setLeavingRowIds((current) => (current.includes(id) ? current : [...current, id]));
+    if (expenseRowTimers.current.has(id)) return;
+    const timer = window.setTimeout(() => {
+      setRows((current) => current.filter((row) => row.id !== id));
+      setLeavingRowIds((current) => current.filter((rowId) => rowId !== id));
+      expenseRowTimers.current.delete(id);
+    }, 560);
+    expenseRowTimers.current.set(id, timer);
   }
 
   async function submitExpenses() {
@@ -2187,7 +2383,7 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
           </label>
         </div>
 
-        <div className="expense-table">
+        <div className="expense-table" ref={expenseTableRef}>
           <div className="expense-table-head">
             <span>ประเภท</span>
             <span>รายการ</span>
@@ -2200,8 +2396,9 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
           {rows.map((row, index) => (
             <ExpenseEntryRow
               ingredients={ingredients}
+              isLeaving={leavingRowIds.includes(row.id)}
               key={row.id}
-              onRemove={() => setRows((current) => current.filter((item) => item.id !== row.id))}
+              onRemove={() => removeRow(row.id)}
               purchaseUnits={purchaseUnits}
               row={row}
               rowNumber={index + 1}
@@ -2239,7 +2436,7 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
   );
 }
 
-function ExpenseEntryRow({ ingredients, onRemove, purchaseUnits, row, rowNumber, updateRow }) {
+function ExpenseEntryRow({ ingredients, isLeaving, onRemove, purchaseUnits, row, rowNumber, updateRow }) {
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const selectedIngredient = ingredients.find((item) => item.id === row.ingredientId);
   const availableUnits = purchaseUnits.filter((unit) => unit.ingredientId === row.ingredientId);
@@ -2276,7 +2473,7 @@ function ExpenseEntryRow({ ingredients, onRemove, purchaseUnits, row, rowNumber,
   }
 
   return (
-    <div className={`expense-entry-row ${row.mode === "custom" ? "is-custom" : ""}`}>
+    <div className={`expense-entry-row ${row.mode === "custom" ? "is-custom" : ""} ${isLeaving ? "is-hidden" : ""}`}>
       <div className="expense-mode-toggle" aria-label={`ประเภทรายจ่ายแถว ${rowNumber}`}>
         <button className={row.mode === "ingredient" ? "is-active" : ""} onClick={() => selectMode("ingredient")} type="button">วัตถุดิบ</button>
         <button className={row.mode === "custom" ? "is-active" : ""} onClick={() => selectMode("custom")} type="button">ทั่วไป</button>
@@ -2390,6 +2587,7 @@ function ExpenseEntryRow({ ingredients, onRemove, purchaseUnits, row, rowNumber,
 }
 
 function NewIngredientModal({ onClose, onSubmit }) {
+  const { backdropRef, closeWithAnimation } = useAnimeModal(onClose, modifierModalChildren);
   const [form, setForm] = useState({ name: "", unit: "ชิ้น", purchaseLabel: "แพ็ค", ratio: "1" });
 
   function submit(event) {
@@ -2404,7 +2602,7 @@ function NewIngredientModal({ onClose, onSubmit }) {
   }
 
   return (
-    <div className="modal-backdrop">
+    <div className="modal-backdrop anime-modal" ref={backdropRef}>
       <form className="modal-card ingredient-modal-card" onSubmit={submit}>
         <h3>เพิ่มวัตถุดิบใหม่</h3>
         <div className="modal-form-grid">
@@ -2414,7 +2612,7 @@ function NewIngredientModal({ onClose, onSubmit }) {
           <label>1 หน่วยซื้อ เท่ากับ<input inputMode="decimal" min="0" type="number" value={form.ratio} onChange={(event) => setForm((current) => ({ ...current, ratio: event.target.value }))} /></label>
         </div>
         <div className="modal-actions">
-          <button className="ghost-button" onClick={onClose} type="button">ยกเลิก</button>
+          <button className="ghost-button" onClick={closeWithAnimation} type="button">ยกเลิก</button>
           <button className="primary-button" type="submit">เพิ่มวัตถุดิบ</button>
         </div>
       </form>
