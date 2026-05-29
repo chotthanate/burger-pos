@@ -156,7 +156,7 @@ function buildRawBtKitchenText(order) {
     ...buildRawBtItemLines(order, { includePrice: false }),
     "------------------------------",
     "SEND TO KITCHEN",
-    "\n\n\n",
+    "\n\n\n\x1dV\x00",
   ].join("\n");
 }
 
@@ -171,7 +171,7 @@ function buildRawBtReceiptText(order) {
     alignLine("TOTAL", `${money(order.totalAmount)} THB`),
     order.paymentMethod === "CASH" ? alignLine("CASH", `${money(order.cashReceived)} THB`) : "PAID BY TRANSFER",
     order.paymentMethod === "CASH" ? alignLine("CHANGE", `${money(order.changeDue)} THB`) : "",
-    "\n\n\n",
+    "\n\n\n\x1dV\x00",
   ].filter(Boolean).join("\n");
 }
 
@@ -271,7 +271,7 @@ function launchRawBtText(body) {
   if (typeof window === "undefined") {
     throw new Error("RawBT Android Intent ใช้ได้เฉพาะในเบราว์เซอร์บน Android");
   }
-  window.location.href = `rawbt:${encodeURIComponent(stripEscPosCommands(body))}`;
+  window.location.href = `rawbt:${encodeURIComponent(body)}`;
 }
 
 function base64EncodeBytes(bytes) {
