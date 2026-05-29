@@ -55,6 +55,7 @@ import {
   money,
 } from "./lib/posLogic.js";
 import { makePrinterTestJob, printThaiCodePageTest, sendPrintJob, testPrintBridge } from "./lib/printBridge.js";
+import { isNativeThaiPrinterAvailable, printAndroidThaiPrototype } from "./lib/nativeThaiPrinter.js";
 import { usePersistentState } from "./lib/storage.js";
 
 const navItems = [
@@ -2916,9 +2917,11 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
   const bridgeMethodValue = settings.bridgeMethod === "RAWBT_INTENT" ? "RAWBT_INTENT" : /^wss?:\/\//i.test(settings.bridgeUrl || "") ? "RAWBT_WS" : settings.bridgeMethod || "POST";
   const sections = [
     { id: "printer", label: "เครื่องพิมพ์", icon: Printer },
+    { id: "thaiPrototype", label: "ทดสอบพิมพ์ไทย", icon: FileImage },
     { id: "sync", label: "Google Sheet", icon: Database },
     { id: "orders", label: "ประวัติออร์เดอร์", icon: ReceiptText },
   ];
+  const nativeThaiPrinterAvailable = isNativeThaiPrinterAvailable();
 
   function update(key, value) {
     setSettings((current) => ({ ...current, [key]: value }));
@@ -3030,6 +3033,23 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
     }
   }
 
+  async function runNativeThaiPrint(type) {
+    setPrinterBusy(true);
+    setPrinterNotice("");
+    try {
+      const result = await printAndroidThaiPrototype({
+        type,
+        host: settings.printerIp,
+        port: settings.printerPort || "9100",
+      });
+      setPrinterNotice(`ส่งงานพิมพ์ไทยสำเร็จ (${result?.bytesWritten || 0} bytes)`);
+    } catch (error) {
+      setPrinterNotice(`พิมพ์ไทยไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setPrinterBusy(false);
+    }
+  }
+
   return (
     <section className="settings-page">
       <div className="settings-section-tabs">
@@ -3098,6 +3118,23 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
         <label>Sheet ID<input value={settings.sheetId} onChange={(event) => update("sheetId", event.target.value)} /></label>
         <div className="queue-line"><RefreshCw size={18} /> รอ sync {queueLists.sheet.filter((job) => job.status !== "SYNCED").length} รายการ</div>
         <QueueList jobs={queueLists.sheet} onDone={(job) => markFirstJobDone("sheetSyncJobs", job)} />
+      </article>
+      ) : null}
+      {activeSection === "thaiPrototype" ? (
+      <article className="settings-card settings-card-wide thai-printer-prototype">
+        <FileImage size={24} />
+        <h3>Prototype พิมพ์ภาษาไทยผ่าน Android App</h3>
+        <p>โหมดนี้สร้างใบพิมพ์เป็นรูปภาพจาก canvas แล้วส่ง ESC/POS bitmap เข้า POS-8390 ผ่าน Wi-Fi/LAN port 9100 เพื่อทดสอบภาษาไทย โลโก้ และการตัดกระดาษ</p>
+        <div className="prototype-status">
+          {nativeThaiPrinterAvailable ? "พร้อมใช้งานใน Android App" : "ต้องเปิดจาก Android App ที่ build ด้วย Capacitor"}
+        </div>
+        <label>IP เครื่องพิมพ์ Wi-Fi<input value={settings.printerIp} onChange={(event) => update("printerIp", event.target.value)} /></label>
+        <label>Port เครื่องพิมพ์<input inputMode="numeric" value={settings.printerPort || "9100"} onChange={(event) => update("printerPort", event.target.value)} /></label>
+        <div className="settings-printer-actions">
+          <button className="primary-button" disabled={printerBusy || !nativeThaiPrinterAvailable} onClick={() => runNativeThaiPrint("RECEIPT")} type="button"><Printer size={18} /> พิมพ์ใบเสร็จไทยทดสอบ</button>
+          <button className="ghost-button" disabled={printerBusy || !nativeThaiPrinterAvailable} onClick={() => runNativeThaiPrint("KITCHEN")} type="button"><ReceiptText size={18} /> พิมพ์ใบออร์เดอร์ไทยทดสอบ</button>
+        </div>
+        {printerNotice ? <div className={printerNotice.includes("สำเร็จ") ? "inline-confirm" : "inline-warning"}>{printerNotice}</div> : null}
       </article>
       ) : null}
       {activeSection === "printer" ? (

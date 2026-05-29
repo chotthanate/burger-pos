@@ -6,9 +6,15 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "build:android": "vite build --base ./",
+    "preview": "vite preview --host 0.0.0.0",
+    "cap:sync": "npm run build:android && cap sync android",
+    "cap:open": "cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/cli": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
     "@supabase/supabase-js": "^2.89.0",
     "@vitejs/plugin-react": "^5.1.1",
     "animejs": "^4.4.1",
