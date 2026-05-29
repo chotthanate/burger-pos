@@ -21,7 +21,7 @@ export async function sendPrintJob(job, settings = {}) {
   });
 
   if (method === "RAWBT_INTENT") {
-    launchRawBtIntent(body, settings);
+    launchRawBtText(body);
     return true;
   }
 
@@ -56,7 +56,7 @@ export async function testPrintBridge(settings = {}) {
   const bridgeUrl = settings.bridgeUrl || "http://127.0.0.1:8080/print";
   const method = normalizeBridgeMethod(settings.bridgeMethod, bridgeUrl);
   if (method === "RAWBT_INTENT") {
-    launchRawBtIntent("ทดสอบเครื่องพิมพ์\nRawBT Android\nภาษาไทยควรอ่านได้\nเบอร์เกอร์ 1 ชิ้น 69 บาท", settings);
+    launchRawBtText("ทดสอบเครื่องพิมพ์\nRawBT Android\nภาษาไทยควรอ่านได้\nเบอร์เกอร์ 1 ชิ้น 69 บาท");
     return true;
   }
   if (method === "RAWBT_WS") {
@@ -77,7 +77,7 @@ export async function printThaiCodePageTest(settings = {}) {
   if (method !== "RAWBT_INTENT") {
     throw new Error("ทดสอบภาษาไทยใช้กับ Android RawBT Intent เท่านั้น");
   }
-  launchRawBtIntent("ทดสอบภาษาไทยแบบรูปภาพ\nใบเสร็จ เบอร์เกอร์ ราคา 123 บาท\nเงินทอน 7 บาท\nถ้าบรรทัดนี้อ่านได้ แปลว่าใช้โหมด Bitmap สำเร็จ", settings);
+  launchRawBtText("ทดสอบภาษาไทยผ่าน RawBT\nใบเสร็จ เบอร์เกอร์ ราคา 123 บาท\nเงินทอน 7 บาท\nถ้าบรรทัดนี้อ่านได้ แปลว่า RawBT จัดการภาษาไทยสำเร็จ");
   return true;
 }
 
@@ -179,12 +179,11 @@ function normalizeBridgeMethod(method, bridgeUrl) {
   return method || "POST";
 }
 
-function launchRawBtIntent(body, settings = {}) {
+function launchRawBtText(body) {
   if (typeof window === "undefined") {
     throw new Error("RawBT Android Intent ใช้ได้เฉพาะในเบราว์เซอร์บน Android");
   }
-  const encoded = base64EncodeBytes(buildBitmapEscPosBytes(body, settings));
-  window.location.href = `rawbt:base64,${encoded}`;
+  window.location.href = `rawbt:${encodeURIComponent(stripEscPosCommands(body))}`;
 }
 
 function base64EncodeBytes(bytes) {

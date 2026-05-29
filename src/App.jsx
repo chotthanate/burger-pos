@@ -2946,7 +2946,7 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
       thaiCodePage: current.thaiCodePage || "42",
       bridgeUrl: "ws://127.0.0.1:40213/",
     }));
-    setPrinterNotice("ใช้ preset POS-8390: Android RawBT Intent, กระดาษ 80mm");
+    setPrinterNotice("ใช้ preset POS-8390: Android RawBT Text, กระดาษ 80mm");
   }
 
   function updateBridgeMethod(value) {
@@ -3061,7 +3061,7 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
           <option value="USB">USB ผ่านแอปตัวกลาง</option>
         </select></label>
         <label>RawBT / Local bridge URL<input value={settings.bridgeUrl} onChange={(event) => update("bridgeUrl", event.target.value)} /></label>
-        <label>วิธีส่งข้อมูล<select value={bridgeMethodValue} onChange={(event) => updateBridgeMethod(event.target.value)}><option value="RAWBT_INTENT">Android RawBT Direct</option><option value="RAWBT_WS">RawBT WebSocket</option><option value="POST">POST text/plain</option><option value="GET">GET query data=</option></select></label>
+        <label>วิธีส่งข้อมูล<select value={bridgeMethodValue} onChange={(event) => updateBridgeMethod(event.target.value)}><option value="RAWBT_INTENT">Android RawBT Text</option><option value="RAWBT_WS">RawBT WebSocket</option><option value="POST">POST text/plain</option><option value="GET">GET query data=</option></select></label>
         <label>IP เครื่องพิมพ์ Wi-Fi<input value={settings.printerIp} onChange={(event) => update("printerIp", event.target.value)} /></label>
         <label>Port เครื่องพิมพ์<input inputMode="numeric" value={settings.printerPort || "9100"} onChange={(event) => update("printerPort", event.target.value)} /></label>
         <label>Thai code page<select value={settings.thaiCodePage || defaultSettings.thaiCodePage} onChange={(event) => update("thaiCodePage", event.target.value)}><option value="42">42 - Thai ทั่วไป</option><option value="20">20 - KU42 Thai</option><option value="21">21 - TIS11 Thai</option><option value="26">26 - TIS18 Thai</option><option value="47">47 - WPC1253 fallback</option></select></label>
@@ -3070,7 +3070,7 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
         <div className="printer-help-box">
           <strong>หมายเหตุสำหรับรุ่น POS-8390</strong>
           <p>เลข 8390-V3.2 ในคู่มือมีแนวโน้มเป็นเวอร์ชันคู่มือ/เฟิร์มแวร์/แพ็กเกจ ไม่ใช่เลข IP หรือ port ของเครื่องพิมพ์</p>
-          <p>บน Android Tablet แนะนำใช้ <strong>Android RawBT Intent</strong> เพราะเป็นวิธีที่ RawBT เปิดให้เว็บเรียกแอปโดยตรง</p>
+          <p>บน Android Tablet แนะนำใช้ <strong>Android RawBT Text</strong> เพราะเป็นวิธีที่ RawBT เปิดให้เว็บเรียกแอปโดยตรงและให้ RawBT จัดการภาษาไทยเอง</p>
           <p>ถ้าใช้ Server for RawBT ให้เปิด Websocket API แล้วใช้ URL <strong>ws://127.0.0.1:40213/</strong> โดย 127.0.0.1 คือแท็บเล็ตเครื่องที่เปิดเว็บอยู่</p>
           <p>ถ้าตรวจการเชื่อมต่อไม่ผ่าน ให้ลองเปลี่ยน URL เป็น <strong>ws://localhost:40213/</strong> หรือใช้ IP ของแท็บเล็ต เช่น <strong>ws://192.168.1.xxx:40213/</strong></p>
           <a href="http://www.barcoderead.net/printer/8390.zip" rel="noreferrer" target="_blank">ดาวน์โหลด driver / utility จากคู่มือ</a>
