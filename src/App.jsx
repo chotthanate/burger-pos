@@ -3061,7 +3061,7 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
           <option value="USB">USB ผ่านแอปตัวกลาง</option>
         </select></label>
         <label>RawBT / Local bridge URL<input value={settings.bridgeUrl} onChange={(event) => update("bridgeUrl", event.target.value)} /></label>
-        <label>วิธีส่งข้อมูล<select value={bridgeMethodValue} onChange={(event) => updateBridgeMethod(event.target.value)}><option value="RAWBT_INTENT">Android RawBT Intent</option><option value="RAWBT_WS">RawBT WebSocket</option><option value="POST">POST text/plain</option><option value="GET">GET query data=</option></select></label>
+        <label>วิธีส่งข้อมูล<select value={bridgeMethodValue} onChange={(event) => updateBridgeMethod(event.target.value)}><option value="RAWBT_INTENT">Android RawBT Direct</option><option value="RAWBT_WS">RawBT WebSocket</option><option value="POST">POST text/plain</option><option value="GET">GET query data=</option></select></label>
         <label>IP เครื่องพิมพ์ Wi-Fi<input value={settings.printerIp} onChange={(event) => update("printerIp", event.target.value)} /></label>
         <label>Port เครื่องพิมพ์<input inputMode="numeric" value={settings.printerPort || "9100"} onChange={(event) => update("printerPort", event.target.value)} /></label>
         <label>Thai code page<select value={settings.thaiCodePage || defaultSettings.thaiCodePage} onChange={(event) => update("thaiCodePage", event.target.value)}><option value="42">42 - Thai ทั่วไป</option><option value="20">20 - KU42 Thai</option><option value="21">21 - TIS11 Thai</option><option value="26">26 - TIS18 Thai</option><option value="47">47 - WPC1253 fallback</option></select></label>

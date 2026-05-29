@@ -184,7 +184,7 @@ function launchRawBtIntent(body, settings = {}) {
     throw new Error("RawBT Android Intent ใช้ได้เฉพาะในเบราว์เซอร์บน Android");
   }
   const encoded = base64EncodeBytes(buildBitmapEscPosBytes(body, settings));
-  window.location.href = `intent:base64,${encoded}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`;
+  window.location.href = `rawbt:base64,${encoded}`;
 }
 
 function base64EncodeBytes(bytes) {
