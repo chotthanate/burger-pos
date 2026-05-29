@@ -197,10 +197,10 @@ function base64EncodeBytes(bytes) {
 
 function buildBitmapEscPosBytes(text, settings = {}) {
   if (typeof document === "undefined") return encodeEscPosText(text);
-  const width = settings.paperSize === "58mm" ? 384 : 576;
-  const paddingX = 24;
-  const paddingY = 20;
-  const fontSize = settings.paperSize === "58mm" ? 24 : 28;
+  const width = settings.paperSize === "58mm" ? 384 : 384;
+  const paddingX = 16;
+  const paddingY = 14;
+  const fontSize = settings.paperSize === "58mm" ? 24 : 26;
   const lineHeight = Math.round(fontSize * 1.45);
   const printableWidth = width - paddingX * 2;
   const probe = document.createElement("canvas");
@@ -224,13 +224,9 @@ function buildBitmapEscPosBytes(text, settings = {}) {
     context.fillText(line, paddingX, y);
   });
   const image = context.getImageData(0, 0, width, height);
-  const raster = imageDataToRasterBytes(image, width, height);
-  const widthBytes = Math.ceil(width / 8);
+  const raster = imageDataToEscStarBytes(image, width, height);
   return [
     0x1b, 0x40,
-    0x1d, 0x76, 0x30, 0x00,
-    widthBytes & 0xff, (widthBytes >> 8) & 0xff,
-    height & 0xff, (height >> 8) & 0xff,
     ...raster,
     0x0a, 0x0a, 0x0a,
     0x1d, 0x56, 0x00,
@@ -278,27 +274,37 @@ function stripEscPosCommands(value) {
   return output.replace(/\n{4,}/g, "\n\n");
 }
 
-function imageDataToRasterBytes(image, width, height) {
-  const widthBytes = Math.ceil(width / 8);
-  const bytes = new Array(widthBytes * height).fill(0);
-  for (let y = 0; y < height; y += 1) {
-    for (let xByte = 0; xByte < widthBytes; xByte += 1) {
-      let byte = 0;
-      for (let bit = 0; bit < 8; bit += 1) {
-        const x = xByte * 8 + bit;
-        if (x >= width) continue;
-        const offset = (y * width + x) * 4;
-        const r = image.data[offset];
-        const g = image.data[offset + 1];
-        const b = image.data[offset + 2];
-        const alpha = image.data[offset + 3];
-        const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-        if (alpha > 10 && luminance < 190) byte |= 0x80 >> bit;
+function imageDataToEscStarBytes(image, width, height) {
+  const bytes = [];
+  const columns = width;
+  const nL = columns & 0xff;
+  const nH = (columns >> 8) & 0xff;
+  for (let y = 0; y < height; y += 24) {
+    bytes.push(0x1b, 0x2a, 0x21, nL, nH);
+    for (let x = 0; x < columns; x += 1) {
+      for (let slice = 0; slice < 3; slice += 1) {
+        let byte = 0;
+        for (let bit = 0; bit < 8; bit += 1) {
+          const pixelY = y + slice * 8 + bit;
+          if (pixelY >= height) continue;
+          if (isDarkPixel(image, width, x, pixelY)) byte |= 0x80 >> bit;
+        }
+        bytes.push(byte);
       }
-      bytes[y * widthBytes + xByte] = byte;
     }
+    bytes.push(0x0a);
   }
   return bytes;
+}
+
+function isDarkPixel(image, width, x, y) {
+  const offset = (y * width + x) * 4;
+  const r = image.data[offset];
+  const g = image.data[offset + 1];
+  const b = image.data[offset + 2];
+  const alpha = image.data[offset + 3];
+  const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+  return alpha > 10 && luminance < 190;
 }
 
 function buildPrinterPrefix(settings = {}) {
