@@ -4,6 +4,8 @@ import {
   BarChart3,
   Bell,
   Check,
+  ChevronDown,
+  ChevronUp,
   ClipboardList,
   CreditCard,
   Database,
@@ -56,7 +58,7 @@ import { usePersistentState } from "./lib/storage.js";
 const navItems = [
   { id: "pos", label: "ขาย", icon: Store, children: [{ id: "sales-history", label: "ประวัติขาย", tab: "pos", view: "history" }] },
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
-  { id: "menu", label: "เมนู/สูตร", icon: Utensils, children: [{ id: "modifiers", label: "จัดการตัวเลือกเสริม", tab: "modifiers" }] },
+  { id: "menu", label: "รายการสินค้า", icon: Utensils, children: [{ id: "categories", label: "หมวดหมู่", tab: "categories" }, { id: "modifiers", label: "จัดการตัวเลือกเสริม", tab: "modifiers" }] },
   { id: "inventory", label: "วัตถุดิบ", icon: Package },
   { id: "expense", label: "รายจ่าย", icon: ReceiptText, children: [{ id: "expense-history", label: "ประวัติรายจ่าย", tab: "expense", view: "history" }] },
   { id: "settings", label: "ตั้งค่า", icon: Settings },
@@ -705,9 +707,16 @@ export default function App() {
               products={products}
               recipes={recipes}
               deleteProduct={deleteProduct}
-              setMenuCategories={setMenuCategories}
               setProducts={setProducts}
               setRecipes={setRecipes}
+            />
+          ) : null}
+          {activeTab === "categories" ? (
+            <CategoryManagementScreen
+              menuCategories={menuCategories}
+              products={products}
+              setMenuCategories={setMenuCategories}
+              setProducts={setProducts}
             />
           ) : null}
           {activeTab === "modifiers" ? (
@@ -779,7 +788,8 @@ function Header({ activeTab, expenseView, lowStock, onOpenNav, onRequestCloseShi
     pos: posView === "history" ? "ประวัติการขาย" : "ขายหน้าร้าน",
     dashboard: "Dashboard สรุปยอดขาย",
     inventory: "เช็ควัตถุดิบ",
-    menu: "เมนูและสูตรอาหาร",
+    menu: "รายการสินค้า",
+    categories: "หมวดหมู่สินค้า",
     modifiers: "จัดการตัวเลือกเสริม",
     expense: expenseView === "history" ? "ประวัติรายจ่าย" : "บันทึกรายจ่าย",
     settings: "ตั้งค่าระบบ",
@@ -839,14 +849,15 @@ function Header({ activeTab, expenseView, lowStock, onOpenNav, onRequestCloseShi
 function MobileSubnav({ activeTab, expenseView, navigateMain, navigateSub }) {
   if (activeTab === "pos") return null;
   const menuChildren = [
-    { id: "menu-main", label: "เมนู/สูตร", tab: "menu" },
+    { id: "menu-main", label: "รายการสินค้า", tab: "menu" },
+    { id: "categories-main", label: "หมวดหมู่", tab: "categories" },
     { id: "modifiers-main", label: "ตัวเลือกเสริม", tab: "modifiers" },
   ];
   const expenseChildren = [
     { id: "expense-entry-main", label: "บันทึกรายจ่าย", tab: "expense", view: "entry" },
     { id: "expense-history-main", label: "ประวัติรายจ่าย", tab: "expense", view: "history" },
   ];
-  const items = activeTab === "menu" || activeTab === "modifiers" ? menuChildren : activeTab === "expense" ? expenseChildren : [];
+  const items = activeTab === "menu" || activeTab === "categories" || activeTab === "modifiers" ? menuChildren : activeTab === "expense" ? expenseChildren : [];
   if (!items.length) return null;
   return (
     <div className="mobile-child-tabs">
@@ -1839,12 +1850,11 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
   );
 }
 
-function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products, recipes, setMenuCategories, setProducts, setRecipes }) {
+function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products, recipes, setProducts, setRecipes }) {
   const [selectedId, setSelectedId] = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [categoryNotice, setCategoryNotice] = useState("");
+  const [productActionNotice, setProductActionNotice] = useState("");
   const selected = selectedId ? products.find((product) => product.id === selectedId) : null;
   const [productForm, setProductForm] = useState(emptyProduct());
   const [recipeDraft, setRecipeDraft] = useState({});
@@ -1890,6 +1900,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
     setEditorOpen(true);
     setDeleteArmed(false);
     setEditorNotice("");
+    setProductActionNotice("");
   }
 
   function startNewProduct() {
@@ -1905,6 +1916,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
     setEditorOpen(true);
     setDeleteArmed(false);
     setEditorNotice("");
+    setProductActionNotice("");
   }
 
   function closeEditor() {
@@ -1916,6 +1928,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
     setEditorOpen(false);
     setDeleteArmed(false);
     setEditorNotice("");
+    setProductActionNotice("");
   }
 
   function saveProduct(event) {
@@ -1975,31 +1988,6 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
     setProductForm((current) => ({ ...current, imageDataUrl: "", imageName: "", imageSize: 0 }));
   }
 
-  function addMenuCategory(event) {
-    event.preventDefault();
-    const name = newCategoryName.trim();
-    if (!name) return;
-    if (productCategories.includes(name)) {
-      setCategoryNotice("มีหมวดนี้อยู่แล้ว");
-      window.setTimeout(() => setCategoryNotice(""), 1600);
-      return;
-    }
-    setMenuCategories((current) => [...current, name]);
-    setNewCategoryName("");
-    setCategoryFilter(name);
-  }
-
-  function removeMenuCategory(category) {
-    const isUsed = products.some((product) => product.category === category);
-    if (isUsed) {
-      setCategoryNotice("ลบไม่ได้: ยังมีเมนูอยู่ในหมวดนี้");
-      window.setTimeout(() => setCategoryNotice(""), 1800);
-      return;
-    }
-    setMenuCategories((current) => current.filter((item) => item !== category));
-    if (categoryFilter === category) setCategoryFilter("all");
-  }
-
   function addRecipeLine() {
     const nextIngredient = ingredients.find((ingredient) => !recipeDraft[ingredient.id]);
     if (!nextIngredient) return;
@@ -2022,7 +2010,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
     if (!selected) return;
     if (!deleteArmed) {
       setDeleteArmed(true);
-      setEditorNotice("กดลบอีกครั้งเพื่อยืนยัน");
+      setProductActionNotice("กด “ยืนยันลบ” อีกครั้งเพื่อลบสินค้า");
       return;
     }
     deleteProduct(selected.id);
@@ -2033,6 +2021,23 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
     setEditorOpen(false);
     setDeleteArmed(false);
     setEditorNotice("");
+    setProductActionNotice("");
+  }
+
+  function moveProduct(productId, direction) {
+    setDeleteArmed(false);
+    const orderedVisible = categoryFilter === "all" ? products : products.filter((product) => product.category === categoryFilter);
+    const currentVisibleIndex = orderedVisible.findIndex((product) => product.id === productId);
+    const targetVisible = orderedVisible[currentVisibleIndex + direction];
+    if (!targetVisible) return;
+    setProducts((current) => {
+      const next = [...current];
+      const fromIndex = next.findIndex((product) => product.id === productId);
+      const toIndex = next.findIndex((product) => product.id === targetVisible.id);
+      if (fromIndex < 0 || toIndex < 0) return current;
+      [next[fromIndex], next[toIndex]] = [next[toIndex], next[fromIndex]];
+      return next;
+    });
   }
 
   return (
@@ -2052,46 +2057,60 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
           ))}
           <button className="new-record-button toolbar-add-button" onClick={startNewProduct} type="button">
             <Plus size={20} />
-            เพิ่มเมนูใหม่
+            เพิ่มสินค้าใหม่
           </button>
         </div>
-        <form className="category-manager" onSubmit={addMenuCategory}>
-          <div>
-            <strong>หมวดหมู่เมนู</strong>
-            {categoryNotice ? <small>{categoryNotice}</small> : null}
-          </div>
-          <input
-            aria-label="เพิ่มหมวดหมู่เมนู"
-            onChange={(event) => setNewCategoryName(event.target.value)}
-            placeholder="เพิ่มหมวด เช่น เบอร์เกอร์, เครื่องดื่ม"
-            value={newCategoryName}
-          />
-          <button className="ghost-button" type="submit">เพิ่มหมวด</button>
-          <div className="category-chip-row">
-            {productCategories.map((category) => (
-              <span className="category-chip" key={category}>
-                {category}
-                <button aria-label={`ลบหมวด ${category}`} onClick={() => removeMenuCategory(category)} type="button"><Trash2 size={14} /></button>
-              </span>
-            ))}
-          </div>
-        </form>
+        {productActionNotice ? <div className="inline-confirm">{productActionNotice}</div> : null}
         <div className="product-admin-grid">
-          {visibleProducts.map((product) => (
-            <button
+          {visibleProducts.map((product, index) => (
+            <article
               className={`admin-product ${selectedId === product.id ? "is-active" : ""}`}
               key={product.id}
               onClick={() => {
                 if (editorOpen && selectedId === product.id) closeEditor();
                 else openEditorFor(product);
               }}
-              type="button"
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  if (editorOpen && selectedId === product.id) closeEditor();
+                  else openEditorFor(product);
+                }
+              }}
+              role="button"
+              tabIndex={0}
             >
+              <span className="admin-product-order" aria-label="จัดลำดับสินค้า">
+                <button
+                  aria-label={`เลื่อน ${product.name} ขึ้น`}
+                  disabled={index === 0}
+                  className={`order-icon-button ${index === 0 ? "is-disabled" : ""}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    moveProduct(product.id, -1);
+                  }}
+                  type="button"
+                >
+                  <ChevronUp size={16} />
+                </button>
+                <button
+                  aria-label={`เลื่อน ${product.name} ลง`}
+                  disabled={index === visibleProducts.length - 1}
+                  className={`order-icon-button ${index === visibleProducts.length - 1 ? "is-disabled" : ""}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    moveProduct(product.id, 1);
+                  }}
+                  type="button"
+                >
+                  <ChevronDown size={16} />
+                </button>
+              </span>
               {product.imageDataUrl ? <img alt={product.name} className="admin-product-image" src={product.imageDataUrl} /> : null}
               <strong>{product.name}</strong>
               <span>{product.category} · หน้าร้าน {money(getChannelPrice(product, "store"))} บาท</span>
               <em>{product.active === false ? "ปิดขาย" : "เปิดขาย"}</em>
-            </button>
+            </article>
           ))}
         </div>
       </div>
@@ -2099,10 +2118,11 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
       <form className={`side-editor ${editorNotice ? "is-unsaved" : ""}`} onSubmit={saveProduct}>
         <div className="panel-title">
           <Utensils size={20} />
-          <h3>เมนูและสูตร BOM</h3>
+          <h3>รายการสินค้าและสูตร BOM</h3>
           <button className="icon-close-button" onClick={closeEditor} type="button">ปิด</button>
         </div>
         {editorNotice ? <div className="inline-warning">{editorNotice}</div> : null}
+        {productActionNotice ? <div className="inline-confirm">{productActionNotice}</div> : null}
         <label className={hasUnsavedChanges && normalizeProductForm(productForm).name !== normalizeProductForm(savedProductForm).name ? "is-dirty" : ""}>ชื่อเมนู<input value={productForm.name || ""} onChange={(event) => { setDeleteArmed(false); setProductForm((current) => ({ ...current, name: event.target.value })); }} /></label>
         <MenuImageUploader
           className={hasUnsavedChanges && normalizeProductForm(productForm).imageDataUrl !== normalizeProductForm(savedProductForm).imageDataUrl ? "is-dirty" : ""}
@@ -2160,11 +2180,147 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
           ) : <div className="empty-compact">เมนูนี้ไม่ตัดสต็อกวัตถุดิบ</div>}
         </div>
         <div className="modal-actions">
-          <button className="primary-button" type="submit">บันทึกเมนู/สูตร</button>
-          {selected ? <button className={`danger-button ${deleteArmed ? "is-armed" : ""}`} onClick={removeProduct} type="button">{deleteArmed ? "ยืนยันลบ" : "ลบเมนู"}</button> : null}
+          <button className="primary-button" type="submit">บันทึกรายการสินค้า</button>
+          {selected ? <button className={`danger-button ${deleteArmed ? "is-armed" : ""}`} onClick={removeProduct} type="button">{deleteArmed ? "ยืนยันลบสินค้า" : "ลบสินค้า"}</button> : null}
         </div>
       </form>
       ) : null}
+    </section>
+  );
+}
+
+function CategoryManagementScreen({ menuCategories, products, setMenuCategories, setProducts }) {
+  const productCategories = Array.from(new Set([...(menuCategories || []), ...products.map((product) => product.category).filter(Boolean)]));
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [editingCategory, setEditingCategory] = useState("");
+  const [editingName, setEditingName] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState("");
+  const [notice, setNotice] = useState("");
+
+  function flash(message) {
+    setNotice(message);
+    window.setTimeout(() => setNotice(""), 2200);
+  }
+
+  function addCategory(event) {
+    event.preventDefault();
+    const name = newCategoryName.trim();
+    if (!name) return;
+    if (productCategories.includes(name)) {
+      flash("มีหมวดนี้อยู่แล้ว");
+      return;
+    }
+    setMenuCategories((current) => [...current, name]);
+    setNewCategoryName("");
+    setDeleteTarget("");
+  }
+
+  function startEdit(category) {
+    setEditingCategory(category);
+    setEditingName(category);
+    setDeleteTarget("");
+  }
+
+  function saveEdit(category) {
+    const name = editingName.trim();
+    if (!name) return;
+    if (name !== category && productCategories.includes(name)) {
+      flash("มีหมวดนี้อยู่แล้ว");
+      return;
+    }
+    setMenuCategories((current) => current.map((item) => (item === category ? name : item)));
+    setProducts((current) => current.map((product) => (product.category === category ? { ...product, category: name } : product)));
+    setEditingCategory("");
+    setEditingName("");
+    setDeleteTarget("");
+  }
+
+  function moveCategory(category, direction) {
+    const index = productCategories.indexOf(category);
+    const target = productCategories[index + direction];
+    if (!target) return;
+    setMenuCategories((current) => {
+      const next = Array.from(new Set([...current, ...productCategories]));
+      const fromIndex = next.indexOf(category);
+      const toIndex = next.indexOf(target);
+      if (fromIndex < 0 || toIndex < 0) return current;
+      [next[fromIndex], next[toIndex]] = [next[toIndex], next[fromIndex]];
+      return next;
+    });
+    setDeleteTarget("");
+  }
+
+  function removeCategory(category) {
+    if (deleteTarget !== category) {
+      const usedCount = products.filter((product) => product.category === category).length;
+      setDeleteTarget(category);
+      flash(usedCount ? `กด “ยืนยันลบ” เพื่อลบหมวดนี้ สินค้า ${usedCount} รายการจะถูกย้ายไปหมวดอื่น` : "กด “ยืนยันลบ” เพื่อลบหมวดนี้");
+      return;
+    }
+    const fallback = productCategories.find((item) => item !== category) || categories[0] || "";
+    if (!fallback) {
+      flash("ต้องมีอย่างน้อย 1 หมวด");
+      return;
+    }
+    setMenuCategories((current) => current.filter((item) => item !== category));
+    setProducts((current) => current.map((product) => (product.category === category ? { ...product, category: fallback } : product)));
+    setDeleteTarget("");
+  }
+
+  return (
+    <section className="work-panel category-admin-panel">
+      <div className="panel-title">
+        <Utensils size={22} />
+        <div>
+          <h3>หมวดหมู่สินค้า</h3>
+          <p>จัดลำดับหมวด แก้ชื่อ และควบคุมการลบแบบมีการยืนยัน</p>
+        </div>
+      </div>
+      {notice ? <div className="inline-confirm">{notice}</div> : null}
+      <form className="category-add-row" onSubmit={addCategory}>
+        <input
+          aria-label="เพิ่มหมวดหมู่สินค้า"
+          onChange={(event) => setNewCategoryName(event.target.value)}
+          placeholder="เพิ่มหมวด เช่น เบอร์เกอร์, เครื่องดื่ม"
+          value={newCategoryName}
+        />
+        <button className="primary-button" type="submit"><Plus size={18} /> เพิ่มหมวด</button>
+      </form>
+      <div className="category-admin-list">
+        {productCategories.map((category, index) => {
+          const isEditing = editingCategory === category;
+          const usedCount = products.filter((product) => product.category === category).length;
+          return (
+            <div className="category-admin-row" key={category}>
+              <div className="category-order-controls">
+                <button disabled={index === 0} onClick={() => moveCategory(category, -1)} type="button" aria-label={`เลื่อน ${category} ขึ้น`}><ChevronUp size={16} /></button>
+                <button disabled={index === productCategories.length - 1} onClick={() => moveCategory(category, 1)} type="button" aria-label={`เลื่อน ${category} ลง`}><ChevronDown size={16} /></button>
+              </div>
+              <div className="category-name-cell">
+                {isEditing ? (
+                  <input value={editingName} onChange={(event) => setEditingName(event.target.value)} autoFocus />
+                ) : (
+                  <strong>{category}</strong>
+                )}
+                <small>{usedCount} รายการสินค้า</small>
+              </div>
+              <div className="category-row-actions">
+                {isEditing ? (
+                  <>
+                    <button className="ghost-button" onClick={() => saveEdit(category)} type="button">บันทึก</button>
+                    <button className="ghost-button" onClick={() => setEditingCategory("")} type="button">ยกเลิก</button>
+                  </>
+                ) : (
+                  <button className="ghost-button" onClick={() => startEdit(category)} type="button"><Edit3 size={16} /> แก้ไข</button>
+                )}
+                <button className={`danger-button ${deleteTarget === category ? "is-armed" : ""}`} onClick={() => removeCategory(category)} type="button">
+                  {deleteTarget === category ? "ยืนยันลบ" : "ลบ"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -2739,7 +2895,13 @@ function NewIngredientModal({ onClose, onSubmit }) {
 }
 
 function SettingsScreen({ orders, queueLists, refreshQueues, setSettings, settings }) {
+  const [activeSection, setActiveSection] = useState("printer");
   const receiptTemplateValue = settings.receiptTemplate?.includes("[TOTAL (price*quantity)]") ? settings.receiptTemplate : defaultSettings.receiptTemplate;
+  const sections = [
+    { id: "printer", label: "เครื่องพิมพ์", icon: Printer },
+    { id: "sync", label: "Google Sheet", icon: Database },
+    { id: "orders", label: "ประวัติออร์เดอร์", icon: ReceiptText },
+  ];
 
   function update(key, value) {
     setSettings((current) => ({ ...current, [key]: value }));
@@ -2776,7 +2938,20 @@ function SettingsScreen({ orders, queueLists, refreshQueues, setSettings, settin
   }
 
   return (
-    <section className="settings-grid">
+    <section className="settings-page">
+      <div className="settings-section-tabs">
+        {sections.map((section) => {
+          const Icon = section.icon;
+          return (
+            <button className={activeSection === section.id ? "is-active" : ""} key={section.id} onClick={() => setActiveSection(section.id)} type="button">
+              <Icon size={18} />
+              {section.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="settings-grid">
+      {activeSection === "printer" ? (
       <article className="settings-card">
         <Printer size={24} />
         <h3>เครื่องพิมพ์ครัว</h3>
@@ -2791,6 +2966,8 @@ function SettingsScreen({ orders, queueLists, refreshQueues, setSettings, settin
           <label className="check-line"><input checked={settings.defaultPrintOptions?.receipt === true} onChange={(event) => updateDefaultPrintOption("receipt", event.target.checked)} type="checkbox" /> พิมพ์ใบเสร็จอัตโนมัติ</label>
         </div>
       </article>
+      ) : null}
+      {activeSection === "sync" ? (
       <article className="settings-card">
         <Database size={24} />
         <h3>Google Sheet Sync</h3>
@@ -2799,6 +2976,9 @@ function SettingsScreen({ orders, queueLists, refreshQueues, setSettings, settin
         <div className="queue-line"><RefreshCw size={18} /> รอ sync {queueLists.sheet.filter((job) => job.status !== "SYNCED").length} รายการ</div>
         <QueueList jobs={queueLists.sheet} onDone={(job) => markFirstJobDone("sheetSyncJobs", job)} />
       </article>
+      ) : null}
+      {activeSection === "printer" ? (
+      <>
       <article className="settings-card">
         <ClipboardList size={24} />
         <h3>Template ใบครัว</h3>
@@ -2822,6 +3002,9 @@ function SettingsScreen({ orders, queueLists, refreshQueues, setSettings, settin
         <h3>Print Queue</h3>
         <QueueList jobs={queueLists.print} onDone={(job) => markFirstJobDone("printJobs", job)} />
       </article>
+      </>
+      ) : null}
+      {activeSection === "orders" ? (
       <article className="settings-card settings-card-wide">
         <ReceiptText size={24} />
         <h3>ประวัติออเดอร์ล่าสุด</h3>
@@ -2834,6 +3017,8 @@ function SettingsScreen({ orders, queueLists, refreshQueues, setSettings, settin
           ))}
         </div>
       </article>
+      ) : null}
+      </div>
     </section>
   );
 }
