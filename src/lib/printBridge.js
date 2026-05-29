@@ -51,7 +51,7 @@ export async function testPrintBridge(settings = {}) {
   const bridgeUrl = settings.bridgeUrl || "http://127.0.0.1:8080/print";
   const method = normalizeBridgeMethod(settings.bridgeMethod, bridgeUrl);
   if (method === "RAWBT_WS") {
-    await openRawBtWebSocket(fillBridgeUrl(bridgeUrl, {
+    await openRawBtWebSocketWithFallback(fillBridgeUrl(bridgeUrl, {
       data: "",
       ip: settings.printerIp || "",
       port: settings.printerPort || "9100",
@@ -160,7 +160,21 @@ function normalizeBridgeMethod(method, bridgeUrl) {
 }
 
 function sendRawBtWebSocket(url, body) {
-  return openRawBtWebSocket(url, { payload: body });
+  return openRawBtWebSocketWithFallback(url, { payload: body });
+}
+
+async function openRawBtWebSocketWithFallback(url, options = {}) {
+  const candidates = makeRawBtCandidateUrls(url);
+  const errors = [];
+  for (const candidate of candidates) {
+    try {
+      await openRawBtWebSocket(candidate, options);
+      return true;
+    } catch (error) {
+      errors.push(`${candidate}: ${formatBridgeError(error)}`);
+    }
+  }
+  throw new Error(`เชื่อมต่อ RawBT WebSocket ไม่สำเร็จ ลองแล้ว ${candidates.join(", ")} ถ้ายังไม่ผ่านให้ลองเปลี่ยน URL เป็น ws://localhost:40213/ หรือ ws://IP-แท็บเล็ต:40213/`);
 }
 
 function openRawBtWebSocket(url, { closeImmediately = false, payload = "" } = {}) {
@@ -172,8 +186,8 @@ function openRawBtWebSocket(url, { closeImmediately = false, payload = "" } = {}
 
     let settled = false;
     const timeout = window.setTimeout(() => {
-      finish(false, "เชื่อมต่อ RawBT WebSocket ไม่ทันเวลา ตรวจว่า Run service เปิดอยู่");
-    }, 4500);
+      finish(false, "ไม่ตอบภายในเวลาที่กำหนด");
+    }, 6500);
 
     let socket;
     try {
@@ -214,7 +228,7 @@ function openRawBtWebSocket(url, { closeImmediately = false, payload = "" } = {}
     };
 
     socket.onerror = () => {
-      finish(false, "เชื่อมต่อ RawBT WebSocket ไม่ได้ ตรวจว่า Server for RawBT เปิด Run service และใช้ ws://127.0.0.1:40213");
+      finish(false, "เปิด WebSocket ไม่ได้");
     };
 
     socket.onclose = (event) => {
@@ -223,6 +237,26 @@ function openRawBtWebSocket(url, { closeImmediately = false, payload = "" } = {}
       }
     };
   });
+}
+
+function makeRawBtCandidateUrls(url) {
+  const rawUrl = String(url || "ws://127.0.0.1:40213/").trim();
+  const candidates = [rawUrl];
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol === "ws:" || parsed.protocol === "wss:") {
+      if (parsed.hostname === "127.0.0.1") {
+        parsed.hostname = "localhost";
+        candidates.push(parsed.toString());
+      } else if (parsed.hostname === "localhost") {
+        parsed.hostname = "127.0.0.1";
+        candidates.push(parsed.toString());
+      }
+    }
+  } catch {
+    // Keep the original URL so the caller still receives a useful error.
+  }
+  return [...new Set(candidates)];
 }
 
 function formatBridgeError(error) {

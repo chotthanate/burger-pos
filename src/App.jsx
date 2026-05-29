@@ -3055,6 +3055,7 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
           <strong>หมายเหตุสำหรับรุ่น POS-8390</strong>
           <p>เลข 8390-V3.2 ในคู่มือมีแนวโน้มเป็นเวอร์ชันคู่มือ/เฟิร์มแวร์/แพ็กเกจ ไม่ใช่เลข IP หรือ port ของเครื่องพิมพ์</p>
           <p>ถ้าใช้ Server for RawBT ให้เปิด Websocket API แล้วใช้ URL <strong>ws://127.0.0.1:40213/</strong> โดย 127.0.0.1 คือแท็บเล็ตเครื่องที่เปิดเว็บอยู่</p>
+          <p>ถ้าตรวจการเชื่อมต่อไม่ผ่าน ให้ลองเปลี่ยน URL เป็น <strong>ws://localhost:40213/</strong> หรือใช้ IP ของแท็บเล็ต เช่น <strong>ws://192.168.1.xxx:40213/</strong></p>
           <a href="http://www.barcoderead.net/printer/8390.zip" rel="noreferrer" target="_blank">ดาวน์โหลด driver / utility จากคู่มือ</a>
         </div>
         <div className="settings-printer-actions">
