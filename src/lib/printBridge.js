@@ -1,5 +1,6 @@
 import { money } from "./posLogic.js";
 import { getOrderDisplayNo } from "./orderFormat.js";
+import { isNativeThaiPrinterAvailable, printAndroidNativeJob } from "./nativeThaiPrinter.js";
 
 const encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
 
@@ -10,6 +11,10 @@ export function buildPrintText(job, settings = {}) {
 }
 
 export async function sendPrintJob(job, settings = {}) {
+  if (shouldUseNativePrinter(settings)) {
+    await printAndroidNativeJob(job, settings);
+    return true;
+  }
   const body = buildPrintText(job, settings);
   const bridgeUrl = settings.bridgeUrl || "http://127.0.0.1:8080/print";
   const method = normalizeBridgeMethod(settings.bridgeMethod, bridgeUrl);
@@ -50,6 +55,11 @@ export async function sendPrintJob(job, settings = {}) {
   });
   if (!response.ok) throw new Error(`Printer bridge returned ${response.status}`);
   return true;
+}
+
+function shouldUseNativePrinter(settings = {}) {
+  if (!isNativeThaiPrinterAvailable()) return false;
+  return settings.printerConnection === "BLUETOOTH_NATIVE" || settings.printerConnection === "WIFI_LAN";
 }
 
 export async function testPrintBridge(settings = {}) {

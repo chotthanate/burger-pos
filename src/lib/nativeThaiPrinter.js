@@ -1,8 +1,16 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { getOrderDisplayNo } from "./orderFormat.js";
+import { money } from "./posLogic.js";
 
 const ThaiPrinter = registerPlugin("ThaiPrinter");
 const PAPER_WIDTH_DOTS = 576;
 const LOGO_URL = `${import.meta.env.BASE_URL}boy-burger-logo.png`;
+const DEFAULT_BLUETOOTH_PRINT_OPTIONS = {
+  timeoutMs: 20000,
+  chunkSize: 256,
+  chunkDelayMs: 24,
+  finalDelayMs: 2200,
+};
 
 export function isNativeThaiPrinterAvailable() {
   return Capacitor.isNativePlatform?.() && Capacitor.getPlatform?.() === "android";
@@ -20,6 +28,54 @@ export async function printAndroidThaiPrototype({ type, host, port }) {
     timeoutMs: 7000,
   });
   return result;
+}
+
+export async function getAndroidBluetoothPrinters() {
+  if (!isNativeThaiPrinterAvailable()) {
+    throw new Error("ฟังก์ชัน Bluetooth ใช้ได้เฉพาะใน Android App");
+  }
+  const result = await ThaiPrinter.getBluetoothPrinters();
+  return Array.isArray(result?.devices) ? result.devices : [];
+}
+
+export async function printAndroidBluetoothThaiPrototype({ type, address }) {
+  if (!isNativeThaiPrinterAvailable()) {
+    throw new Error("ฟังก์ชันทดสอบนี้ใช้ได้เฉพาะใน Android App");
+  }
+  const escposBytes = await buildThaiPrototypeEscPos(type);
+  const result = await ThaiPrinter.printBluetoothEscPos({
+    address: String(address || "").trim(),
+    escposBase64: base64EncodeBytes(escposBytes),
+    timeoutMs: 20000,
+    chunkSize: 256,
+    chunkDelayMs: 24,
+    finalDelayMs: 2200,
+  });
+  return result;
+}
+
+export async function printAndroidNativeJob(job, settings = {}) {
+  if (!isNativeThaiPrinterAvailable()) {
+    throw new Error("Native printer ใช้ได้เฉพาะใน Android App");
+  }
+  const escposBytes = await buildThaiJobEscPos(job, settings);
+  const escposBase64 = base64EncodeBytes(escposBytes);
+  if (settings.printerConnection === "BLUETOOTH_NATIVE") {
+    return ThaiPrinter.printBluetoothEscPos({
+      address: String(settings.bluetoothPrinterAddress || "").trim(),
+      escposBase64,
+      timeoutMs: Number(settings.bluetoothPrintTimeoutMs || DEFAULT_BLUETOOTH_PRINT_OPTIONS.timeoutMs),
+      chunkSize: Number(settings.bluetoothPrintChunkSize || DEFAULT_BLUETOOTH_PRINT_OPTIONS.chunkSize),
+      chunkDelayMs: Number(settings.bluetoothPrintChunkDelayMs || DEFAULT_BLUETOOTH_PRINT_OPTIONS.chunkDelayMs),
+      finalDelayMs: Number(settings.bluetoothPrintFinalDelayMs || DEFAULT_BLUETOOTH_PRINT_OPTIONS.finalDelayMs),
+    });
+  }
+  return ThaiPrinter.printEscPos({
+    host: String(settings.printerIp || "").trim(),
+    port: Number(settings.printerPort || 9100),
+    escposBase64,
+    timeoutMs: Number(settings.nativeTcpTimeoutMs || 10000),
+  });
 }
 
 async function buildThaiPrototypeEscPos(type) {
@@ -96,6 +152,105 @@ async function buildThaiPrototypeEscPos(type) {
   ];
 }
 
+async function buildThaiJobEscPos(job = {}, settings = {}) {
+  await document.fonts?.ready?.catch?.(() => undefined);
+  const type = job?.type || "KITCHEN";
+  const order = job?.order || {};
+  const canvas = document.createElement("canvas");
+  const width = settings.paperSize === "58mm" ? 384 : PAPER_WIDTH_DOTS;
+  const padding = width === PAPER_WIDTH_DOTS ? 28 : 18;
+  canvas.width = width;
+  canvas.height = Math.max(1400, 260 + (order.items || []).length * 180);
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("ไม่สามารถสร้างภาพใบพิมพ์ได้");
+
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#000";
+  context.textBaseline = "top";
+
+  let y = 16;
+  const logo = await loadImage(LOGO_URL).catch(() => null);
+  if (logo) {
+    const logoMaxWidth = width === PAPER_WIDTH_DOTS ? 150 : 110;
+    const logoMaxHeight = width === PAPER_WIDTH_DOTS ? 112 : 82;
+    const scale = Math.min(logoMaxWidth / logo.width, logoMaxHeight / logo.height);
+    const logoWidth = Math.round(logo.width * scale);
+    const logoHeight = Math.round(logo.height * scale);
+    context.drawImage(logo, Math.round((width - logoWidth) / 2), y, logoWidth, logoHeight);
+    y += logoHeight + 12;
+  }
+
+  drawCenteredText(context, type === "RECEIPT" ? "ใบเสร็จรับเงิน" : "ใบออร์เดอร์", y, width === PAPER_WIDTH_DOTS ? 34 : 29, "bold", width);
+  y += width === PAPER_WIDTH_DOTS ? 44 : 38;
+  drawCenteredText(context, `หมายเลขคำสั่งซื้อ : ${getOrderDisplayNo(order) || "-"}`, y, width === PAPER_WIDTH_DOTS ? 24 : 21, "normal", width);
+  y += width === PAPER_WIDTH_DOTS ? 32 : 28;
+  drawCenteredText(context, formatThaiDate(new Date(order.createdAt || Date.now())), y, width === PAPER_WIDTH_DOTS ? 24 : 21, "normal", width);
+  y += width === PAPER_WIDTH_DOTS ? 42 : 35;
+  drawDivider(context, y, width, padding);
+  y += 24;
+
+  for (const item of order.items || []) {
+    y = drawOrderItem(context, item, y, padding, width, type === "RECEIPT");
+  }
+
+  y += 8;
+  drawDivider(context, y, width, padding);
+  y += 26;
+
+  if (type === "RECEIPT") {
+    y = drawSummaryRow(context, "รวม", `${money(order.totalAmount)} บาท`, y, padding, width === PAPER_WIDTH_DOTS ? 34 : 29, "bold", width);
+    if (order.paymentMethod === "CASH") {
+      y = drawSummaryRow(context, "รับเงิน", `${money(order.cashReceived)} บาท`, y, padding, width === PAPER_WIDTH_DOTS ? 25 : 22, "normal", width);
+      y = drawSummaryRow(context, "เงินทอน", `${money(order.changeDue)} บาท`, y, padding, width === PAPER_WIDTH_DOTS ? 25 : 22, "normal", width);
+    } else {
+      y = drawSummaryRow(context, "ชำระด้วยเงินโอน", "", y, padding, width === PAPER_WIDTH_DOTS ? 25 : 22, "normal", width);
+    }
+  } else {
+    drawCenteredText(context, "ส่งเข้าครัว", y, width === PAPER_WIDTH_DOTS ? 31 : 27, "bold", width);
+    y += width === PAPER_WIDTH_DOTS ? 42 : 36;
+  }
+
+  if (order.note) {
+    y += 8;
+    y = drawWrappedText(context, `หมายเหตุทั้งออร์เดอร์: ${order.note}`, padding, y, width - padding * 2, width === PAPER_WIDTH_DOTS ? 24 : 21, "normal");
+  }
+
+  const usedHeight = Math.min(canvas.height, Math.ceil(y + 92));
+  const cropped = cropCanvas(canvas, usedHeight);
+  return [
+    0x1b, 0x40,
+    ...canvasToEscPosRaster(cropped),
+    0x0a, 0x0a, 0x0a, 0x0a,
+    0x1d, 0x56, 0x00,
+  ];
+}
+
+function drawOrderItem(context, item, y, x, width, includePrice) {
+  const size = width === PAPER_WIDTH_DOTS ? 30 : 25;
+  const lineHeight = width === PAPER_WIDTH_DOTS ? 39 : 33;
+  const total = Number(item.unitPrice || 0) * Number(item.quantity || 0);
+  const left = `${item.quantity}x ${item.name}`;
+  const right = includePrice ? `${money(total)} บาท` : "";
+  context.font = font(size, "bold");
+  if (right) {
+    const rightWidth = context.measureText(right).width;
+    context.fillText(right, width - x - rightWidth, y);
+    const leftMaxWidth = Math.max(160, width - x * 3 - rightWidth);
+    y = drawWrappedText(context, left, x, y, leftMaxWidth, size, "bold", lineHeight);
+  } else {
+    y = drawWrappedText(context, left, x, y, width - x * 2, size, "bold", lineHeight);
+  }
+
+  for (const modifier of item.modifiers || []) {
+    y = drawWrappedText(context, `- ${modifier}`, x + 26, y, width - x * 2 - 26, size - 4, "normal", lineHeight - 5);
+  }
+  if (item.note) {
+    y = drawWrappedText(context, `หมายเหตุ: ${item.note}`, x + 26, y, width - x * 2 - 26, size - 5, "normal", lineHeight - 6);
+  }
+  return y + 8;
+}
+
 function receiptRows() {
   return [
     { kind: "item", qty: "1x", name: "เบอร์เกอร์หมู", price: "84 บาท" },
@@ -140,25 +295,51 @@ function drawNoteRow(context, text, y, x) {
   return y + 36;
 }
 
-function drawSummaryRow(context, left, right, y, x, size, weight) {
+function drawSummaryRow(context, left, right, y, x, size, weight, width = PAPER_WIDTH_DOTS) {
   context.font = font(size, weight);
   context.fillText(left, x, y);
   if (right) {
-    const width = context.measureText(right).width;
-    context.fillText(right, PAPER_WIDTH_DOTS - x - width, y);
+    const rightWidth = context.measureText(right).width;
+    context.fillText(right, width - x - rightWidth, y);
   }
   return y + size + 13;
 }
 
-function drawCenteredText(context, text, y, size, weight) {
+function drawCenteredText(context, text, y, size, weight, width = PAPER_WIDTH_DOTS) {
   context.font = font(size, weight);
-  const width = context.measureText(text).width;
-  context.fillText(text, Math.round((PAPER_WIDTH_DOTS - width) / 2), y);
+  const textWidth = context.measureText(text).width;
+  context.fillText(text, Math.round((width - textWidth) / 2), y);
 }
 
-function drawDivider(context, y) {
+function drawDivider(context, y, width = PAPER_WIDTH_DOTS, padding = 28) {
   context.fillStyle = "#000";
-  context.fillRect(28, y, PAPER_WIDTH_DOTS - 56, 2);
+  context.fillRect(padding, y, width - padding * 2, 2);
+}
+
+function drawWrappedText(context, text, x, y, maxWidth, size, weight, lineHeight = Math.round(size * 1.35)) {
+  context.font = font(size, weight);
+  const lines = wrapText(context, text, maxWidth);
+  lines.forEach((line, index) => {
+    context.fillText(line, x, y + index * lineHeight);
+  });
+  return y + Math.max(1, lines.length) * lineHeight;
+}
+
+function wrapText(context, text, maxWidth) {
+  const value = String(text || "");
+  const lines = [];
+  let current = "";
+  for (const char of value) {
+    const next = current + char;
+    if (current && context.measureText(next).width > maxWidth) {
+      lines.push(current);
+      current = char;
+    } else {
+      current = next;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [""];
 }
 
 function font(size, weight) {

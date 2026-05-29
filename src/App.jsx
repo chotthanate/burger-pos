@@ -55,7 +55,7 @@ import {
   money,
 } from "./lib/posLogic.js";
 import { makePrinterTestJob, printThaiCodePageTest, sendPrintJob, testPrintBridge } from "./lib/printBridge.js";
-import { isNativeThaiPrinterAvailable, printAndroidThaiPrototype } from "./lib/nativeThaiPrinter.js";
+import { getAndroidBluetoothPrinters, isNativeThaiPrinterAvailable, printAndroidBluetoothThaiPrototype, printAndroidThaiPrototype } from "./lib/nativeThaiPrinter.js";
 import { usePersistentState } from "./lib/storage.js";
 
 const navItems = [
@@ -76,10 +76,15 @@ const salesChannels = [
 
 const defaultSettings = {
   printerModel: "POS-8390",
-  printerConnection: "WIFI_LAN",
+  printerConnection: "BLUETOOTH_NATIVE",
   bridgeUrl: "ws://127.0.0.1:40213/",
   printerIp: "192.168.1.150",
   printerPort: "9100",
+  bluetoothPrinterAddress: "",
+  bluetoothPrintTimeoutMs: 20000,
+  bluetoothPrintChunkSize: 256,
+  bluetoothPrintChunkDelayMs: 24,
+  bluetoothPrintFinalDelayMs: 2200,
   paperSize: "80mm",
   bridgeMethod: "RAWBT_INTENT",
   thaiCodePage: "42",
@@ -2913,6 +2918,7 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
   const [activeSection, setActiveSection] = useState("printer");
   const [printerNotice, setPrinterNotice] = useState("");
   const [printerBusy, setPrinterBusy] = useState(false);
+  const [bluetoothDevices, setBluetoothDevices] = useState([]);
   const receiptTemplateValue = settings.receiptTemplate?.includes("[TOTAL (price*quantity)]") ? settings.receiptTemplate : defaultSettings.receiptTemplate;
   const bridgeMethodValue = settings.bridgeMethod === "RAWBT_INTENT" ? "RAWBT_INTENT" : /^wss?:\/\//i.test(settings.bridgeUrl || "") ? "RAWBT_WS" : settings.bridgeMethod || "POST";
   const sections = [
@@ -2942,14 +2948,18 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
     setSettings((current) => ({
       ...current,
       printerModel: "POS-8390",
-      printerConnection: current.printerConnection || "WIFI_LAN",
+      printerConnection: current.printerConnection || "BLUETOOTH_NATIVE",
       paperSize: "80mm",
       printerPort: "9100",
+      bluetoothPrintTimeoutMs: 20000,
+      bluetoothPrintChunkSize: 256,
+      bluetoothPrintChunkDelayMs: 24,
+      bluetoothPrintFinalDelayMs: 2200,
       bridgeMethod: "RAWBT_INTENT",
       thaiCodePage: current.thaiCodePage || "42",
       bridgeUrl: "ws://127.0.0.1:40213/",
     }));
-    setPrinterNotice("ใช้ preset POS-8390: Android RawBT Text, กระดาษ 80mm");
+    setPrinterNotice("ใช้ preset POS-8390: Bluetooth Native, กระดาษ 80mm, ส่งข้อมูลแบบ chunk ที่ทดสอบผ่านแล้ว");
   }
 
   function updateBridgeMethod(value) {
@@ -3037,14 +3047,37 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
     setPrinterBusy(true);
     setPrinterNotice("");
     try {
-      const result = await printAndroidThaiPrototype({
-        type,
-        host: settings.printerIp,
-        port: settings.printerPort || "9100",
-      });
+      const useBluetooth = settings.printerConnection === "BLUETOOTH_NATIVE";
+      const result = useBluetooth
+        ? await printAndroidBluetoothThaiPrototype({
+          type,
+          address: settings.bluetoothPrinterAddress,
+        })
+        : await printAndroidThaiPrototype({
+          type,
+          host: settings.printerIp,
+          port: settings.printerPort || "9100",
+        });
       setPrinterNotice(`ส่งงานพิมพ์ไทยสำเร็จ (${result?.bytesWritten || 0} bytes)`);
     } catch (error) {
       setPrinterNotice(`พิมพ์ไทยไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setPrinterBusy(false);
+    }
+  }
+
+  async function loadBluetoothPrinters() {
+    setPrinterBusy(true);
+    setPrinterNotice("");
+    try {
+      const devices = await getAndroidBluetoothPrinters();
+      setBluetoothDevices(devices);
+      if (!settings.bluetoothPrinterAddress && devices[0]?.address) {
+        update("bluetoothPrinterAddress", devices[0].address);
+      }
+      setPrinterNotice(devices.length ? `พบเครื่อง Bluetooth ที่จับคู่ไว้ ${devices.length} เครื่อง` : "ยังไม่พบเครื่องพิมพ์ Bluetooth ที่จับคู่ไว้");
+    } catch (error) {
+      setPrinterNotice(`อ่าน Bluetooth ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setPrinterBusy(false);
     }
@@ -3077,28 +3110,49 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
         <label>รุ่นเครื่องพิมพ์<input value={settings.printerModel || "POS-8390"} onChange={(event) => update("printerModel", event.target.value)} /></label>
         <label>รูปแบบการเชื่อมต่อ<select value={settings.printerConnection || "WIFI_LAN"} onChange={(event) => update("printerConnection", event.target.value)}>
           <option value="WIFI_LAN">WiFi / LAN ผ่าน IP</option>
+          <option value="BLUETOOTH_NATIVE">Bluetooth Native</option>
           <option value="BLUETOOTH">Bluetooth ผ่าน RawBT</option>
           <option value="USB">USB ผ่านแอปตัวกลาง</option>
         </select></label>
+        {settings.printerConnection === "BLUETOOTH_NATIVE" ? (
+          <div className="settings-subsection">
+            <strong>Bluetooth Native</strong>
+            <p>จับคู่ POS-8390 กับแท็บเล็ตใน Android Settings ก่อน แล้วกดโหลดรายการเครื่องพิมพ์เพื่อเลือกเครื่องที่จะส่ง ESC/POS bitmap ภาษาไทย</p>
+            <div className="settings-printer-actions">
+              <button className="ghost-button" disabled={printerBusy || !nativeThaiPrinterAvailable} onClick={loadBluetoothPrinters} type="button"><RefreshCw size={18} /> โหลดเครื่องที่จับคู่ไว้</button>
+            </div>
+            <label>เครื่องพิมพ์ Bluetooth<select value={settings.bluetoothPrinterAddress || ""} onChange={(event) => update("bluetoothPrinterAddress", event.target.value)}>
+              <option value="">เลือกเครื่องพิมพ์ที่จับคู่ไว้</option>
+              {bluetoothDevices.map((device) => <option key={device.address} value={device.address}>{device.name || "Unknown printer"} ({device.address})</option>)}
+              {settings.bluetoothPrinterAddress && !bluetoothDevices.some((device) => device.address === settings.bluetoothPrinterAddress) ? <option value={settings.bluetoothPrinterAddress}>เครื่องเดิม ({settings.bluetoothPrinterAddress})</option> : null}
+            </select></label>
+          </div>
+        ) : null}
         <label>RawBT / Local bridge URL<input value={settings.bridgeUrl} onChange={(event) => update("bridgeUrl", event.target.value)} /></label>
         <label>วิธีส่งข้อมูล<select value={bridgeMethodValue} onChange={(event) => updateBridgeMethod(event.target.value)}><option value="RAWBT_INTENT">Android RawBT Text</option><option value="RAWBT_WS">RawBT WebSocket</option><option value="POST">POST text/plain</option><option value="GET">GET query data=</option></select></label>
-        <label>IP เครื่องพิมพ์ Wi-Fi<input value={settings.printerIp} onChange={(event) => update("printerIp", event.target.value)} /></label>
-        <label>Port เครื่องพิมพ์<input inputMode="numeric" value={settings.printerPort || "9100"} onChange={(event) => update("printerPort", event.target.value)} /></label>
+        {settings.printerConnection !== "BLUETOOTH_NATIVE" ? (
+          <>
+            <label>IP เครื่องพิมพ์ Wi-Fi<input value={settings.printerIp} onChange={(event) => update("printerIp", event.target.value)} /></label>
+            <label>Port เครื่องพิมพ์<input inputMode="numeric" value={settings.printerPort || "9100"} onChange={(event) => update("printerPort", event.target.value)} /></label>
+          </>
+        ) : null}
         <label>Thai code page<select value={settings.thaiCodePage || defaultSettings.thaiCodePage} onChange={(event) => update("thaiCodePage", event.target.value)}><option value="42">42 - Thai ทั่วไป</option><option value="20">20 - KU42 Thai</option><option value="21">21 - TIS11 Thai</option><option value="26">26 - TIS18 Thai</option><option value="47">47 - WPC1253 fallback</option></select></label>
         <label>ขนาดกระดาษ<select value={settings.paperSize} onChange={(event) => update("paperSize", event.target.value)}><option value="80mm">80mm</option><option value="58mm">58mm</option></select></label>
         <label className="check-line"><input checked={settings.buzzerEnabled} onChange={(event) => update("buzzerEnabled", event.target.checked)} type="checkbox" /> เปิด Kitchen Buzzer</label>
         <div className="printer-help-box">
           <strong>หมายเหตุสำหรับรุ่น POS-8390</strong>
           <p>เลข 8390-V3.2 ในคู่มือมีแนวโน้มเป็นเวอร์ชันคู่มือ/เฟิร์มแวร์/แพ็กเกจ ไม่ใช่เลข IP หรือ port ของเครื่องพิมพ์</p>
-          <p>บน Android Tablet แนะนำใช้ <strong>Android RawBT Text</strong> เพราะเป็นวิธีที่ RawBT เปิดให้เว็บเรียกแอปโดยตรงและให้ RawBT จัดการภาษาไทยเอง</p>
+          <p>ปุ่ม RawBT ด้านล่างเป็นโหมด fallback ภาษาอังกฤษเท่านั้น ถ้าต้องการภาษาไทยให้ใช้ปุ่ม Native Thai Bitmap ซึ่งทำงานในแอป Android ที่ติดตั้งจาก APK</p>
           <p>ถ้าใช้ Server for RawBT ให้เปิด Websocket API แล้วใช้ URL <strong>ws://127.0.0.1:40213/</strong> โดย 127.0.0.1 คือแท็บเล็ตเครื่องที่เปิดเว็บอยู่</p>
           <p>ถ้าตรวจการเชื่อมต่อไม่ผ่าน ให้ลองเปลี่ยน URL เป็น <strong>ws://localhost:40213/</strong> หรือใช้ IP ของแท็บเล็ต เช่น <strong>ws://192.168.1.xxx:40213/</strong></p>
           <a href="http://www.barcoderead.net/printer/8390.zip" rel="noreferrer" target="_blank">ดาวน์โหลด driver / utility จากคู่มือ</a>
         </div>
         <div className="settings-printer-actions">
-          <button className="ghost-button" disabled={printerBusy} onClick={runBridgeTest} type="button"><Wifi size={18} /> ตรวจการเชื่อมต่อ</button>
-          <button className="primary-button" disabled={printerBusy} onClick={runPrinterTest} type="button"><Printer size={18} /> ทดสอบพิมพ์</button>
-          <button className="ghost-button" disabled={printerBusy} onClick={runThaiCodePageTest} type="button"><ReceiptText size={18} /> เทสภาษาไทย</button>
+          <button className="primary-button" disabled={printerBusy || !nativeThaiPrinterAvailable} onClick={() => runNativeThaiPrint("RECEIPT")} type="button"><Printer size={18} /> Native ใบเสร็จไทย</button>
+          <button className="ghost-button" disabled={printerBusy || !nativeThaiPrinterAvailable} onClick={() => runNativeThaiPrint("KITCHEN")} type="button"><ReceiptText size={18} /> Native ใบออร์เดอร์ไทย</button>
+          <button className="ghost-button" disabled={printerBusy} onClick={runBridgeTest} type="button"><Wifi size={18} /> ตรวจ RawBT</button>
+          <button className="ghost-button" disabled={printerBusy} onClick={runPrinterTest} type="button"><Printer size={18} /> RawBT อังกฤษ</button>
+          <button className="ghost-button" disabled={printerBusy} onClick={runThaiCodePageTest} type="button"><ReceiptText size={18} /> RawBT code page</button>
           <button className="ghost-button" disabled={printerBusy} onClick={sendPendingPrintQueue} type="button"><RefreshCw size={18} /> ส่งคิวค้าง</button>
         </div>
         {printerNotice ? <div className="inline-confirm">{printerNotice}</div> : null}
@@ -3124,10 +3178,26 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
       <article className="settings-card settings-card-wide thai-printer-prototype">
         <FileImage size={24} />
         <h3>Prototype พิมพ์ภาษาไทยผ่าน Android App</h3>
-        <p>โหมดนี้สร้างใบพิมพ์เป็นรูปภาพจาก canvas แล้วส่ง ESC/POS bitmap เข้า POS-8390 ผ่าน Wi-Fi/LAN port 9100 เพื่อทดสอบภาษาไทย โลโก้ และการตัดกระดาษ</p>
+        <p>โหมดนี้สร้างใบพิมพ์เป็นรูปภาพจาก canvas แล้วส่ง ESC/POS bitmap เข้า POS-8390 ผ่าน Wi-Fi/LAN หรือ Bluetooth Native เพื่อทดสอบภาษาไทย โลโก้ และการตัดกระดาษ</p>
         <div className="prototype-status">
           {nativeThaiPrinterAvailable ? "พร้อมใช้งานใน Android App" : "ต้องเปิดจาก Android App ที่ build ด้วย Capacitor"}
         </div>
+        <label>รูปแบบการเชื่อมต่อ<select value={settings.printerConnection || "WIFI_LAN"} onChange={(event) => update("printerConnection", event.target.value)}>
+          <option value="BLUETOOTH_NATIVE">Bluetooth Native</option>
+          <option value="WIFI_LAN">WiFi / LAN ผ่าน IP</option>
+        </select></label>
+        {settings.printerConnection === "BLUETOOTH_NATIVE" ? (
+          <>
+            <div className="settings-printer-actions">
+              <button className="ghost-button" disabled={printerBusy || !nativeThaiPrinterAvailable} onClick={loadBluetoothPrinters} type="button"><RefreshCw size={18} /> โหลดเครื่องที่จับคู่ไว้</button>
+            </div>
+            <label>เครื่องพิมพ์ Bluetooth<select value={settings.bluetoothPrinterAddress || ""} onChange={(event) => update("bluetoothPrinterAddress", event.target.value)}>
+              <option value="">เลือกเครื่องพิมพ์ที่จับคู่ไว้</option>
+              {bluetoothDevices.map((device) => <option key={device.address} value={device.address}>{device.name || "Unknown printer"} ({device.address})</option>)}
+              {settings.bluetoothPrinterAddress && !bluetoothDevices.some((device) => device.address === settings.bluetoothPrinterAddress) ? <option value={settings.bluetoothPrinterAddress}>เครื่องเดิม ({settings.bluetoothPrinterAddress})</option> : null}
+            </select></label>
+          </>
+        ) : null}
         <label>IP เครื่องพิมพ์ Wi-Fi<input value={settings.printerIp} onChange={(event) => update("printerIp", event.target.value)} /></label>
         <label>Port เครื่องพิมพ์<input inputMode="numeric" value={settings.printerPort || "9100"} onChange={(event) => update("printerPort", event.target.value)} /></label>
         <div className="settings-printer-actions">
