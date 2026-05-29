@@ -152,13 +152,13 @@ function buildRawBtKitchenText(order) {
     "\x1b@",
     "\x1ba\x01",
     "\x1b!\x30BOY BURGER\x1b!\x00",
-    "ใบออร์เดอร์",
+    "ORDER",
     getOrderDisplayNo(order),
     formatDate(order.createdAt),
     "------------------------------",
     ...buildRawBtItemLines(order, { includePrice: false }),
     "------------------------------",
-    "ส่งเข้าครัว",
+    "SEND TO KITCHEN",
     "\n\n\n\x1dV\x00",
   ].join("\n");
 }
@@ -168,15 +168,15 @@ function buildRawBtReceiptText(order) {
     "\x1b@",
     "\x1ba\x01",
     "\x1b!\x30BOY BURGER\x1b!\x00",
-    "ใบเสร็จรับเงิน",
+    "RECEIPT",
     getOrderDisplayNo(order),
     formatDate(order.createdAt),
     "------------------------------",
     ...buildRawBtItemLines(order, { includePrice: true }),
     "------------------------------",
-    alignLine("รวม", `${money(order.totalAmount)} บาท`),
-    order.paymentMethod === "CASH" ? alignLine("รับเงิน", `${money(order.cashReceived)} บาท`) : "ชำระด้วยเงินโอน",
-    order.paymentMethod === "CASH" ? alignLine("เงินทอน", `${money(order.changeDue)} บาท`) : "",
+    alignLine("TOTAL", `${money(order.totalAmount)} THB`),
+    order.paymentMethod === "CASH" ? alignLine("CASH", `${money(order.cashReceived)} THB`) : "PAID BY TRANSFER",
+    order.paymentMethod === "CASH" ? alignLine("CHANGE", `${money(order.changeDue)} THB`) : "",
     "\n\n\n\x1dV\x00",
   ].filter(Boolean).join("\n");
 }
@@ -196,12 +196,12 @@ function buildItemLines(order, { includePrice }) {
 function buildRawBtItemLines(order, { includePrice }) {
   return (order.items || []).flatMap((item) => {
     const total = Number(item.unitPrice || 0) * Number(item.quantity || 0);
-    const name = item.name || getPrintSafeItemName(item);
+    const name = getPrintSafeItemName(item);
     const firstLine = includePrice
-      ? alignPriceCommand(`\x1bE\x01${item.quantity}x ${name}\x1bE\x00`, `${money(total)} บาท`)
+      ? alignPriceCommand(`\x1bE\x01${item.quantity}x ${name}\x1bE\x00`, `${money(total)} THB`)
       : `\x1bE\x01${item.quantity}x ${name}\x1bE\x00`;
-    const modifiers = (item.modifiers || []).map((modifier) => `  - ${modifier || getPrintSafeModifierName(modifier)}`);
-    const note = item.note ? [`  หมายเหตุ: ${item.note}`] : [];
+    const modifiers = (item.modifiers || []).map((modifier) => `  - ${getPrintSafeModifierName(modifier)}`);
+    const note = item.note ? [`  Note: ${toAsciiFallback(item.note, "special note")}`] : [];
     return [firstLine, ...modifiers, ...note];
   });
 }
