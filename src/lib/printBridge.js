@@ -56,7 +56,7 @@ export async function testPrintBridge(settings = {}) {
   const bridgeUrl = settings.bridgeUrl || "http://127.0.0.1:8080/print";
   const method = normalizeBridgeMethod(settings.bridgeMethod, bridgeUrl);
   if (method === "RAWBT_INTENT") {
-    launchRawBtIntent("\x1b@\x1ba\x01RawBT Android test\n\n\n\x1dV\x00");
+    launchRawBtIntent(`${buildPrinterPrefix().join("")}\x1ba\x01ทดสอบเครื่องพิมพ์\nRawBT Android\n\n\n\x1dV\x00`);
     return true;
   }
   if (method === "RAWBT_WS") {
@@ -97,7 +97,7 @@ export function makePrinterTestJob() {
 
 function buildKitchenText(order) {
   const lines = [
-    "\x1b@",
+    ...buildPrinterPrefix(),
     "\x1ba\x01",
     "\x1b!\x10ใบออร์เดอร์\x1b!\x00",
     getOrderDisplayNo(order),
@@ -114,7 +114,7 @@ function buildKitchenText(order) {
 
 function buildReceiptText(order) {
   const lines = [
-    "\x1b@",
+    ...buildPrinterPrefix(),
     "\x1ba\x01",
     "\x1b!\x10ใบเสร็จรับเงิน\x1b!\x00",
     getOrderDisplayNo(order),
@@ -178,12 +178,34 @@ function launchRawBtIntent(body) {
 }
 
 function base64EncodeUtf8(value) {
-  const bytes = encoder ? encoder.encode(String(value || "")) : [];
+  const bytes = encodeEscPosText(String(value || ""));
   let binary = "";
   for (let index = 0; index < bytes.length; index += 1) {
     binary += String.fromCharCode(bytes[index]);
   }
   return btoa(binary);
+}
+
+function buildPrinterPrefix() {
+  return [
+    "\x1b@",
+    "\x1bt\x14",
+  ];
+}
+
+function encodeEscPosText(value) {
+  const bytes = [];
+  for (const char of value) {
+    const code = char.codePointAt(0);
+    if (code <= 0x7f) {
+      bytes.push(code);
+    } else if (code >= 0x0e01 && code <= 0x0e5b) {
+      bytes.push(code - 0x0d60);
+    } else {
+      bytes.push(0x3f);
+    }
+  }
+  return bytes;
 }
 
 function sendRawBtWebSocket(url, body) {
