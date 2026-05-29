@@ -149,28 +149,34 @@ function buildRawBtTextPrintText(job) {
 
 function buildRawBtKitchenText(order) {
   return [
-    "ORDER",
+    "\x1b@",
+    "\x1ba\x01",
+    "\x1b!\x30BOY BURGER\x1b!\x00",
+    "ใบออร์เดอร์",
     getOrderDisplayNo(order),
     formatDate(order.createdAt),
     "------------------------------",
     ...buildRawBtItemLines(order, { includePrice: false }),
     "------------------------------",
-    "SEND TO KITCHEN",
+    "ส่งเข้าครัว",
     "\n\n\n\x1dV\x00",
   ].join("\n");
 }
 
 function buildRawBtReceiptText(order) {
   return [
-    "RECEIPT",
+    "\x1b@",
+    "\x1ba\x01",
+    "\x1b!\x30BOY BURGER\x1b!\x00",
+    "ใบเสร็จรับเงิน",
     getOrderDisplayNo(order),
     formatDate(order.createdAt),
     "------------------------------",
     ...buildRawBtItemLines(order, { includePrice: true }),
     "------------------------------",
-    alignLine("TOTAL", `${money(order.totalAmount)} THB`),
-    order.paymentMethod === "CASH" ? alignLine("CASH", `${money(order.cashReceived)} THB`) : "PAID BY TRANSFER",
-    order.paymentMethod === "CASH" ? alignLine("CHANGE", `${money(order.changeDue)} THB`) : "",
+    alignLine("รวม", `${money(order.totalAmount)} บาท`),
+    order.paymentMethod === "CASH" ? alignLine("รับเงิน", `${money(order.cashReceived)} บาท`) : "ชำระด้วยเงินโอน",
+    order.paymentMethod === "CASH" ? alignLine("เงินทอน", `${money(order.changeDue)} บาท`) : "",
     "\n\n\n\x1dV\x00",
   ].filter(Boolean).join("\n");
 }
@@ -190,14 +196,20 @@ function buildItemLines(order, { includePrice }) {
 function buildRawBtItemLines(order, { includePrice }) {
   return (order.items || []).flatMap((item) => {
     const total = Number(item.unitPrice || 0) * Number(item.quantity || 0);
-    const name = getPrintSafeItemName(item);
+    const name = item.name || getPrintSafeItemName(item);
     const firstLine = includePrice
-      ? alignLine(`${item.quantity}x ${name}`, `${money(total)} THB`)
-      : `${item.quantity}x ${name}`;
-    const modifiers = (item.modifiers || []).map((modifier) => `  - ${getPrintSafeModifierName(modifier)}`);
-    const note = item.note ? [`  Note: ${toAsciiFallback(item.note, "special note")}`] : [];
+      ? alignPriceCommand(`\x1bE\x01${item.quantity}x ${name}\x1bE\x00`, `${money(total)} บาท`)
+      : `\x1bE\x01${item.quantity}x ${name}\x1bE\x00`;
+    const modifiers = (item.modifiers || []).map((modifier) => `  - ${modifier || getPrintSafeModifierName(modifier)}`);
+    const note = item.note ? [`  หมายเหตุ: ${item.note}`] : [];
     return [firstLine, ...modifiers, ...note];
   });
+}
+
+function alignPriceCommand(left, right, priceColumnDots = 410) {
+  const nL = priceColumnDots % 256;
+  const nH = Math.floor(priceColumnDots / 256);
+  return `${left}\x1b$${String.fromCharCode(nL)}${String.fromCharCode(nH)}${right}`;
 }
 
 const PRODUCT_PRINT_NAMES = {
