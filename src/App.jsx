@@ -54,7 +54,7 @@ import {
   makeOrderPayload,
   money,
 } from "./lib/posLogic.js";
-import { makePrinterTestJob, sendPrintJob } from "./lib/printBridge.js";
+import { makePrinterTestJob, sendPrintJob, testPrintBridge } from "./lib/printBridge.js";
 import { usePersistentState } from "./lib/storage.js";
 
 const navItems = [
@@ -76,11 +76,11 @@ const salesChannels = [
 const defaultSettings = {
   printerModel: "POS-8390",
   printerConnection: "WIFI_LAN",
-  bridgeUrl: "http://127.0.0.1:8080/print",
+  bridgeUrl: "ws://127.0.0.1:40213/",
   printerIp: "192.168.1.150",
   printerPort: "9100",
   paperSize: "80mm",
-  bridgeMethod: "POST",
+  bridgeMethod: "RAWBT_WS",
   buzzerEnabled: true,
   defaultPrintOptions: { kitchen: true, receipt: false },
   sheetId: "1-JJ9u2NjqBrQtgrBb4sUsmwdV36GP25g-rJPrwv8mpI",
@@ -2912,6 +2912,7 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
   const [printerNotice, setPrinterNotice] = useState("");
   const [printerBusy, setPrinterBusy] = useState(false);
   const receiptTemplateValue = settings.receiptTemplate?.includes("[TOTAL (price*quantity)]") ? settings.receiptTemplate : defaultSettings.receiptTemplate;
+  const bridgeMethodValue = /^wss?:\/\//i.test(settings.bridgeUrl || "") ? "RAWBT_WS" : settings.bridgeMethod || "POST";
   const sections = [
     { id: "printer", label: "เครื่องพิมพ์", icon: Printer },
     { id: "sync", label: "Google Sheet", icon: Database },
@@ -2940,10 +2941,20 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
       printerConnection: current.printerConnection || "WIFI_LAN",
       paperSize: "80mm",
       printerPort: "9100",
-      bridgeMethod: current.bridgeMethod || "POST",
-      bridgeUrl: current.bridgeUrl || defaultSettings.bridgeUrl,
+      bridgeMethod: "RAWBT_WS",
+      bridgeUrl: "ws://127.0.0.1:40213/",
     }));
-    setPrinterNotice("ใช้ preset POS-8390: ESC/POS, กระดาษ 80mm, port 9100");
+    setPrinterNotice("ใช้ preset POS-8390: RawBT WebSocket, กระดาษ 80mm, port 40213");
+  }
+
+  function updateBridgeMethod(value) {
+    setSettings((current) => ({
+      ...current,
+      bridgeMethod: value,
+      bridgeUrl: value === "RAWBT_WS" && !/^wss?:\/\//i.test(current.bridgeUrl || "")
+        ? "ws://127.0.0.1:40213/"
+        : current.bridgeUrl,
+    }));
   }
 
   function updateReceiptLogo(event) {
@@ -2973,6 +2984,19 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
       setPrinterNotice("ส่งงานทดสอบไปที่เครื่องพิมพ์แล้ว");
     } catch (error) {
       setPrinterNotice(`ส่งทดสอบไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setPrinterBusy(false);
+    }
+  }
+
+  async function runBridgeTest() {
+    setPrinterBusy(true);
+    setPrinterNotice("");
+    try {
+      await testPrintBridge(settings);
+      setPrinterNotice("เชื่อมต่อ RawBT WebSocket ได้แล้ว");
+    } catch (error) {
+      setPrinterNotice(`เชื่อมต่อไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setPrinterBusy(false);
     }
@@ -3022,7 +3046,7 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
           <option value="USB">USB ผ่านแอปตัวกลาง</option>
         </select></label>
         <label>RawBT / Local bridge URL<input value={settings.bridgeUrl} onChange={(event) => update("bridgeUrl", event.target.value)} /></label>
-        <label>วิธีส่งข้อมูล<select value={settings.bridgeMethod || "POST"} onChange={(event) => update("bridgeMethod", event.target.value)}><option value="POST">POST text/plain</option><option value="GET">GET query data=</option></select></label>
+        <label>วิธีส่งข้อมูล<select value={bridgeMethodValue} onChange={(event) => updateBridgeMethod(event.target.value)}><option value="RAWBT_WS">RawBT WebSocket</option><option value="POST">POST text/plain</option><option value="GET">GET query data=</option></select></label>
         <label>IP เครื่องพิมพ์ Wi-Fi<input value={settings.printerIp} onChange={(event) => update("printerIp", event.target.value)} /></label>
         <label>Port เครื่องพิมพ์<input inputMode="numeric" value={settings.printerPort || "9100"} onChange={(event) => update("printerPort", event.target.value)} /></label>
         <label>ขนาดกระดาษ<select value={settings.paperSize} onChange={(event) => update("paperSize", event.target.value)}><option value="80mm">80mm</option><option value="58mm">58mm</option></select></label>
@@ -3030,9 +3054,11 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
         <div className="printer-help-box">
           <strong>หมายเหตุสำหรับรุ่น POS-8390</strong>
           <p>เลข 8390-V3.2 ในคู่มือมีแนวโน้มเป็นเวอร์ชันคู่มือ/เฟิร์มแวร์/แพ็กเกจ ไม่ใช่เลข IP หรือ port ของเครื่องพิมพ์</p>
+          <p>ถ้าใช้ Server for RawBT ให้เปิด Websocket API แล้วใช้ URL <strong>ws://127.0.0.1:40213/</strong> โดย 127.0.0.1 คือแท็บเล็ตเครื่องที่เปิดเว็บอยู่</p>
           <a href="http://www.barcoderead.net/printer/8390.zip" rel="noreferrer" target="_blank">ดาวน์โหลด driver / utility จากคู่มือ</a>
         </div>
         <div className="settings-printer-actions">
+          <button className="ghost-button" disabled={printerBusy} onClick={runBridgeTest} type="button"><Wifi size={18} /> ตรวจการเชื่อมต่อ</button>
           <button className="primary-button" disabled={printerBusy} onClick={runPrinterTest} type="button"><Printer size={18} /> ทดสอบพิมพ์</button>
           <button className="ghost-button" disabled={printerBusy} onClick={sendPendingPrintQueue} type="button"><RefreshCw size={18} /> ส่งคิวค้าง</button>
         </div>

@@ -12,13 +12,18 @@ export function buildPrintText(job, settings = {}) {
 export async function sendPrintJob(job, settings = {}) {
   const body = buildPrintText(job, settings);
   const bridgeUrl = settings.bridgeUrl || "http://127.0.0.1:8080/print";
-  const method = settings.bridgeMethod || "POST";
+  const method = normalizeBridgeMethod(settings.bridgeMethod, bridgeUrl);
   const url = fillBridgeUrl(bridgeUrl, {
     data: body,
     ip: settings.printerIp || "",
     port: settings.printerPort || "9100",
     type: job?.type || "KITCHEN",
   });
+
+  if (method === "RAWBT_WS") {
+    await sendRawBtWebSocket(url, body);
+    return true;
+  }
 
   if (method === "GET") {
     const finalUrl = bridgeUrl.includes("{data}") ? url : appendQuery(url, "data", body);
@@ -40,6 +45,21 @@ export async function sendPrintJob(job, settings = {}) {
   });
   if (!response.ok) throw new Error(`Printer bridge returned ${response.status}`);
   return true;
+}
+
+export async function testPrintBridge(settings = {}) {
+  const bridgeUrl = settings.bridgeUrl || "http://127.0.0.1:8080/print";
+  const method = normalizeBridgeMethod(settings.bridgeMethod, bridgeUrl);
+  if (method === "RAWBT_WS") {
+    await openRawBtWebSocket(fillBridgeUrl(bridgeUrl, {
+      data: "",
+      ip: settings.printerIp || "",
+      port: settings.printerPort || "9100",
+      type: "TEST",
+    }), { closeImmediately: true });
+    return true;
+  }
+  throw new Error("ตรวจสอบการเชื่อมต่อรองรับเฉพาะ RawBT WebSocket ในตอนนี้");
 }
 
 export function makePrinterTestJob() {
@@ -132,6 +152,81 @@ function fillBridgeUrl(url, values) {
     .replaceAll("{port}", encodeURIComponent(values.port || "9100"))
     .replaceAll("{type}", encodeURIComponent(values.type || ""))
     .replaceAll("{data}", encodeURIComponent(values.data || ""));
+}
+
+function normalizeBridgeMethod(method, bridgeUrl) {
+  if (/^wss?:\/\//i.test(String(bridgeUrl || ""))) return "RAWBT_WS";
+  return method || "POST";
+}
+
+function sendRawBtWebSocket(url, body) {
+  return openRawBtWebSocket(url, { payload: body });
+}
+
+function openRawBtWebSocket(url, { closeImmediately = false, payload = "" } = {}) {
+  return new Promise((resolve, reject) => {
+    if (typeof WebSocket === "undefined") {
+      reject(new Error("เบราว์เซอร์นี้ไม่รองรับ WebSocket"));
+      return;
+    }
+
+    let settled = false;
+    const timeout = window.setTimeout(() => {
+      finish(false, "เชื่อมต่อ RawBT WebSocket ไม่ทันเวลา ตรวจว่า Run service เปิดอยู่");
+    }, 4500);
+
+    let socket;
+    try {
+      socket = new WebSocket(url);
+      socket.binaryType = "arraybuffer";
+    } catch (error) {
+      window.clearTimeout(timeout);
+      reject(new Error(formatBridgeError(error)));
+      return;
+    }
+
+    function finish(ok, message) {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      try {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.close(1000, "Work complete");
+        }
+      } catch {
+        // Closing errors do not matter after RawBT accepts the job.
+      }
+      if (ok) resolve(true);
+      else reject(new Error(message));
+    }
+
+    socket.onopen = () => {
+      if (closeImmediately) {
+        finish(true);
+        return;
+      }
+      try {
+        socket.send(payload);
+        finish(true);
+      } catch (error) {
+        finish(false, formatBridgeError(error));
+      }
+    };
+
+    socket.onerror = () => {
+      finish(false, "เชื่อมต่อ RawBT WebSocket ไม่ได้ ตรวจว่า Server for RawBT เปิด Run service และใช้ ws://127.0.0.1:40213");
+    };
+
+    socket.onclose = (event) => {
+      if (!settled && event.code !== 1000) {
+        finish(false, `RawBT WebSocket ปิดการเชื่อมต่อ (${event.code || "unknown"})`);
+      }
+    };
+  });
+}
+
+function formatBridgeError(error) {
+  return error instanceof Error ? error.message : String(error || "Printer bridge error");
 }
 
 function appendQuery(url, key, value) {
