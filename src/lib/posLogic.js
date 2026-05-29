@@ -69,9 +69,10 @@ export function calculateCartTotal(cart) {
   return cart.reduce((total, item) => total + item.quantity * item.unitPrice, 0);
 }
 
-export function makeOrderPayload({ cart, paymentMethod, cashReceived, total }) {
+export function makeOrderPayload({ cart, orderNo, paymentMethod, cashReceived, total }) {
   return {
     id: `ORD-${Date.now()}`,
+    orderNo,
     createdAt: new Date().toISOString(),
     paymentStatus: "COMPLETED",
     paymentMethod,

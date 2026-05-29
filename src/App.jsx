@@ -44,6 +44,7 @@ import {
   seedIngredients,
 } from "./data/seedData.js";
 import { addLocalJob, listLocalJobs, updateLocalJob } from "./lib/localQueues.js";
+import { getOrderDisplayNo, makeNextOrderNo } from "./lib/orderFormat.js";
 import {
   applyStockMovement,
   calculateCartTotal,
@@ -53,6 +54,7 @@ import {
   makeOrderPayload,
   money,
 } from "./lib/posLogic.js";
+import { makePrinterTestJob, sendPrintJob } from "./lib/printBridge.js";
 import { usePersistentState } from "./lib/storage.js";
 
 const navItems = [
@@ -75,6 +77,7 @@ const defaultSettings = {
   bridgeUrl: "http://127.0.0.1:8080/print",
   printerIp: "192.168.1.150",
   paperSize: "80mm",
+  bridgeMethod: "POST",
   buzzerEnabled: true,
   defaultPrintOptions: { kitchen: true, receipt: false },
   sheetId: "1-JJ9u2NjqBrQtgrBb4sUsmwdV36GP25g-rJPrwv8mpI",
@@ -343,6 +346,25 @@ export default function App() {
     setQueueLists({ print, sheet });
   }
 
+  async function flushPrintQueue() {
+    const jobs = await listLocalJobs("printJobs").catch(() => []);
+    const pendingJobs = jobs.filter((job) => job.status !== "PRINTED").slice(0, 10);
+    for (const job of pendingJobs) {
+      try {
+        await sendPrintJob(job, resolvedSettings);
+        await updateLocalJob("printJobs", { ...job, status: "PRINTED", lastError: "" });
+      } catch (error) {
+        await updateLocalJob("printJobs", {
+          ...job,
+          status: "FAILED",
+          retryCount: Number(job.retryCount || 0) + 1,
+          lastError: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    await refreshQueues();
+  }
+
   function preserveScrollPosition() {
     if (typeof window === "undefined") return;
     const scrollY = window.scrollY;
@@ -429,7 +451,7 @@ export default function App() {
       return;
     }
     const order = {
-      ...makeOrderPayload({ cart, total, ...payment }),
+      ...makeOrderPayload({ cart, orderNo: makeNextOrderNo(orders), total, ...payment }),
       salesChannel,
       shiftId: openShift.id,
       note: "",
@@ -448,11 +470,13 @@ export default function App() {
     if (printOptions.receipt) await addLocalJob("printJobs", { type: "RECEIPT", order });
     await addLocalJob("sheetSyncJobs", { type: "ORDER", payload: order });
     await refreshQueues();
+    void flushPrintQueue();
   }
 
   async function queueHistoricalPrint(order, type) {
     await addLocalJob("printJobs", { type, order, source: "HISTORY_REPRINT" });
     await refreshQueues();
+    void flushPrintQueue();
     return true;
   }
 
@@ -743,6 +767,7 @@ export default function App() {
           ) : null}
           {activeTab === "settings" ? (
             <SettingsScreen
+              flushPrintQueue={flushPrintQueue}
               orders={orders}
               queueLists={queueLists}
               refreshQueues={refreshQueues}
@@ -1307,19 +1332,12 @@ function ShiftClosedSummary({ onClose, summary }) {
 }
 
 function SalesHistoryPanel({ onReprintOrder, orders, shifts }) {
-  const [selectedOrderId, setSelectedOrderId] = useState(orders[0]?.id || "");
+  const [selectedOrderId, setSelectedOrderId] = useState("");
   const [printNotice, setPrintNotice] = useState("");
-  const latestShifts = shifts.slice(0, 8);
-  const selectedOrder = orders.find((order) => order.id === selectedOrderId) || orders[0] || null;
+  const selectedOrder = orders.find((order) => order.id === selectedOrderId) || null;
 
   useEffect(() => {
-    if (!orders.length) {
-      setSelectedOrderId("");
-      return;
-    }
-    if (!orders.some((order) => order.id === selectedOrderId)) {
-      setSelectedOrderId(orders[0].id);
-    }
+    if (selectedOrderId && !orders.some((order) => order.id === selectedOrderId)) setSelectedOrderId("");
   }, [orders, selectedOrderId]);
 
   async function reprint(order, type) {
@@ -1330,7 +1348,7 @@ function SalesHistoryPanel({ onReprintOrder, orders, shifts }) {
   }
 
   return (
-    <section className="history-layout">
+    <section className="history-layout sales-history-list-layout">
       <div className="work-panel">
         <div className="panel-title"><ReceiptText size={22} /><h3>ประวัติการขาย</h3></div>
         <div className="table-list">
@@ -1338,11 +1356,14 @@ function SalesHistoryPanel({ onReprintOrder, orders, shifts }) {
             <button
               className={`table-row history-row history-order-button ${selectedOrder?.id === order.id ? "is-active" : ""}`}
               key={order.id}
-              onClick={() => setSelectedOrderId(order.id)}
+              onClick={() => {
+                setSelectedOrderId(order.id);
+                setPrintNotice("");
+              }}
               type="button"
             >
               <span>
-                {order.id}
+                {getOrderDisplayNo(order)}
                 <small>{new Date(order.createdAt).toLocaleString("th-TH")} · {order.paymentMethod === "CASH" ? "เงินสด" : "เงินโอน"}</small>
               </span>
               <strong>{money(order.totalAmount)} บาท</strong>
@@ -1350,46 +1371,35 @@ function SalesHistoryPanel({ onReprintOrder, orders, shifts }) {
           )) : <div className="empty-state">ยังไม่มีประวัติการขาย</div>}
         </div>
       </div>
-      <div className="work-panel">
-        {selectedOrder ? (
-          <OrderDetailPanel order={selectedOrder} onReprint={reprint} printNotice={printNotice} />
-        ) : (
-          <>
-            <div className="panel-title"><ClipboardList size={22} /><h3>สรุปกะล่าสุด</h3></div>
-            <div className="table-list">
-              {latestShifts.length ? latestShifts.map((shift) => {
-                const summary = shift.summary || calculateShiftSummary(shift, orders, shift.closingCash ?? null);
-                return (
-                  <div className="shift-summary-card" key={shift.id}>
-                    <strong>{shift.closedAt ? "ปิดกะแล้ว" : "กำลังเปิดกะ"}</strong>
-                    <span>เปิด {new Date(shift.openedAt).toLocaleString("th-TH")}</span>
-                    {shift.closedAt ? <span>ปิด {new Date(shift.closedAt).toLocaleString("th-TH")}</span> : null}
-                    <div className="shift-metrics compact">
-                      <span>เงินสด <strong>{money(summary.cashSales)} บาท</strong></span>
-                      <span>เงินโอน <strong>{money(summary.transferSales)} บาท</strong></span>
-                      <span>ส่วนต่าง <strong className={summary.cashDifference < 0 ? "text-danger" : ""}>{money(summary.cashDifference)} บาท</strong></span>
-                      <span>ออร์เดอร์ <strong>{summary.orderCount}</strong></span>
-                    </div>
-                  </div>
-                );
-              }) : <div className="empty-state">ยังไม่มีข้อมูลกะ</div>}
-            </div>
-          </>
-        )}
-      </div>
+      {selectedOrder ? (
+        <div className="modal-backdrop">
+          <div className="modal-card history-order-modal">
+            <OrderDetailPanel
+              onClose={() => {
+                setSelectedOrderId("");
+                setPrintNotice("");
+              }}
+              order={selectedOrder}
+              onReprint={reprint}
+              printNotice={printNotice}
+            />
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
 
-function OrderDetailPanel({ onReprint, order, printNotice }) {
+function OrderDetailPanel({ onClose, onReprint, order, printNotice }) {
   return (
     <div className="order-detail-panel">
       <div className="panel-title">
         <ClipboardList size={22} />
         <div>
-          <h3>{order.id}</h3>
+          <h3>{getOrderDisplayNo(order)}</h3>
           <p>{new Date(order.createdAt).toLocaleString("th-TH")} · {order.paymentMethod === "CASH" ? "เงินสด" : "เงินโอน"}</p>
         </div>
+        {onClose ? <button className="icon-close-button" onClick={onClose} type="button">ปิด</button> : null}
       </div>
       <div className="order-detail-list">
         {order.items?.length ? order.items.map((item, index) => (
@@ -1433,7 +1443,7 @@ function SalesHistory({ orders, shifts }) {
           {orders.length ? orders.map((order) => (
             <div className="table-row history-row" key={order.id}>
               <span>
-                {order.id}
+                {getOrderDisplayNo(order)}
                 <small>{new Date(order.createdAt).toLocaleString("th-TH")} · {order.paymentMethod === "CASH" ? "เงินสด" : "เงินโอน"}</small>
               </span>
               <strong>{money(order.totalAmount)} บาท</strong>
@@ -2894,8 +2904,10 @@ function NewIngredientModal({ onClose, onSubmit }) {
   );
 }
 
-function SettingsScreen({ orders, queueLists, refreshQueues, setSettings, settings }) {
+function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, setSettings, settings }) {
   const [activeSection, setActiveSection] = useState("printer");
+  const [printerNotice, setPrinterNotice] = useState("");
+  const [printerBusy, setPrinterBusy] = useState(false);
   const receiptTemplateValue = settings.receiptTemplate?.includes("[TOTAL (price*quantity)]") ? settings.receiptTemplate : defaultSettings.receiptTemplate;
   const sections = [
     { id: "printer", label: "เครื่องพิมพ์", icon: Printer },
@@ -2937,6 +2949,32 @@ function SettingsScreen({ orders, queueLists, refreshQueues, setSettings, settin
     await refreshQueues();
   }
 
+  async function runPrinterTest() {
+    setPrinterBusy(true);
+    setPrinterNotice("");
+    try {
+      await sendPrintJob(makePrinterTestJob(), settings);
+      setPrinterNotice("ส่งงานทดสอบไปที่เครื่องพิมพ์แล้ว");
+    } catch (error) {
+      setPrinterNotice(`ส่งทดสอบไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setPrinterBusy(false);
+    }
+  }
+
+  async function sendPendingPrintQueue() {
+    setPrinterBusy(true);
+    setPrinterNotice("");
+    try {
+      await flushPrintQueue();
+      setPrinterNotice("ส่งคิวพิมพ์ค้างแล้ว ตรวจสถานะใน Print Queue");
+    } catch (error) {
+      setPrinterNotice(`ส่งคิวไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setPrinterBusy(false);
+    }
+  }
+
   return (
     <section className="settings-page">
       <div className="settings-section-tabs">
@@ -2955,10 +2993,17 @@ function SettingsScreen({ orders, queueLists, refreshQueues, setSettings, settin
       <article className="settings-card">
         <Printer size={24} />
         <h3>เครื่องพิมพ์ครัว</h3>
+        <p>รองรับเครื่องพิมพ์ความร้อน 58/80mm แบบ ESC/POS ผ่าน RawBT หรือ local print bridge ในเครื่อง Android</p>
         <label>RawBT / Local bridge URL<input value={settings.bridgeUrl} onChange={(event) => update("bridgeUrl", event.target.value)} /></label>
+        <label>วิธีส่งข้อมูล<select value={settings.bridgeMethod || "POST"} onChange={(event) => update("bridgeMethod", event.target.value)}><option value="POST">POST text/plain</option><option value="GET">GET query data=</option></select></label>
         <label>IP เครื่องพิมพ์ Wi-Fi<input value={settings.printerIp} onChange={(event) => update("printerIp", event.target.value)} /></label>
         <label>ขนาดกระดาษ<select value={settings.paperSize} onChange={(event) => update("paperSize", event.target.value)}><option value="80mm">80mm</option><option value="58mm">58mm</option></select></label>
         <label className="check-line"><input checked={settings.buzzerEnabled} onChange={(event) => update("buzzerEnabled", event.target.checked)} type="checkbox" /> เปิด Kitchen Buzzer</label>
+        <div className="settings-printer-actions">
+          <button className="primary-button" disabled={printerBusy} onClick={runPrinterTest} type="button"><Printer size={18} /> ทดสอบพิมพ์</button>
+          <button className="ghost-button" disabled={printerBusy} onClick={sendPendingPrintQueue} type="button"><RefreshCw size={18} /> ส่งคิวค้าง</button>
+        </div>
+        {printerNotice ? <div className="inline-confirm">{printerNotice}</div> : null}
         <div className="settings-subsection">
           <strong>ค่าเริ่มต้นการพิมพ์ตอนปิดออเดอร์</strong>
           <p>เลือกไว้ตรงนี้แทนการโชว์ตัวเลือกในตะกร้า เพื่อให้หน้าขายโล่งและกดชำระเงินได้เร็วขึ้น</p>
@@ -3011,7 +3056,7 @@ function SettingsScreen({ orders, queueLists, refreshQueues, setSettings, settin
         <div className="table-list">
           {orders.slice(0, 8).map((order) => (
             <div className="table-row" key={order.id}>
-              <span>{order.id}<small>{new Date(order.createdAt).toLocaleString("th-TH")}</small></span>
+              <span>{getOrderDisplayNo(order)}<small>{new Date(order.createdAt).toLocaleString("th-TH")}</small></span>
               <strong>{money(order.totalAmount)} บาท</strong>
             </div>
           ))}
@@ -3044,7 +3089,7 @@ function RecentOrders({ orders }) {
       <h3>ออเดอร์ล่าสุด</h3>
       <div>
         {orders.slice(0, 4).map((order) => (
-          <span key={order.id}>{order.id} · {money(order.totalAmount)} บาท</span>
+          <span key={order.id}>{getOrderDisplayNo(order)} · {money(order.totalAmount)} บาท</span>
         ))}
       </div>
     </section>
@@ -3163,7 +3208,7 @@ function OrderSuccessDialog({ order, onClose }) {
         <div className="success-icon"><Check size={28} /></div>
         <div>
           <h3>ทำรายการสำเร็จ</h3>
-          <p>{order.id}</p>
+          <p>{getOrderDisplayNo(order)}</p>
         </div>
         <div className="success-summary">
           <span>ยอดรวม</span>
@@ -3187,7 +3232,7 @@ function OrderToast({ order, onClose }) {
       <Check size={20} />
       <div>
         <strong>บันทึกออเดอร์สำเร็จ</strong>
-        <p>{order.id} รวม {money(order.totalAmount)} บาท เงินทอน {money(order.changeDue)} บาท</p>
+        <p>{getOrderDisplayNo(order)} รวม {money(order.totalAmount)} บาท เงินทอน {money(order.changeDue)} บาท</p>
       </div>
       <button onClick={onClose} type="button">ปิด</button>
     </div>

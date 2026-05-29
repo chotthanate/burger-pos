@@ -516,6 +516,16 @@ button {
   gap: 16px;
 }
 
+.sales-history-list-layout {
+  grid-template-columns: 1fr;
+}
+
+.history-order-modal {
+  width: min(720px, calc(100vw - 28px));
+  max-height: calc(100dvh - 80px);
+  overflow: auto;
+}
+
 .history-row {
   grid-template-columns: minmax(0, 1fr) auto;
 }
@@ -5149,6 +5159,20 @@ b {
   box-shadow: 0 8px 18px rgba(217, 45, 39, 0.16);
 }
 
+.settings-printer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settings-printer-actions .primary-button,
+.settings-printer-actions .ghost-button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .channel-price-grid .channel-price-row {
   display: grid;
   grid-template-columns: minmax(90px, 1fr) minmax(90px, 120px) auto;
@@ -5228,7 +5252,7 @@ b {
   }
 
   .pos-screen .product-tile {
-    aspect-ratio: 1 / 0.88 !important;
+    aspect-ratio: 1 / 1.04 !important;
     min-height: 0 !important;
   }
 
@@ -5272,7 +5296,7 @@ b {
   }
 
   .pos-screen .product-tile {
-    aspect-ratio: 1 / 1.35 !important;
+    aspect-ratio: 1 / 1.08 !important;
   }
 
   .inventory-card {
