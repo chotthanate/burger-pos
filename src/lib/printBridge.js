@@ -21,7 +21,7 @@ export async function sendPrintJob(job, settings = {}) {
   });
 
   if (method === "RAWBT_INTENT") {
-    launchRawBtIntent(body);
+    launchRawBtIntent(body, settings);
     return true;
   }
 
@@ -56,7 +56,7 @@ export async function testPrintBridge(settings = {}) {
   const bridgeUrl = settings.bridgeUrl || "http://127.0.0.1:8080/print";
   const method = normalizeBridgeMethod(settings.bridgeMethod, bridgeUrl);
   if (method === "RAWBT_INTENT") {
-    launchRawBtIntent(`${buildPrinterPrefix(settings).join("")}\x1ba\x01ทดสอบเครื่องพิมพ์\nRawBT Android\n\n\n\x1dV\x00`);
+    launchRawBtIntent("ทดสอบเครื่องพิมพ์\nRawBT Android\nภาษาไทยควรอ่านได้\nเบอร์เกอร์ 1 ชิ้น 69 บาท", settings);
     return true;
   }
   if (method === "RAWBT_WS") {
@@ -77,7 +77,7 @@ export async function printThaiCodePageTest(settings = {}) {
   if (method !== "RAWBT_INTENT") {
     throw new Error("ทดสอบภาษาไทยใช้กับ Android RawBT Intent เท่านั้น");
   }
-  launchRawBtIntent(buildThaiCodePageTestText());
+  launchRawBtIntent("ทดสอบภาษาไทยแบบรูปภาพ\nใบเสร็จ เบอร์เกอร์ ราคา 123 บาท\nเงินทอน 7 บาท\nถ้าบรรทัดนี้อ่านได้ แปลว่าใช้โหมด Bitmap สำเร็จ", settings);
   return true;
 }
 
@@ -179,21 +179,126 @@ function normalizeBridgeMethod(method, bridgeUrl) {
   return method || "POST";
 }
 
-function launchRawBtIntent(body) {
+function launchRawBtIntent(body, settings = {}) {
   if (typeof window === "undefined") {
     throw new Error("RawBT Android Intent ใช้ได้เฉพาะในเบราว์เซอร์บน Android");
   }
-  const encoded = base64EncodeUtf8(body);
+  const encoded = base64EncodeBytes(buildBitmapEscPosBytes(body, settings));
   window.location.href = `intent:base64,${encoded}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`;
 }
 
-function base64EncodeUtf8(value) {
-  const bytes = encodeEscPosText(String(value || ""));
+function base64EncodeBytes(bytes) {
   let binary = "";
   for (let index = 0; index < bytes.length; index += 1) {
     binary += String.fromCharCode(bytes[index]);
   }
   return btoa(binary);
+}
+
+function buildBitmapEscPosBytes(text, settings = {}) {
+  if (typeof document === "undefined") return encodeEscPosText(text);
+  const width = settings.paperSize === "58mm" ? 384 : 576;
+  const paddingX = 24;
+  const paddingY = 20;
+  const fontSize = settings.paperSize === "58mm" ? 24 : 28;
+  const lineHeight = Math.round(fontSize * 1.45);
+  const printableWidth = width - paddingX * 2;
+  const probe = document.createElement("canvas");
+  const probeContext = probe.getContext("2d");
+  if (!probeContext) return encodeEscPosText(text);
+  probeContext.font = `${fontSize}px "FC Iconic", system-ui, sans-serif`;
+  const lines = wrapBitmapText(stripEscPosCommands(text), probeContext, printableWidth);
+  const height = Math.max(96, paddingY * 2 + lines.length * lineHeight);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return encodeEscPosText(text);
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = "#000";
+  context.textBaseline = "top";
+  context.font = `${fontSize}px "FC Iconic", system-ui, sans-serif`;
+  lines.forEach((line, index) => {
+    const y = paddingY + index * lineHeight;
+    context.fillText(line, paddingX, y);
+  });
+  const image = context.getImageData(0, 0, width, height);
+  const raster = imageDataToRasterBytes(image, width, height);
+  const widthBytes = Math.ceil(width / 8);
+  return [
+    0x1b, 0x40,
+    0x1d, 0x76, 0x30, 0x00,
+    widthBytes & 0xff, (widthBytes >> 8) & 0xff,
+    height & 0xff, (height >> 8) & 0xff,
+    ...raster,
+    0x0a, 0x0a, 0x0a,
+    0x1d, 0x56, 0x00,
+  ];
+}
+
+function wrapBitmapText(text, context, maxWidth) {
+  const output = [];
+  String(text || "").split(/\r?\n/).forEach((rawLine) => {
+    const line = rawLine.trimEnd();
+    if (!line) {
+      output.push("");
+      return;
+    }
+    let current = "";
+    for (const char of line) {
+      const next = current + char;
+      if (current && context.measureText(next).width > maxWidth) {
+        output.push(current);
+        current = char;
+      } else {
+        current = next;
+      }
+    }
+    output.push(current);
+  });
+  return output;
+}
+
+function stripEscPosCommands(value) {
+  const text = String(value || "");
+  let output = "";
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code === 0x1b) {
+      index += 2;
+      continue;
+    }
+    if (code === 0x1d) {
+      index += 2;
+      continue;
+    }
+    output += text[index];
+  }
+  return output.replace(/\n{4,}/g, "\n\n");
+}
+
+function imageDataToRasterBytes(image, width, height) {
+  const widthBytes = Math.ceil(width / 8);
+  const bytes = new Array(widthBytes * height).fill(0);
+  for (let y = 0; y < height; y += 1) {
+    for (let xByte = 0; xByte < widthBytes; xByte += 1) {
+      let byte = 0;
+      for (let bit = 0; bit < 8; bit += 1) {
+        const x = xByte * 8 + bit;
+        if (x >= width) continue;
+        const offset = (y * width + x) * 4;
+        const r = image.data[offset];
+        const g = image.data[offset + 1];
+        const b = image.data[offset + 2];
+        const alpha = image.data[offset + 3];
+        const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+        if (alpha > 10 && luminance < 190) byte |= 0x80 >> bit;
+      }
+      bytes[y * widthBytes + xByte] = byte;
+    }
+  }
+  return bytes;
 }
 
 function buildPrinterPrefix(settings = {}) {
