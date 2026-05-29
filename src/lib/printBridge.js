@@ -56,7 +56,7 @@ export async function testPrintBridge(settings = {}) {
   const bridgeUrl = settings.bridgeUrl || "http://127.0.0.1:8080/print";
   const method = normalizeBridgeMethod(settings.bridgeMethod, bridgeUrl);
   if (method === "RAWBT_INTENT") {
-    launchRawBtIntent(`${buildPrinterPrefix().join("")}\x1ba\x01ทดสอบเครื่องพิมพ์\nRawBT Android\n\n\n\x1dV\x00`);
+    launchRawBtIntent(`${buildPrinterPrefix(settings).join("")}\x1ba\x01ทดสอบเครื่องพิมพ์\nRawBT Android\n\n\n\x1dV\x00`);
     return true;
   }
   if (method === "RAWBT_WS") {
@@ -69,6 +69,16 @@ export async function testPrintBridge(settings = {}) {
     return true;
   }
   throw new Error("ตรวจสอบการเชื่อมต่อรองรับเฉพาะ RawBT WebSocket ในตอนนี้");
+}
+
+export async function printThaiCodePageTest(settings = {}) {
+  const bridgeUrl = settings.bridgeUrl || "http://127.0.0.1:8080/print";
+  const method = normalizeBridgeMethod(settings.bridgeMethod, bridgeUrl);
+  if (method !== "RAWBT_INTENT") {
+    throw new Error("ทดสอบภาษาไทยใช้กับ Android RawBT Intent เท่านั้น");
+  }
+  launchRawBtIntent(buildThaiCodePageTestText());
+  return true;
 }
 
 export function makePrinterTestJob() {
@@ -95,9 +105,9 @@ export function makePrinterTestJob() {
   };
 }
 
-function buildKitchenText(order) {
+function buildKitchenText(order, settings = {}) {
   const lines = [
-    ...buildPrinterPrefix(),
+    ...buildPrinterPrefix(settings),
     "\x1ba\x01",
     "\x1b!\x10ใบออร์เดอร์\x1b!\x00",
     getOrderDisplayNo(order),
@@ -112,9 +122,9 @@ function buildKitchenText(order) {
   return lines.join("\n");
 }
 
-function buildReceiptText(order) {
+function buildReceiptText(order, settings = {}) {
   const lines = [
-    ...buildPrinterPrefix(),
+    ...buildPrinterPrefix(settings),
     "\x1ba\x01",
     "\x1b!\x10ใบเสร็จรับเงิน\x1b!\x00",
     getOrderDisplayNo(order),
@@ -186,11 +196,25 @@ function base64EncodeUtf8(value) {
   return btoa(binary);
 }
 
-function buildPrinterPrefix() {
+function buildPrinterPrefix(settings = {}) {
+  const codePage = Number(settings.thaiCodePage || 42);
   return [
     "\x1b@",
-    "\x1bt\x14",
+    `\x1bt${String.fromCharCode(codePage)}`,
   ];
+}
+
+function buildThaiCodePageTestText() {
+  const pages = [20, 21, 26, 42, 47];
+  const lines = ["\x1b@", "\x1ba\x01", "ทดสอบภาษาไทย", "Thai code page test", "------------------------------"];
+  for (const page of pages) {
+    lines.push(`\x1bt${String.fromCharCode(page)}`);
+    lines.push(`PAGE ${page}: ทดสอบ ใบเสร็จ เบอร์เกอร์`);
+    lines.push(`PAGE ${page}: ราคา 123 บาท เงินทอน 7 บาท`);
+    lines.push("------------------------------");
+  }
+  lines.push("\n\n\n\x1dV\x00");
+  return lines.join("\n");
 }
 
 function encodeEscPosText(value) {

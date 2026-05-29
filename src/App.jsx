@@ -54,7 +54,7 @@ import {
   makeOrderPayload,
   money,
 } from "./lib/posLogic.js";
-import { makePrinterTestJob, sendPrintJob, testPrintBridge } from "./lib/printBridge.js";
+import { makePrinterTestJob, printThaiCodePageTest, sendPrintJob, testPrintBridge } from "./lib/printBridge.js";
 import { usePersistentState } from "./lib/storage.js";
 
 const navItems = [
@@ -81,6 +81,7 @@ const defaultSettings = {
   printerPort: "9100",
   paperSize: "80mm",
   bridgeMethod: "RAWBT_INTENT",
+  thaiCodePage: "42",
   buzzerEnabled: true,
   defaultPrintOptions: { kitchen: true, receipt: false },
   sheetId: "1-JJ9u2NjqBrQtgrBb4sUsmwdV36GP25g-rJPrwv8mpI",
@@ -2942,6 +2943,7 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
       paperSize: "80mm",
       printerPort: "9100",
       bridgeMethod: "RAWBT_INTENT",
+      thaiCodePage: current.thaiCodePage || "42",
       bridgeUrl: "ws://127.0.0.1:40213/",
     }));
     setPrinterNotice("ใช้ preset POS-8390: Android RawBT Intent, กระดาษ 80mm");
@@ -2984,6 +2986,19 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
       setPrinterNotice("ส่งงานทดสอบไปที่เครื่องพิมพ์แล้ว");
     } catch (error) {
       setPrinterNotice(`ส่งทดสอบไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setPrinterBusy(false);
+    }
+  }
+
+  async function runThaiCodePageTest() {
+    setPrinterBusy(true);
+    setPrinterNotice("");
+    try {
+      await printThaiCodePageTest(settings);
+      setPrinterNotice("ส่งใบเทสภาษาไทยหลาย code page แล้ว ดูว่าบรรทัด PAGE ไหนอ่านไทยได้ชัดที่สุด");
+    } catch (error) {
+      setPrinterNotice(`ส่งเทสภาษาไทยไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setPrinterBusy(false);
     }
@@ -3049,6 +3064,7 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
         <label>วิธีส่งข้อมูล<select value={bridgeMethodValue} onChange={(event) => updateBridgeMethod(event.target.value)}><option value="RAWBT_INTENT">Android RawBT Intent</option><option value="RAWBT_WS">RawBT WebSocket</option><option value="POST">POST text/plain</option><option value="GET">GET query data=</option></select></label>
         <label>IP เครื่องพิมพ์ Wi-Fi<input value={settings.printerIp} onChange={(event) => update("printerIp", event.target.value)} /></label>
         <label>Port เครื่องพิมพ์<input inputMode="numeric" value={settings.printerPort || "9100"} onChange={(event) => update("printerPort", event.target.value)} /></label>
+        <label>Thai code page<select value={settings.thaiCodePage || defaultSettings.thaiCodePage} onChange={(event) => update("thaiCodePage", event.target.value)}><option value="42">42 - Thai ทั่วไป</option><option value="20">20 - KU42 Thai</option><option value="21">21 - TIS11 Thai</option><option value="26">26 - TIS18 Thai</option><option value="47">47 - WPC1253 fallback</option></select></label>
         <label>ขนาดกระดาษ<select value={settings.paperSize} onChange={(event) => update("paperSize", event.target.value)}><option value="80mm">80mm</option><option value="58mm">58mm</option></select></label>
         <label className="check-line"><input checked={settings.buzzerEnabled} onChange={(event) => update("buzzerEnabled", event.target.checked)} type="checkbox" /> เปิด Kitchen Buzzer</label>
         <div className="printer-help-box">
@@ -3062,6 +3078,7 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
         <div className="settings-printer-actions">
           <button className="ghost-button" disabled={printerBusy} onClick={runBridgeTest} type="button"><Wifi size={18} /> ตรวจการเชื่อมต่อ</button>
           <button className="primary-button" disabled={printerBusy} onClick={runPrinterTest} type="button"><Printer size={18} /> ทดสอบพิมพ์</button>
+          <button className="ghost-button" disabled={printerBusy} onClick={runThaiCodePageTest} type="button"><ReceiptText size={18} /> เทสภาษาไทย</button>
           <button className="ghost-button" disabled={printerBusy} onClick={sendPendingPrintQueue} type="button"><RefreshCw size={18} /> ส่งคิวค้าง</button>
         </div>
         {printerNotice ? <div className="inline-confirm">{printerNotice}</div> : null}
