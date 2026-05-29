@@ -80,7 +80,7 @@ const defaultSettings = {
   printerIp: "192.168.1.150",
   printerPort: "9100",
   paperSize: "80mm",
-  bridgeMethod: "RAWBT_WS",
+  bridgeMethod: "RAWBT_INTENT",
   buzzerEnabled: true,
   defaultPrintOptions: { kitchen: true, receipt: false },
   sheetId: "1-JJ9u2NjqBrQtgrBb4sUsmwdV36GP25g-rJPrwv8mpI",
@@ -2912,7 +2912,7 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
   const [printerNotice, setPrinterNotice] = useState("");
   const [printerBusy, setPrinterBusy] = useState(false);
   const receiptTemplateValue = settings.receiptTemplate?.includes("[TOTAL (price*quantity)]") ? settings.receiptTemplate : defaultSettings.receiptTemplate;
-  const bridgeMethodValue = /^wss?:\/\//i.test(settings.bridgeUrl || "") ? "RAWBT_WS" : settings.bridgeMethod || "POST";
+  const bridgeMethodValue = settings.bridgeMethod === "RAWBT_INTENT" ? "RAWBT_INTENT" : /^wss?:\/\//i.test(settings.bridgeUrl || "") ? "RAWBT_WS" : settings.bridgeMethod || "POST";
   const sections = [
     { id: "printer", label: "เครื่องพิมพ์", icon: Printer },
     { id: "sync", label: "Google Sheet", icon: Database },
@@ -2941,10 +2941,10 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
       printerConnection: current.printerConnection || "WIFI_LAN",
       paperSize: "80mm",
       printerPort: "9100",
-      bridgeMethod: "RAWBT_WS",
+      bridgeMethod: "RAWBT_INTENT",
       bridgeUrl: "ws://127.0.0.1:40213/",
     }));
-    setPrinterNotice("ใช้ preset POS-8390: RawBT WebSocket, กระดาษ 80mm, port 40213");
+    setPrinterNotice("ใช้ preset POS-8390: Android RawBT Intent, กระดาษ 80mm");
   }
 
   function updateBridgeMethod(value) {
@@ -3046,7 +3046,7 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
           <option value="USB">USB ผ่านแอปตัวกลาง</option>
         </select></label>
         <label>RawBT / Local bridge URL<input value={settings.bridgeUrl} onChange={(event) => update("bridgeUrl", event.target.value)} /></label>
-        <label>วิธีส่งข้อมูล<select value={bridgeMethodValue} onChange={(event) => updateBridgeMethod(event.target.value)}><option value="RAWBT_WS">RawBT WebSocket</option><option value="POST">POST text/plain</option><option value="GET">GET query data=</option></select></label>
+        <label>วิธีส่งข้อมูล<select value={bridgeMethodValue} onChange={(event) => updateBridgeMethod(event.target.value)}><option value="RAWBT_INTENT">Android RawBT Intent</option><option value="RAWBT_WS">RawBT WebSocket</option><option value="POST">POST text/plain</option><option value="GET">GET query data=</option></select></label>
         <label>IP เครื่องพิมพ์ Wi-Fi<input value={settings.printerIp} onChange={(event) => update("printerIp", event.target.value)} /></label>
         <label>Port เครื่องพิมพ์<input inputMode="numeric" value={settings.printerPort || "9100"} onChange={(event) => update("printerPort", event.target.value)} /></label>
         <label>ขนาดกระดาษ<select value={settings.paperSize} onChange={(event) => update("paperSize", event.target.value)}><option value="80mm">80mm</option><option value="58mm">58mm</option></select></label>
@@ -3054,6 +3054,7 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
         <div className="printer-help-box">
           <strong>หมายเหตุสำหรับรุ่น POS-8390</strong>
           <p>เลข 8390-V3.2 ในคู่มือมีแนวโน้มเป็นเวอร์ชันคู่มือ/เฟิร์มแวร์/แพ็กเกจ ไม่ใช่เลข IP หรือ port ของเครื่องพิมพ์</p>
+          <p>บน Android Tablet แนะนำใช้ <strong>Android RawBT Intent</strong> เพราะเป็นวิธีที่ RawBT เปิดให้เว็บเรียกแอปโดยตรง</p>
           <p>ถ้าใช้ Server for RawBT ให้เปิด Websocket API แล้วใช้ URL <strong>ws://127.0.0.1:40213/</strong> โดย 127.0.0.1 คือแท็บเล็ตเครื่องที่เปิดเว็บอยู่</p>
           <p>ถ้าตรวจการเชื่อมต่อไม่ผ่าน ให้ลองเปลี่ยน URL เป็น <strong>ws://localhost:40213/</strong> หรือใช้ IP ของแท็บเล็ต เช่น <strong>ws://192.168.1.xxx:40213/</strong></p>
           <a href="http://www.barcoderead.net/printer/8390.zip" rel="noreferrer" target="_blank">ดาวน์โหลด driver / utility จากคู่มือ</a>

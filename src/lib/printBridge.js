@@ -20,6 +20,11 @@ export async function sendPrintJob(job, settings = {}) {
     type: job?.type || "KITCHEN",
   });
 
+  if (method === "RAWBT_INTENT") {
+    launchRawBtIntent(body);
+    return true;
+  }
+
   if (method === "RAWBT_WS") {
     await sendRawBtWebSocket(url, body);
     return true;
@@ -50,6 +55,10 @@ export async function sendPrintJob(job, settings = {}) {
 export async function testPrintBridge(settings = {}) {
   const bridgeUrl = settings.bridgeUrl || "http://127.0.0.1:8080/print";
   const method = normalizeBridgeMethod(settings.bridgeMethod, bridgeUrl);
+  if (method === "RAWBT_INTENT") {
+    launchRawBtIntent("\x1b@\x1ba\x01RawBT Android test\n\n\n\x1dV\x00");
+    return true;
+  }
   if (method === "RAWBT_WS") {
     await openRawBtWebSocketWithFallback(fillBridgeUrl(bridgeUrl, {
       data: "",
@@ -155,8 +164,26 @@ function fillBridgeUrl(url, values) {
 }
 
 function normalizeBridgeMethod(method, bridgeUrl) {
+  if (method === "RAWBT_INTENT") return "RAWBT_INTENT";
   if (/^wss?:\/\//i.test(String(bridgeUrl || ""))) return "RAWBT_WS";
   return method || "POST";
+}
+
+function launchRawBtIntent(body) {
+  if (typeof window === "undefined") {
+    throw new Error("RawBT Android Intent ใช้ได้เฉพาะในเบราว์เซอร์บน Android");
+  }
+  const encoded = base64EncodeUtf8(body);
+  window.location.href = `intent:base64,${encoded}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`;
+}
+
+function base64EncodeUtf8(value) {
+  const bytes = encoder ? encoder.encode(String(value || "")) : [];
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]);
+  }
+  return btoa(binary);
 }
 
 function sendRawBtWebSocket(url, body) {
