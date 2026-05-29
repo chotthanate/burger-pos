@@ -74,8 +74,11 @@ const salesChannels = [
 ];
 
 const defaultSettings = {
+  printerModel: "POS-8390",
+  printerConnection: "WIFI_LAN",
   bridgeUrl: "http://127.0.0.1:8080/print",
   printerIp: "192.168.1.150",
+  printerPort: "9100",
   paperSize: "80mm",
   bridgeMethod: "POST",
   buzzerEnabled: true,
@@ -2930,6 +2933,19 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
     }));
   }
 
+  function applyPos8390Preset() {
+    setSettings((current) => ({
+      ...current,
+      printerModel: "POS-8390",
+      printerConnection: current.printerConnection || "WIFI_LAN",
+      paperSize: "80mm",
+      printerPort: "9100",
+      bridgeMethod: current.bridgeMethod || "POST",
+      bridgeUrl: current.bridgeUrl || defaultSettings.bridgeUrl,
+    }));
+    setPrinterNotice("ใช้ preset POS-8390: ESC/POS, กระดาษ 80mm, port 9100");
+  }
+
   function updateReceiptLogo(event) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -2994,11 +3010,28 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
         <Printer size={24} />
         <h3>เครื่องพิมพ์ครัว</h3>
         <p>รองรับเครื่องพิมพ์ความร้อน 58/80mm แบบ ESC/POS ผ่าน RawBT หรือ local print bridge ในเครื่อง Android</p>
+        <div className="printer-preset-card">
+          <strong>POS-8390 Thermal Receipt Printer</strong>
+          <span>USB + LAN + BT + WiFi · กระดาษ 80mm · ESC/POS · RAW TCP port 9100</span>
+          <button className="ghost-button" onClick={applyPos8390Preset} type="button">ใช้ preset POS-8390</button>
+        </div>
+        <label>รุ่นเครื่องพิมพ์<input value={settings.printerModel || "POS-8390"} onChange={(event) => update("printerModel", event.target.value)} /></label>
+        <label>รูปแบบการเชื่อมต่อ<select value={settings.printerConnection || "WIFI_LAN"} onChange={(event) => update("printerConnection", event.target.value)}>
+          <option value="WIFI_LAN">WiFi / LAN ผ่าน IP</option>
+          <option value="BLUETOOTH">Bluetooth ผ่าน RawBT</option>
+          <option value="USB">USB ผ่านแอปตัวกลาง</option>
+        </select></label>
         <label>RawBT / Local bridge URL<input value={settings.bridgeUrl} onChange={(event) => update("bridgeUrl", event.target.value)} /></label>
         <label>วิธีส่งข้อมูล<select value={settings.bridgeMethod || "POST"} onChange={(event) => update("bridgeMethod", event.target.value)}><option value="POST">POST text/plain</option><option value="GET">GET query data=</option></select></label>
         <label>IP เครื่องพิมพ์ Wi-Fi<input value={settings.printerIp} onChange={(event) => update("printerIp", event.target.value)} /></label>
+        <label>Port เครื่องพิมพ์<input inputMode="numeric" value={settings.printerPort || "9100"} onChange={(event) => update("printerPort", event.target.value)} /></label>
         <label>ขนาดกระดาษ<select value={settings.paperSize} onChange={(event) => update("paperSize", event.target.value)}><option value="80mm">80mm</option><option value="58mm">58mm</option></select></label>
         <label className="check-line"><input checked={settings.buzzerEnabled} onChange={(event) => update("buzzerEnabled", event.target.checked)} type="checkbox" /> เปิด Kitchen Buzzer</label>
+        <div className="printer-help-box">
+          <strong>หมายเหตุสำหรับรุ่น POS-8390</strong>
+          <p>เลข 8390-V3.2 ในคู่มือมีแนวโน้มเป็นเวอร์ชันคู่มือ/เฟิร์มแวร์/แพ็กเกจ ไม่ใช่เลข IP หรือ port ของเครื่องพิมพ์</p>
+          <a href="http://www.barcoderead.net/printer/8390.zip" rel="noreferrer" target="_blank">ดาวน์โหลด driver / utility จากคู่มือ</a>
+        </div>
         <div className="settings-printer-actions">
           <button className="primary-button" disabled={printerBusy} onClick={runPrinterTest} type="button"><Printer size={18} /> ทดสอบพิมพ์</button>
           <button className="ghost-button" disabled={printerBusy} onClick={sendPendingPrintQueue} type="button"><RefreshCw size={18} /> ส่งคิวค้าง</button>

@@ -3096,6 +3096,16 @@ body {
     justify-content: flex-start;
   }
 
+  .printer-preset-card {
+    grid-template-columns: 1fr;
+  }
+
+  .printer-preset-card span,
+  .printer-preset-card button {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
   .shift-gate-overlay {
     position: fixed;
     inset: 0;
@@ -5157,6 +5167,54 @@ b {
   background: var(--boy-red);
   color: #fff;
   box-shadow: 0 8px 18px rgba(217, 45, 39, 0.16);
+}
+
+.printer-preset-card,
+.printer-help-box {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(30, 24, 18, 0.08);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(255, 253, 248, 0.78);
+}
+
+.printer-preset-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.printer-preset-card strong,
+.printer-help-box strong {
+  color: var(--boy-ink);
+  font-weight: 750;
+}
+
+.printer-preset-card span,
+.printer-help-box p {
+  color: var(--boy-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.printer-preset-card span {
+  grid-column: 1 / 2;
+}
+
+.printer-preset-card button {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  min-height: 40px;
+}
+
+.printer-help-box a {
+  color: var(--boy-red-dark);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.printer-help-box a:hover {
+  text-decoration: underline;
 }
 
 .settings-printer-actions {

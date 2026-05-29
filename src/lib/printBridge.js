@@ -13,7 +13,12 @@ export async function sendPrintJob(job, settings = {}) {
   const body = buildPrintText(job, settings);
   const bridgeUrl = settings.bridgeUrl || "http://127.0.0.1:8080/print";
   const method = settings.bridgeMethod || "POST";
-  const url = fillBridgeUrl(bridgeUrl, { data: body, ip: settings.printerIp || "", type: job?.type || "KITCHEN" });
+  const url = fillBridgeUrl(bridgeUrl, {
+    data: body,
+    ip: settings.printerIp || "",
+    port: settings.printerPort || "9100",
+    type: job?.type || "KITCHEN",
+  });
 
   if (method === "GET") {
     const finalUrl = bridgeUrl.includes("{data}") ? url : appendQuery(url, "data", body);
@@ -27,7 +32,9 @@ export async function sendPrintJob(job, settings = {}) {
     headers: {
       "Content-Type": "text/plain;charset=utf-8",
       "X-Printer-IP": settings.printerIp || "",
+      "X-Printer-Port": settings.printerPort || "9100",
       "X-Paper-Size": settings.paperSize || "80mm",
+      "X-Printer-Model": settings.printerModel || "POS-8390",
     },
     body,
   });
@@ -122,6 +129,7 @@ function visibleLength(text) {
 function fillBridgeUrl(url, values) {
   return url
     .replaceAll("{ip}", encodeURIComponent(values.ip || ""))
+    .replaceAll("{port}", encodeURIComponent(values.port || "9100"))
     .replaceAll("{type}", encodeURIComponent(values.type || ""))
     .replaceAll("{data}", encodeURIComponent(values.data || ""));
 }
