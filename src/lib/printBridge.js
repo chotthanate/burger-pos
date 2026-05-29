@@ -21,7 +21,7 @@ export async function sendPrintJob(job, settings = {}) {
   });
 
   if (method === "RAWBT_INTENT") {
-    launchRawBtText(body);
+    launchRawBtText(buildRawBtTextPrintText(job));
     return true;
   }
 
@@ -56,7 +56,7 @@ export async function testPrintBridge(settings = {}) {
   const bridgeUrl = settings.bridgeUrl || "http://127.0.0.1:8080/print";
   const method = normalizeBridgeMethod(settings.bridgeMethod, bridgeUrl);
   if (method === "RAWBT_INTENT") {
-    launchRawBtText("ทดสอบเครื่องพิมพ์\nRawBT Android\nภาษาไทยควรอ่านได้\nเบอร์เกอร์ 1 ชิ้น 69 บาท");
+    launchRawBtText("TEST PRINT\nRawBT Android Text\nPork Burger 1 x 69 THB\nIf this prints, RawBT Text works.");
     return true;
   }
   if (method === "RAWBT_WS") {
@@ -77,7 +77,7 @@ export async function printThaiCodePageTest(settings = {}) {
   if (method !== "RAWBT_INTENT") {
     throw new Error("ทดสอบภาษาไทยใช้กับ Android RawBT Intent เท่านั้น");
   }
-  launchRawBtText("ทดสอบภาษาไทยผ่าน RawBT\nใบเสร็จ เบอร์เกอร์ ราคา 123 บาท\nเงินทอน 7 บาท\nถ้าบรรทัดนี้อ่านได้ แปลว่า RawBT จัดการภาษาไทยสำเร็จ");
+  launchRawBtText("THAI FALLBACK TEST\nYour printer drops Thai text in RawBT Text mode.\nUse English print names for receipts.\nPork Burger 1 x 123 THB\nChange 7 THB");
   return true;
 }
 
@@ -141,6 +141,40 @@ function buildReceiptText(order, settings = {}) {
   return lines.join("\n");
 }
 
+function buildRawBtTextPrintText(job) {
+  const type = job?.type || "KITCHEN";
+  const order = job?.order || {};
+  return type === "RECEIPT" ? buildRawBtReceiptText(order) : buildRawBtKitchenText(order);
+}
+
+function buildRawBtKitchenText(order) {
+  return [
+    "ORDER",
+    getOrderDisplayNo(order),
+    formatDate(order.createdAt),
+    "------------------------------",
+    ...buildRawBtItemLines(order, { includePrice: false }),
+    "------------------------------",
+    "SEND TO KITCHEN",
+    "\n\n\n",
+  ].join("\n");
+}
+
+function buildRawBtReceiptText(order) {
+  return [
+    "RECEIPT",
+    getOrderDisplayNo(order),
+    formatDate(order.createdAt),
+    "------------------------------",
+    ...buildRawBtItemLines(order, { includePrice: true }),
+    "------------------------------",
+    alignLine("TOTAL", `${money(order.totalAmount)} THB`),
+    order.paymentMethod === "CASH" ? alignLine("CASH", `${money(order.cashReceived)} THB`) : "PAID BY TRANSFER",
+    order.paymentMethod === "CASH" ? alignLine("CHANGE", `${money(order.changeDue)} THB`) : "",
+    "\n\n\n",
+  ].filter(Boolean).join("\n");
+}
+
 function buildItemLines(order, { includePrice }) {
   return (order.items || []).flatMap((item) => {
     const total = Number(item.unitPrice || 0) * Number(item.quantity || 0);
@@ -151,6 +185,60 @@ function buildItemLines(order, { includePrice }) {
     const note = item.note ? [`  หมายเหตุ: ${item.note}`] : [];
     return [firstLine, ...modifiers, ...note];
   });
+}
+
+function buildRawBtItemLines(order, { includePrice }) {
+  return (order.items || []).flatMap((item) => {
+    const total = Number(item.unitPrice || 0) * Number(item.quantity || 0);
+    const name = getPrintSafeItemName(item);
+    const firstLine = includePrice
+      ? alignLine(`${item.quantity}x ${name}`, `${money(total)} THB`)
+      : `${item.quantity}x ${name}`;
+    const modifiers = (item.modifiers || []).map((modifier) => `  - ${getPrintSafeModifierName(modifier)}`);
+    const note = item.note ? [`  Note: ${toAsciiFallback(item.note, "special note")}`] : [];
+    return [firstLine, ...modifiers, ...note];
+  });
+}
+
+const PRODUCT_PRINT_NAMES = {
+  pork_burger: "Pork Burger",
+  cheese_burger: "Cheese Burger",
+  fries: "French Fries",
+  cola: "Cola",
+};
+
+const THAI_PRODUCT_PRINT_NAMES = {
+  "เบอร์เกอร์หมู": "Pork Burger",
+  "ชีสเบอร์เกอร์": "Cheese Burger",
+  "เบอร์เกอร์ไก่กรอบ": "Crispy Chicken Burger",
+  "เบอร์เกอร์ปลา": "Fish Burger",
+  "เบอร์เกอร์กุ้ง": "Shrimp Burger",
+  "เฟรนช์ฟรายส์": "French Fries",
+  "โคล่า": "Cola",
+};
+
+const THAI_MODIFIER_PRINT_NAMES = {
+  "เพิ่มหมู": "Extra Patty",
+  "เพิ่มชีส": "Extra Cheese",
+  "ไม่ใส่ผัก": "No Vegetables",
+};
+
+function getPrintSafeItemName(item) {
+  return PRODUCT_PRINT_NAMES[item.productId] || THAI_PRODUCT_PRINT_NAMES[item.name] || toAsciiFallback(item.name, item.productId || "item");
+}
+
+function getPrintSafeModifierName(modifier) {
+  return THAI_MODIFIER_PRINT_NAMES[modifier] || toAsciiFallback(modifier, "option");
+}
+
+function toAsciiFallback(value, fallback) {
+  const text = String(value || "");
+  const ascii = text
+    .normalize("NFKD")
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return ascii || String(fallback || "item").replace(/[_-]+/g, " ");
 }
 
 function alignLine(left, right, width = 32) {
