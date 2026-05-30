@@ -44,6 +44,7 @@ import {
   seedIngredients,
 } from "./data/seedData.js";
 import { addLocalJob, listLocalJobs, updateLocalJob } from "./lib/localQueues.js";
+import { sendSheetSyncJob } from "./lib/googleSheetSync.js";
 import { getOrderDisplayNo, makeNextOrderNo } from "./lib/orderFormat.js";
 import {
   applyStockMovement,
@@ -56,6 +57,7 @@ import {
 } from "./lib/posLogic.js";
 import { makePrinterTestJob, printThaiCodePageTest, sendPrintJob, testPrintBridge } from "./lib/printBridge.js";
 import { getAndroidBluetoothPrinters, isNativeThaiPrinterAvailable, printAndroidBluetoothThaiPrototype, printAndroidThaiPrototype } from "./lib/nativeThaiPrinter.js";
+import { BURGER_POS_SHEET_ID, SHEET_HEADERS, makeExpenseSheetJob, makeOrderSheetJob, makeShiftSheetJob } from "./lib/sheetExport.js";
 import { usePersistentState } from "./lib/storage.js";
 
 const navItems = [
@@ -90,12 +92,15 @@ const defaultSettings = {
   thaiCodePage: "42",
   buzzerEnabled: true,
   defaultPrintOptions: { kitchen: true, receipt: false },
-  sheetId: "1-JJ9u2NjqBrQtgrBb4sUsmwdV36GP25g-rJPrwv8mpI",
+  sheetId: BURGER_POS_SHEET_ID,
+  sheetWebAppUrl: "",
   kitchenTemplate: "[ORDER_NO]\nรายการอาหาร: ตัวหนา\n  - ตัวเลือกเสริม: ตัวบางและเยื้อง\nหมายเหตุ\nเวลาสั่ง",
   receiptLogoDataUrl: "",
   receiptLogoName: "",
   receiptTemplate: "ใบเสร็จรับเงิน\n[LOGO]\n--------------------------------------\nหมายเลขคำสั่งซื้อ : [ORDER_NO]\nวันและเวลา : [ORDER_DATE]\n--------------------------------------\nสินค้า                  ราคา     จำนวน            รวม\n[ITEMS]            [PRICE]  [QUANTITY]   [TOTAL (price*quantity)]\nรวม                                                  [TOTAL]",
 };
+
+const legacySheetIds = new Set(["1-JJ9u2NjqBrQtgrBb4sUsmwdV36GP25g-rJPrwv8mpI"]);
 
 function usePrefersReducedMotion() {
   const [prefersReduced, setPrefersReduced] = useState(() => {
@@ -343,6 +348,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!settings.sheetId || legacySheetIds.has(settings.sheetId)) {
+      setSettings((current) => ({ ...current, sheetId: BURGER_POS_SHEET_ID }));
+    }
+  }, [setSettings, settings.sheetId]);
+
+  useEffect(() => {
     if (!activeProducts.some((product) => product.category === activeCategory)) {
       setActiveCategory(activeProducts[0]?.category || menuCategories[0] || categories[0]);
     }
@@ -367,6 +378,25 @@ export default function App() {
         await updateLocalJob("printJobs", {
           ...job,
           status: "FAILED",
+          retryCount: Number(job.retryCount || 0) + 1,
+          lastError: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    await refreshQueues();
+  }
+
+  async function flushSheetQueue() {
+    const jobs = await listLocalJobs("sheetSyncJobs").catch(() => []);
+    const pendingJobs = jobs.filter((job) => job.status !== "SYNCED").slice(0, 20);
+    for (const job of pendingJobs) {
+      try {
+        await sendSheetSyncJob(job, resolvedSettings);
+        await updateLocalJob("sheetSyncJobs", { ...job, status: "SYNCED", lastError: "" });
+      } catch (error) {
+        await updateLocalJob("sheetSyncJobs", {
+          ...job,
+          status: "ERROR",
           retryCount: Number(job.retryCount || 0) + 1,
           lastError: error instanceof Error ? error.message : String(error),
         });
@@ -478,7 +508,7 @@ export default function App() {
 
     if (printOptions.kitchen) await addLocalJob("printJobs", { type: "KITCHEN", order });
     if (printOptions.receipt) await addLocalJob("printJobs", { type: "RECEIPT", order });
-    await addLocalJob("sheetSyncJobs", { type: "ORDER", payload: order });
+    await addLocalJob("sheetSyncJobs", makeOrderSheetJob(order, movements));
     await refreshQueues();
     void flushPrintQueue();
   }
@@ -503,7 +533,7 @@ export default function App() {
     return true;
   }
 
-  function closeCurrentShift(closingCash) {
+  async function closeCurrentShift(closingCash) {
     if (!openShift) return false;
     if (closingCash === "" || closingCash === null || closingCash === undefined) {
       alert("กรุณาใส่เงินสดตอนปิดกะ");
@@ -524,6 +554,8 @@ export default function App() {
     );
     setCart([]);
     setPaymentOpen(false);
+    await addLocalJob("sheetSyncJobs", makeShiftSheetJob({ ...openShift, closedAt, closingCash: Number(closingCash || 0) }, summary));
+    await refreshQueues();
     return { summary };
   }
 
@@ -543,6 +575,7 @@ export default function App() {
           type: "PURCHASE",
           quantityDelta: additions,
           quantityAfter: nextStock,
+          unit: ingredient.unit,
           sourceId: expense.id,
           createdAt: expense.createdAt,
         });
@@ -551,7 +584,7 @@ export default function App() {
     );
     setExpenses((current) => [expense, ...current].slice(0, 200));
     setStockMovements((current) => [...movements, ...current].slice(0, 500));
-    await addLocalJob("sheetSyncJobs", { type: "EXPENSE", payload: expense });
+    await addLocalJob("sheetSyncJobs", makeExpenseSheetJob(expense, movements));
     await refreshQueues();
   }
 
@@ -586,6 +619,7 @@ export default function App() {
       type: "ADJUSTMENT",
       quantityDelta: Number(quantityDelta),
       quantityAfter: nextStock,
+      unit: ingredient.unit,
       reason,
       sourceId: "manual",
       createdAt: new Date().toISOString(),
@@ -594,6 +628,33 @@ export default function App() {
       current.map((item) => (item.id === ingredientId ? { ...item, stock: nextStock } : item)),
     );
     setStockMovements((current) => [movement, ...current].slice(0, 500));
+    void addLocalJob("sheetSyncJobs", {
+      type: "STOCK_ADJUSTMENT",
+      syncId: `SYNC-STOCK-${movement.id}`,
+      sourceId: movement.id,
+      description: `${ingredient.name} -> Stock Movements`,
+      targetTabs: ["Stock Movements"],
+      rows: [{
+        tab: "Stock Movements",
+        values: [
+          `SYNC-STOCK-${movement.id}`,
+          movement.id,
+          movement.createdAt,
+          new Date(movement.createdAt).toLocaleDateString("th-TH"),
+          movement.type,
+          movement.ingredientId,
+          movement.ingredientName,
+          movement.quantityDelta,
+          movement.quantityAfter,
+          ingredient.unit,
+          "ADJUSTMENT",
+          movement.sourceId,
+          movement.reason,
+          "",
+          JSON.stringify(movement),
+        ],
+      }],
+    }).then(refreshQueues).catch(() => {});
   }
 
   function navigateMain(tabId) {
@@ -778,6 +839,7 @@ export default function App() {
           {activeTab === "settings" ? (
             <SettingsScreen
               flushPrintQueue={flushPrintQueue}
+              flushSheetQueue={flushSheetQueue}
               orders={orders}
               queueLists={queueLists}
               refreshQueues={refreshQueues}
@@ -1098,8 +1160,8 @@ function PosScreen({
   useEffect(() => {
     if (closeShiftToken && openShift && posView === "sale") setShiftPanelOpen(true);
   }, [closeShiftToken, openShift, posView]);
-  function submitCloseShift(closingCash) {
-    const closed = onCloseShift(closingCash);
+  async function submitCloseShift(closingCash) {
+    const closed = await onCloseShift(closingCash);
     if (closed) {
       setShiftPanelOpen(false);
       setClosedShiftSummary(closed.summary);
@@ -2914,9 +2976,11 @@ function NewIngredientModal({ onClose, onSubmit }) {
   );
 }
 
-function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, setSettings, settings }) {
+function SettingsScreen({ flushPrintQueue, flushSheetQueue, orders, queueLists, refreshQueues, setSettings, settings }) {
   const [activeSection, setActiveSection] = useState("printer");
   const [printerNotice, setPrinterNotice] = useState("");
+  const [syncNotice, setSyncNotice] = useState("");
+  const [syncBusy, setSyncBusy] = useState(false);
   const [printerBusy, setPrinterBusy] = useState(false);
   const [bluetoothDevices, setBluetoothDevices] = useState([]);
   const receiptTemplateValue = settings.receiptTemplate?.includes("[TOTAL (price*quantity)]") ? settings.receiptTemplate : defaultSettings.receiptTemplate;
@@ -2960,6 +3024,10 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
       bridgeUrl: "ws://127.0.0.1:40213/",
     }));
     setPrinterNotice("ใช้ preset POS-8390: Bluetooth Native, กระดาษ 80mm, ส่งข้อมูลแบบ chunk ที่ทดสอบผ่านแล้ว");
+  }
+
+  function applyBurgerSheetPreset() {
+    update("sheetId", BURGER_POS_SHEET_ID);
   }
 
   function updateBridgeMethod(value) {
@@ -3040,6 +3108,19 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
       setPrinterNotice(`ส่งคิวไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setPrinterBusy(false);
+    }
+  }
+
+  async function sendPendingSheetQueue() {
+    setSyncBusy(true);
+    setSyncNotice("");
+    try {
+      await flushSheetQueue();
+      setSyncNotice("ส่งคิว Google Sheet แล้ว ตรวจสถานะรายการค้างด้านล่าง");
+    } catch (error) {
+      setSyncNotice(`ส่งคิว Google Sheet ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSyncBusy(false);
     }
   }
 
@@ -3169,8 +3250,29 @@ function SettingsScreen({ flushPrintQueue, orders, queueLists, refreshQueues, se
         <Database size={24} />
         <h3>Google Sheet Sync</h3>
         <p>Sheet ใช้เป็นสำเนา/รายงาน ไม่ใช่ฐานหลักของ POS</p>
+        <div className="printer-preset-card">
+          <strong>Google Sheet 17 tabs</strong>
+          <span>กำไร-ขาดทุน + เดือน 1-12 + Sales + Expenses + Stock Movements + Shift Summary</span>
+          <button className="ghost-button" onClick={applyBurgerSheetPreset} type="button">ใช้ Sheet ร้านเบอร์เกอร์</button>
+        </div>
         <label>Sheet ID<input value={settings.sheetId} onChange={(event) => update("sheetId", event.target.value)} /></label>
+        <label>Apps Script Web App URL<input placeholder="https://script.google.com/macros/s/.../exec" value={settings.sheetWebAppUrl || ""} onChange={(event) => update("sheetWebAppUrl", event.target.value)} /></label>
+        <div className="settings-subsection">
+          <strong>แท็บข้อมูลดิบที่เว็บจะส่งออก</strong>
+          <div className="sheet-schema-list">
+            {Object.entries(SHEET_HEADERS).map(([tab, headers]) => (
+              <div className="sheet-schema-row" key={tab}>
+                <strong>{tab}</strong>
+                <span>{headers.slice(0, 6).join(", ")}{headers.length > 6 ? ` +${headers.length - 6}` : ""}</span>
+              </div>
+            ))}
+          </div>
+        </div>
         <div className="queue-line"><RefreshCw size={18} /> รอ sync {queueLists.sheet.filter((job) => job.status !== "SYNCED").length} รายการ</div>
+        <div className="settings-printer-actions">
+          <button className="primary-button" disabled={syncBusy || !settings.sheetWebAppUrl} onClick={sendPendingSheetQueue} type="button"><RefreshCw size={18} /> ส่งคิวไป Google Sheet</button>
+        </div>
+        {syncNotice ? <div className={syncNotice.includes("ไม่สำเร็จ") ? "inline-warning" : "inline-confirm"}>{syncNotice}</div> : null}
         <QueueList jobs={queueLists.sheet} onDone={(job) => markFirstJobDone("sheetSyncJobs", job)} />
       </article>
       ) : null}
@@ -3259,7 +3361,10 @@ function QueueList({ jobs, onDone }) {
     <div className="queue-list">
       {jobs.slice(-5).reverse().map((job) => (
         <div className="queue-item" key={job.id}>
-          <span>{job.type || job.job_type}<small>{job.status}</small></span>
+          <span>
+            {job.description || job.type || job.job_type}
+            <small>{job.status}{job.targetTabs?.length ? ` · ${job.targetTabs.join(", ")}` : ""}</small>
+          </span>
           <button onClick={() => onDone(job)} type="button">mark done</button>
         </div>
       ))}
@@ -3434,6 +3539,7 @@ function makeSaleMovements(requirements, ingredients, orderId) {
       type: "SALE",
       quantityDelta: -line.quantity,
       quantityAfter: Number(ingredient?.stock || 0) - line.quantity,
+      unit: ingredient?.unit || "",
       sourceId: orderId,
       createdAt: new Date().toISOString(),
     };

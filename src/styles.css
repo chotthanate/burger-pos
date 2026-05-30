@@ -5217,6 +5217,31 @@ b {
   text-decoration: underline;
 }
 
+.sheet-schema-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sheet-schema-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.3fr) minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(31, 31, 31, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.sheet-schema-row strong {
+  color: var(--boy-ink);
+}
+
+.sheet-schema-row span {
+  color: var(--boy-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .settings-printer-actions {
   display: flex;
   flex-wrap: wrap;
