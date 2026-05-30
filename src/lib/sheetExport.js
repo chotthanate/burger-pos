@@ -1,4 +1,4 @@
-export const BURGER_POS_SHEET_ID = "18dF1U5pjfd4_y9KziNptiL6Mf_PjFAsxv-5CA4HgpAc";
+export const BURGER_POS_SHEET_ID = "1-JJ9u2NjqBrQtgrBb4sUsmwdV36GP25g-rJPrwv8mpI";
 
 export const SHEET_TABS = {
   sales: "Sales",

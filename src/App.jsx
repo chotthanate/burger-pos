@@ -100,7 +100,7 @@ const defaultSettings = {
   receiptTemplate: "ใบเสร็จรับเงิน\n[LOGO]\n--------------------------------------\nหมายเลขคำสั่งซื้อ : [ORDER_NO]\nวันและเวลา : [ORDER_DATE]\n--------------------------------------\nสินค้า                  ราคา     จำนวน            รวม\n[ITEMS]            [PRICE]  [QUANTITY]   [TOTAL (price*quantity)]\nรวม                                                  [TOTAL]",
 };
 
-const legacySheetIds = new Set(["1-JJ9u2NjqBrQtgrBb4sUsmwdV36GP25g-rJPrwv8mpI"]);
+const legacySheetIds = new Set(["18dF1U5pjfd4_y9KziNptiL6Mf_PjFAsxv-5CA4HgpAc"]);
 
 function usePrefersReducedMotion() {
   const [prefersReduced, setPrefersReduced] = useState(() => {
@@ -3251,8 +3251,8 @@ function SettingsScreen({ flushPrintQueue, flushSheetQueue, orders, queueLists, 
         <h3>Google Sheet Sync</h3>
         <p>Sheet ใช้เป็นสำเนา/รายงาน ไม่ใช่ฐานหลักของ POS</p>
         <div className="printer-preset-card">
-          <strong>Google Sheet 17 tabs</strong>
-          <span>กำไร-ขาดทุน + เดือน 1-12 + Sales + Expenses + Stock Movements + Shift Summary</span>
+          <strong>Google Sheet ร้านเบอร์เกอร์</strong>
+          <span>ใช้ชีทเบอร์เกอร์เป็นรายงานหลัก: Sales + Expenses + Stock Movements + Shift Summary</span>
           <button className="ghost-button" onClick={applyBurgerSheetPreset} type="button">ใช้ Sheet ร้านเบอร์เกอร์</button>
         </div>
         <label>Sheet ID<input value={settings.sheetId} onChange={(event) => update("sheetId", event.target.value)} /></label>
