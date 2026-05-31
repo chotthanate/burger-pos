@@ -64,6 +64,12 @@ create table public.shifts (
   closing_cash numeric,
   cash_sales numeric not null default 0,
   transfer_sales numeric not null default 0,
+  gross_sales numeric not null default 0,
+  void_order_count int not null default 0,
+  void_amount numeric not null default 0,
+  cash_refund_amount numeric not null default 0,
+  transfer_refund_amount numeric not null default 0,
+  net_sales numeric not null default 0,
   expected_cash numeric not null default 0,
   cash_difference numeric not null default 0,
   order_count int not null default 0,
@@ -76,6 +82,11 @@ create table public.orders (
   order_no text not null unique,
   total_amount numeric not null,
   payment_status text not null check (payment_status in ('PENDING', 'COMPLETED', 'VOIDED')),
+  voided_at timestamptz,
+  void_reason text,
+  void_refund_method text check (void_refund_method in ('NONE', 'CASH', 'TRANSFER')),
+  void_refund_amount numeric not null default 0,
+  void_stock_restored boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -154,7 +165,7 @@ create table public.printer_settings (
 create table public.print_jobs (
   id uuid primary key default gen_random_uuid(),
   order_id uuid references public.orders(id),
-  job_type text not null check (job_type in ('KITCHEN', 'RECEIPT')),
+  job_type text not null check (job_type in ('KITCHEN', 'RECEIPT', 'SHIFT_SUMMARY')),
   status text not null default 'PENDING' check (status in ('PENDING', 'PRINTING', 'PRINTED', 'FAILED')),
   payload jsonb not null,
   retry_count int not null default 0,
@@ -164,7 +175,7 @@ create table public.print_jobs (
 
 create table public.sheet_sync_jobs (
   id uuid primary key default gen_random_uuid(),
-  job_type text not null check (job_type in ('ORDER', 'EXPENSE', 'STOCK_MOVEMENT', 'SUMMARY')),
+  job_type text not null check (job_type in ('ORDER', 'ORDER_VOID', 'EXPENSE', 'STOCK_MOVEMENT', 'SUMMARY', 'SHIFT_SUMMARY')),
   status text not null default 'PENDING' check (status in ('PENDING', 'SYNCED', 'FAILED')),
   payload jsonb not null,
   retry_count int not null default 0,

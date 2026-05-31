@@ -35,6 +35,18 @@ export function getCartRequirements(cart, catalog = {}) {
   return Array.from(required.entries()).map(([ingredientId, quantity]) => ({ ingredientId, quantity }));
 }
 
+export function getOrderRequirements(order, catalog = {}) {
+  const required = new Map();
+  (order.items || []).forEach((item) => {
+    getProductRequirements(item.productId, item.modifierIds || [], catalog).forEach((line) => {
+      addRequired(required, line.ingredientId, line.quantity * Number(item.quantity || 0));
+    });
+  });
+  return Array.from(required.entries())
+    .map(([ingredientId, quantity]) => ({ ingredientId, quantity }))
+    .filter((item) => item.quantity > 0);
+}
+
 export function getMissingIngredients(requirements, ingredients) {
   const ingredientMap = getIngredientMap(ingredients);
   return requirements

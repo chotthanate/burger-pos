@@ -155,6 +155,7 @@ async function buildThaiPrototypeEscPos(type) {
 async function buildThaiJobEscPos(job = {}, settings = {}) {
   await document.fonts?.ready?.catch?.(() => undefined);
   const type = job?.type || "KITCHEN";
+  if (type === "SHIFT_SUMMARY") return buildThaiShiftSummaryEscPos(job, settings);
   const order = job?.order || {};
   const canvas = document.createElement("canvas");
   const width = settings.paperSize === "58mm" ? 384 : PAPER_WIDTH_DOTS;
@@ -187,6 +188,10 @@ async function buildThaiJobEscPos(job = {}, settings = {}) {
   y += width === PAPER_WIDTH_DOTS ? 32 : 28;
   drawCenteredText(context, formatThaiDate(new Date(order.createdAt || Date.now())), y, width === PAPER_WIDTH_DOTS ? 24 : 21, "normal", width);
   y += width === PAPER_WIDTH_DOTS ? 42 : 35;
+  if (order.paymentStatus === "VOIDED") {
+    drawCenteredText(context, "ยกเลิกแล้ว", y, width === PAPER_WIDTH_DOTS ? 27 : 23, "bold", width);
+    y += width === PAPER_WIDTH_DOTS ? 36 : 30;
+  }
   drawDivider(context, y, width, padding);
   y += 24;
 
@@ -215,6 +220,88 @@ async function buildThaiJobEscPos(job = {}, settings = {}) {
     y += 8;
     y = drawWrappedText(context, `หมายเหตุทั้งออร์เดอร์: ${order.note}`, padding, y, width - padding * 2, width === PAPER_WIDTH_DOTS ? 24 : 21, "normal");
   }
+
+  const usedHeight = Math.min(canvas.height, Math.ceil(y + 92));
+  const cropped = cropCanvas(canvas, usedHeight);
+  return [
+    0x1b, 0x40,
+    ...canvasToEscPosRaster(cropped),
+    0x0a, 0x0a, 0x0a, 0x0a,
+    0x1d, 0x56, 0x00,
+  ];
+}
+
+async function buildThaiShiftSummaryEscPos(job = {}, settings = {}) {
+  const summary = job.summary || {};
+  const shift = job.shift || {};
+  const width = settings.paperSize === "58mm" ? 384 : PAPER_WIDTH_DOTS;
+  const padding = width === PAPER_WIDTH_DOTS ? 28 : 18;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = 1320;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("ไม่สามารถสร้างภาพใบปิดกะได้");
+
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#000";
+  context.textBaseline = "top";
+
+  let y = 16;
+  const logo = await loadImage(LOGO_URL).catch(() => null);
+  if (logo) {
+    const logoMaxWidth = width === PAPER_WIDTH_DOTS ? 150 : 110;
+    const logoMaxHeight = width === PAPER_WIDTH_DOTS ? 112 : 82;
+    const scale = Math.min(logoMaxWidth / logo.width, logoMaxHeight / logo.height);
+    const logoWidth = Math.round(logo.width * scale);
+    const logoHeight = Math.round(logo.height * scale);
+    context.drawImage(logo, Math.round((width - logoWidth) / 2), y, logoWidth, logoHeight);
+    y += logoHeight + 12;
+  }
+
+  drawCenteredText(context, "ใบสรุปปิดกะ", y, width === PAPER_WIDTH_DOTS ? 34 : 29, "bold", width);
+  y += width === PAPER_WIDTH_DOTS ? 44 : 38;
+  drawCenteredText(context, formatThaiDate(new Date(summary.closedAt || shift.closedAt || Date.now())), y, width === PAPER_WIDTH_DOTS ? 24 : 21, "normal", width);
+  y += width === PAPER_WIDTH_DOTS ? 42 : 35;
+  drawDivider(context, y, width, padding);
+  y += 24;
+
+  const summaryRows = [
+    ["ยอดขายก่อนยกเลิก", `${money(summary.grossSales || summary.totalSales || 0)} บาท`, "bold"],
+    ["ยอดขายสุทธิ", `${money(summary.netSales || summary.totalSales || 0)} บาท`, "bold"],
+    ["เงินสดขาย", `${money(summary.cashSales || 0)} บาท`, "normal"],
+    ["เงินโอน", `${money(summary.transferSales || 0)} บาท`, "normal"],
+    ["ออร์เดอร์สำเร็จ", `${summary.orderCount || 0}`, "normal"],
+    ["ออร์เดอร์ยกเลิก", `${summary.voidOrderCount || 0}`, "normal"],
+    ["ยอดยกเลิก", `${money(summary.voidAmount || 0)} บาท`, "normal"],
+    ["คืนเงินสด", `${money(summary.cashRefundAmount || 0)} บาท`, "normal"],
+    ["คืนเงินโอน", `${money(summary.transferRefundAmount || 0)} บาท`, "normal"],
+  ];
+
+  for (const [label, value, weight] of summaryRows) {
+    y = drawSummaryRow(context, label, value, y, padding, width === PAPER_WIDTH_DOTS ? 26 : 22, weight, width);
+  }
+
+  y += 8;
+  drawDivider(context, y, width, padding);
+  y += 24;
+
+  const cashRows = [
+    ["เงินสดเริ่มต้น", `${money(summary.openingCash ?? shift.openingCash ?? 0)} บาท`],
+    ["เงินสดที่ควรมี", `${money(summary.expectedCash || 0)} บาท`],
+    ["เงินสดที่นับได้", `${money(summary.closingCash ?? shift.closingCash ?? 0)} บาท`],
+    ["ส่วนต่างเงินสด", `${money(summary.cashDifference || 0)} บาท`],
+  ];
+
+  for (const [label, value] of cashRows) {
+    y = drawSummaryRow(context, label, value, y, padding, width === PAPER_WIDTH_DOTS ? 26 : 22, "normal", width);
+  }
+
+  y += 10;
+  drawDivider(context, y, width, padding);
+  y += 28;
+  drawCenteredText(context, "ปิดกะเรียบร้อย", y, width === PAPER_WIDTH_DOTS ? 29 : 25, "bold", width);
+  y += width === PAPER_WIDTH_DOTS ? 42 : 36;
 
   const usedHeight = Math.min(canvas.height, Math.ceil(y + 92));
   const cropped = cropCanvas(canvas, usedHeight);

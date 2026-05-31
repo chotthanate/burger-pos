@@ -27,6 +27,12 @@ export const SHEET_HEADERS = {
     "line_total",
     "modifiers",
     "item_note",
+    "order_status",
+    "voided_at",
+    "void_reason",
+    "refund_method",
+    "refund_amount",
+    "stock_restored",
   ],
   [SHEET_TABS.expenses]: [
     "expense_id",
@@ -73,6 +79,12 @@ export const SHEET_HEADERS = {
     "closing_cash",
     "cash_difference",
     "order_count",
+    "gross_sales",
+    "void_order_count",
+    "void_amount",
+    "cash_refund_amount",
+    "transfer_refund_amount",
+    "net_sales",
   ],
 };
 
@@ -87,6 +99,21 @@ export function makeOrderSheetJob(order, movements = []) {
     type: "ORDER",
     sourceId: order.id,
     description: `${order.orderNo || order.id} -> Sales + Stock Movements`,
+    rows,
+  });
+}
+
+export function makeOrderVoidSheetJob(order, movements = []) {
+  const syncId = `SYNC-VOID-${order.id}-${Date.now()}`;
+  const rows = [
+    ...buildSalesRows(order, { voidAdjustment: true }),
+    ...buildStockMovementRows(movements, "ORDER_VOID"),
+  ];
+  return makeSheetJob({
+    syncId,
+    type: "ORDER_VOID",
+    sourceId: order.id,
+    description: `${order.orderNo || order.id} void -> Sales + Stock Movements`,
     rows,
   });
 }
@@ -141,9 +168,10 @@ function makeSheetJob({ syncId, type, sourceId, description, rows }) {
   };
 }
 
-function buildSalesRows(order) {
+function buildSalesRows(order, options = {}) {
   const orderDate = splitDateTime(order.createdAt);
   const itemRows = order.items?.length ? order.items : [null];
+  const multiplier = options.voidAdjustment ? -1 : 1;
   return itemRows.map((item) => ({
     tab: SHEET_TABS.sales,
     values: [
@@ -154,17 +182,23 @@ function buildSalesRows(order) {
       orderDate.time,
       order.salesChannel || "store",
       order.paymentMethod || "",
-      Number(order.totalAmount || 0),
-      order.cashReceived ?? "",
-      Number(order.changeDue || 0),
+      Number(order.totalAmount || 0) * multiplier,
+      options.voidAdjustment ? "" : order.cashReceived ?? "",
+      options.voidAdjustment ? "" : Number(order.changeDue || 0),
       order.shiftId || "",
       item?.productId || "",
       item?.name || "",
-      item?.quantity || "",
+      item ? Number(item.quantity || 0) * multiplier : "",
       item?.unitPrice || "",
-      item ? Number(item.quantity || 0) * Number(item.unitPrice || 0) : "",
+      item ? Number(item.quantity || 0) * Number(item.unitPrice || 0) * multiplier : "",
       (item?.modifiers || []).join(", "),
       item?.note || "",
+      order.paymentStatus || "",
+      order.voidedAt || "",
+      order.voidReason || "",
+      order.voidRefundMethod || "",
+      order.voidRefundAmount ?? "",
+      order.voidStockRestored ? "TRUE" : "",
     ],
   }));
 }
@@ -227,9 +261,15 @@ function buildShiftRow(shift, summary) {
       Number(summary.transferSales || 0),
       Number(summary.totalSales || 0),
       Number(summary.expectedCash || 0),
-      Number(summary.countedCash || shift.closingCash || 0),
+      Number(summary.closingCash ?? shift.closingCash ?? 0),
       Number(summary.cashDifference || 0),
       Number(summary.orderCount || 0),
+      Number(summary.grossSales || summary.totalSales || 0),
+      Number(summary.voidOrderCount || 0),
+      Number(summary.voidAmount || 0),
+      Number(summary.cashRefundAmount || 0),
+      Number(summary.transferRefundAmount || 0),
+      Number(summary.netSales || summary.totalSales || 0),
     ],
   };
 }

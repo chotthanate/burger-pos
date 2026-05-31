@@ -7,6 +7,7 @@ const encoder = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
 export function buildPrintText(job, settings = {}) {
   const type = job?.type || "KITCHEN";
   const order = job?.order || {};
+  if (type === "SHIFT_SUMMARY") return buildShiftSummaryText(job);
   return type === "RECEIPT" ? buildReceiptText(order, settings) : buildKitchenText(order, settings);
 }
 
@@ -122,13 +123,14 @@ function buildKitchenText(order, settings = {}) {
     "\x1b!\x10ใบออร์เดอร์\x1b!\x00",
     getOrderDisplayNo(order),
     formatDate(order.createdAt),
+    order.paymentStatus === "VOIDED" ? "ยกเลิกแล้ว" : "",
     "------------------------------",
     "\x1ba\x00",
     ...buildItemLines(order, { includePrice: false }),
     "------------------------------",
     "ส่งเข้าครัว",
     "\n\n\n\x1dV\x00",
-  ];
+  ].filter(Boolean);
   return lines.join("\n");
 }
 
@@ -139,6 +141,7 @@ function buildReceiptText(order, settings = {}) {
     "\x1b!\x10ใบเสร็จรับเงิน\x1b!\x00",
     getOrderDisplayNo(order),
     formatDate(order.createdAt),
+    order.paymentStatus === "VOIDED" ? "ยกเลิกแล้ว" : "",
     "------------------------------",
     "\x1ba\x00",
     ...buildItemLines(order, { includePrice: true }),
@@ -154,7 +157,64 @@ function buildReceiptText(order, settings = {}) {
 function buildRawBtTextPrintText(job) {
   const type = job?.type || "KITCHEN";
   const order = job?.order || {};
+  if (type === "SHIFT_SUMMARY") return buildRawBtShiftSummaryText(job);
   return type === "RECEIPT" ? buildRawBtReceiptText(order) : buildRawBtKitchenText(order);
+}
+
+function buildShiftSummaryText(job = {}) {
+  const summary = job.summary || {};
+  const shift = job.shift || {};
+  return [
+    "\x1b@",
+    "\x1ba\x01",
+    "\x1b!\x10ใบสรุปปิดกะ\x1b!\x00",
+    formatDate(summary.closedAt || shift.closedAt || Date.now()),
+    "------------------------------",
+    "\x1ba\x00",
+    alignLine("ยอดขายก่อนยกเลิก", `${money(summary.grossSales || summary.totalSales || 0)} บาท`),
+    alignLine("ยอดขายสุทธิ", `${money(summary.netSales || summary.totalSales || 0)} บาท`),
+    alignLine("เงินสดขาย", `${money(summary.cashSales || 0)} บาท`),
+    alignLine("เงินโอน", `${money(summary.transferSales || 0)} บาท`),
+    alignLine("ออร์เดอร์", `${summary.orderCount || 0}`),
+    alignLine("ยกเลิก", `${summary.voidOrderCount || 0}`),
+    alignLine("ยอดยกเลิก", `${money(summary.voidAmount || 0)} บาท`),
+    alignLine("คืนเงินสด", `${money(summary.cashRefundAmount || 0)} บาท`),
+    alignLine("คืนเงินโอน", `${money(summary.transferRefundAmount || 0)} บาท`),
+    "------------------------------",
+    alignLine("เงินสดเริ่มต้น", `${money(summary.openingCash ?? shift.openingCash ?? 0)} บาท`),
+    alignLine("เงินสดที่ควรมี", `${money(summary.expectedCash || 0)} บาท`),
+    alignLine("เงินสดที่นับได้", `${money(summary.closingCash ?? shift.closingCash ?? 0)} บาท`),
+    alignLine("ส่วนต่างเงินสด", `${money(summary.cashDifference || 0)} บาท`),
+    "\n\n\n\x1dV\x00",
+  ].join("\n");
+}
+
+function buildRawBtShiftSummaryText(job = {}) {
+  const summary = job.summary || {};
+  const shift = job.shift || {};
+  return [
+    "\x1b@",
+    "\x1ba\x01",
+    "\x1b!\x30BOY BURGER\x1b!\x00",
+    "SHIFT SUMMARY",
+    formatDate(summary.closedAt || shift.closedAt || Date.now()),
+    "------------------------------",
+    alignLine("GROSS SALES", `${money(summary.grossSales || summary.totalSales || 0)} THB`),
+    alignLine("NET SALES", `${money(summary.netSales || summary.totalSales || 0)} THB`),
+    alignLine("CASH SALES", `${money(summary.cashSales || 0)} THB`),
+    alignLine("TRANSFER", `${money(summary.transferSales || 0)} THB`),
+    alignLine("ORDERS", `${summary.orderCount || 0}`),
+    alignLine("VOID ORDERS", `${summary.voidOrderCount || 0}`),
+    alignLine("VOID AMOUNT", `${money(summary.voidAmount || 0)} THB`),
+    alignLine("CASH REFUND", `${money(summary.cashRefundAmount || 0)} THB`),
+    alignLine("TRANSFER REFUND", `${money(summary.transferRefundAmount || 0)} THB`),
+    "------------------------------",
+    alignLine("OPEN CASH", `${money(summary.openingCash ?? shift.openingCash ?? 0)} THB`),
+    alignLine("EXPECTED CASH", `${money(summary.expectedCash || 0)} THB`),
+    alignLine("COUNTED CASH", `${money(summary.closingCash ?? shift.closingCash ?? 0)} THB`),
+    alignLine("CASH DIFF", `${money(summary.cashDifference || 0)} THB`),
+    "\n\n\n\x1dV\x00",
+  ].join("\n");
 }
 
 function buildRawBtKitchenText(order) {
@@ -165,12 +225,13 @@ function buildRawBtKitchenText(order) {
     "ORDER",
     getOrderDisplayNo(order),
     formatDate(order.createdAt),
+    order.paymentStatus === "VOIDED" ? "VOIDED" : "",
     "------------------------------",
     ...buildRawBtItemLines(order, { includePrice: false }),
     "------------------------------",
     "SEND TO KITCHEN",
     "\n\n\n\x1dV\x00",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 function buildRawBtReceiptText(order) {
@@ -181,6 +242,7 @@ function buildRawBtReceiptText(order) {
     "RECEIPT",
     getOrderDisplayNo(order),
     formatDate(order.createdAt),
+    order.paymentStatus === "VOIDED" ? "VOIDED" : "",
     "------------------------------",
     ...buildRawBtItemLines(order, { includePrice: true }),
     "------------------------------",

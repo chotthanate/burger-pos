@@ -52,13 +52,14 @@ import {
   canSellProduct,
   getCartRequirements,
   getMissingIngredients,
+  getOrderRequirements,
   makeOrderPayload,
   money,
 } from "./lib/posLogic.js";
 import { makePrinterTestJob, printThaiCodePageTest, sendPrintJob, testPrintBridge } from "./lib/printBridge.js";
 import { getAndroidBluetoothPrinters, isNativeThaiPrinterAvailable, printAndroidBluetoothThaiPrototype, printAndroidThaiPrototype } from "./lib/nativeThaiPrinter.js";
 import { makeShiftSummaryLineJob, makeStockEditLineJob, sendLineNotificationJob } from "./lib/lineNotifications.js";
-import { BURGER_POS_SHEET_ID, SHEET_HEADERS, makeExpenseSheetJob, makeOrderSheetJob, makeShiftSheetJob, makeStockMovementSheetJob } from "./lib/sheetExport.js";
+import { BURGER_POS_SHEET_ID, SHEET_HEADERS, makeExpenseSheetJob, makeOrderSheetJob, makeOrderVoidSheetJob, makeShiftSheetJob, makeStockMovementSheetJob } from "./lib/sheetExport.js";
 import { usePersistentState } from "./lib/storage.js";
 
 const navItems = [
@@ -99,7 +100,7 @@ const defaultSettings = {
   bridgeMethod: "RAWBT_INTENT",
   thaiCodePage: "42",
   buzzerEnabled: true,
-  defaultPrintOptions: { kitchen: true, receipt: false },
+  defaultPrintOptions: { kitchen: true, receipt: false, shiftSummary: true },
   sheetId: BURGER_POS_SHEET_ID,
   sheetWebAppUrl: "",
   lineWebAppUrl: "",
@@ -568,6 +569,37 @@ export default function App() {
     return true;
   }
 
+  async function voidOrder(order, voidPayload) {
+    if (!order || order.paymentStatus === "VOIDED") return false;
+    const voidedAt = new Date().toISOString();
+    const refundAmount = Math.max(0, Number(voidPayload.refundAmount || 0));
+    const stockRestored = Boolean(voidPayload.stockRestored);
+    const updatedOrder = {
+      ...order,
+      paymentStatus: "VOIDED",
+      voidedAt,
+      voidReason: voidPayload.reason || "ยกเลิกออร์เดอร์",
+      voidRefundMethod: voidPayload.refundMethod || "NONE",
+      voidRefundAmount: refundAmount,
+      voidStockRestored: stockRestored,
+      voidNote: voidPayload.note || "",
+    };
+    const restoreRequirements = stockRestored ? getOrderRequirements(order, catalog) : [];
+    const restoreMovements = makeVoidStockMovements(restoreRequirements, ingredients, updatedOrder);
+
+    if (restoreRequirements.length) {
+      setIngredients((current) => applyStockMovement(current, restoreRequirements, "in"));
+    }
+    setOrders((current) => current.map((item) => (item.id === order.id ? updatedOrder : item)));
+    if (restoreMovements.length) {
+      setStockMovements((current) => [...restoreMovements, ...current].slice(0, 500));
+    }
+
+    await addLocalJob("sheetSyncJobs", makeOrderVoidSheetJob(updatedOrder, restoreMovements));
+    await refreshQueues();
+    return true;
+  }
+
   function openNewShift(openingCash) {
     const shift = {
       id: `SHIFT-${Date.now()}`,
@@ -592,6 +624,7 @@ export default function App() {
       ...calculateShiftSummary(openShift, orders, Number(closingCash || 0)),
       openedAt: openShift.openedAt,
       closedAt,
+      shiftId: openShift.id,
     };
     setShifts((current) =>
       current.map((shift) =>
@@ -603,6 +636,14 @@ export default function App() {
     setCart([]);
     setPaymentOpen(false);
     await addLocalJob("sheetSyncJobs", makeShiftSheetJob({ ...openShift, closedAt, closingCash: Number(closingCash || 0) }, summary));
+    if (resolvedSettings.defaultPrintOptions?.shiftSummary !== false) {
+      await addLocalJob("printJobs", {
+        type: "SHIFT_SUMMARY",
+        shift: { ...openShift, closedAt, closingCash: Number(closingCash || 0) },
+        summary,
+      });
+      void flushPrintQueue();
+    }
     if (resolvedSettings.lineShiftSummaryEnabled) {
       await addLocalJob("lineNotifyJobs", makeShiftSummaryLineJob({ ...openShift, closedAt, closingCash: Number(closingCash || 0) }, summary));
       if (resolvedSettings.lineWebAppUrl) void flushLineQueue();
@@ -850,6 +891,7 @@ export default function App() {
               onOpenShift={openNewShift}
               onProduct={openProduct}
               onReprintOrder={queueHistoricalPrint}
+              onVoidOrder={voidOrder}
               orders={orders}
               openShift={openShift}
               printOptions={printOptions}
@@ -1220,6 +1262,7 @@ function PosScreen({
   onOpenShift,
   onProduct,
   onReprintOrder,
+  onVoidOrder,
   orders,
   openShift,
   printOptions,
@@ -1268,7 +1311,7 @@ function PosScreen({
       ) : null}
 
       {posView === "history" ? (
-        <SalesHistoryPanel onReprintOrder={onReprintOrder} orders={orders} shifts={shifts} />
+        <SalesHistoryPanel onReprintOrder={onReprintOrder} onVoidOrder={onVoidOrder} orders={orders} shifts={shifts} />
       ) : (
         <div className="pos-layout">
           <section className="menu-area">
@@ -1438,10 +1481,13 @@ function ShiftStatusCard({ onCloseShift, onDismiss, shift, summary }) {
         <p>เปิดเมื่อ {new Date(shift.openedAt).toLocaleString("th-TH")}</p>
       </div>
       <div className="shift-metrics">
+        <span>ยอดขายสุทธิ <strong>{money(summary.netSales ?? summary.totalSales)} บาท</strong></span>
         <span>เงินสดเริ่มต้น <strong>{money(shift.openingCash)} บาท</strong></span>
         <span>เงินสดขาย <strong>{money(summary.cashSales)} บาท</strong></span>
         <span>เงินโอน <strong>{money(summary.transferSales)} บาท</strong></span>
         <span>ออเดอร์ <strong>{summary.orderCount}</strong></span>
+        <span>ยกเลิก <strong>{summary.voidOrderCount || 0}</strong></span>
+        <span>คืนเงินสด <strong>{money(summary.cashRefundAmount || 0)} บาท</strong></span>
       </div>
       <div className="shift-close-form">
         <label>
@@ -1472,10 +1518,16 @@ function ShiftClosedSummary({ onClose, summary }) {
         <p>ปิดกะแล้ว ตรวจยอดก่อนออกจากหน้าต่างนี้</p>
       </div>
       <div className="shift-metrics">
+        <span>ยอดขายก่อนยกเลิก <strong>{money(summary.grossSales ?? summary.totalSales)} บาท</strong></span>
+        <span>ยอดขายสุทธิ <strong>{money(summary.netSales ?? summary.totalSales)} บาท</strong></span>
         <span>เงินสดเริ่มต้น <strong>{money(summary.openingCash)} บาท</strong></span>
         <span>เงินสดขาย <strong>{money(summary.cashSales)} บาท</strong></span>
         <span>เงินโอน <strong>{money(summary.transferSales)} บาท</strong></span>
         <span>ออเดอร์ <strong>{summary.orderCount}</strong></span>
+        <span>ยกเลิก <strong>{summary.voidOrderCount || 0} ออร์เดอร์</strong></span>
+        <span>ยอดยกเลิก <strong>{money(summary.voidAmount || 0)} บาท</strong></span>
+        <span>คืนเงินสด <strong>{money(summary.cashRefundAmount || 0)} บาท</strong></span>
+        <span>คืนเงินโอน <strong>{money(summary.transferRefundAmount || 0)} บาท</strong></span>
         <span>เงินสดที่ควรมี <strong>{money(summary.expectedCash)} บาท</strong></span>
         <span>เงินสดที่นับได้ <strong>{money(summary.closingCash)} บาท</strong></span>
         <span className="span-2">ส่วนต่างเงินสด <strong className={summary.cashDifference < 0 ? "text-danger" : ""}>{money(summary.cashDifference)} บาท</strong></span>
@@ -1487,7 +1539,7 @@ function ShiftClosedSummary({ onClose, summary }) {
   );
 }
 
-function SalesHistoryPanel({ onReprintOrder, orders, shifts }) {
+function SalesHistoryPanel({ onReprintOrder, onVoidOrder, orders, shifts }) {
   const [selectedOrderId, setSelectedOrderId] = useState("");
   const [printNotice, setPrintNotice] = useState("");
   const selectedOrder = orders.find((order) => order.id === selectedOrderId) || null;
@@ -1508,23 +1560,29 @@ function SalesHistoryPanel({ onReprintOrder, orders, shifts }) {
       <div className="work-panel">
         <div className="panel-title"><ReceiptText size={22} /><h3>ประวัติการขาย</h3></div>
         <div className="table-list">
-          {orders.length ? orders.map((order) => (
-            <button
-              className={`table-row history-row history-order-button ${selectedOrder?.id === order.id ? "is-active" : ""}`}
-              key={order.id}
-              onClick={() => {
-                setSelectedOrderId(order.id);
-                setPrintNotice("");
-              }}
-              type="button"
-            >
-              <span>
-                {getOrderDisplayNo(order)}
-                <small>{new Date(order.createdAt).toLocaleString("th-TH")} · {order.paymentMethod === "CASH" ? "เงินสด" : "เงินโอน"}</small>
-              </span>
-              <strong>{money(order.totalAmount)} บาท</strong>
-            </button>
-          )) : <div className="empty-state">ยังไม่มีประวัติการขาย</div>}
+          {orders.length ? orders.map((order) => {
+            const isVoided = order.paymentStatus === "VOIDED";
+            return (
+              <button
+                className={`table-row history-row history-order-button ${selectedOrder?.id === order.id ? "is-active" : ""} ${isVoided ? "is-voided" : ""}`}
+                key={order.id}
+                onClick={() => {
+                  setSelectedOrderId(order.id);
+                  setPrintNotice("");
+                }}
+                type="button"
+              >
+                <span>
+                  <span className="history-order-title">
+                    {getOrderDisplayNo(order)}
+                    {isVoided ? <small className="void-badge">ยกเลิกแล้ว</small> : null}
+                  </span>
+                  <small>{new Date(order.createdAt).toLocaleString("th-TH")} · {order.paymentMethod === "CASH" ? "เงินสด" : "เงินโอน"}</small>
+                </span>
+                <strong>{money(order.totalAmount)} บาท</strong>
+              </button>
+            );
+          }) : <div className="empty-state">ยังไม่มีประวัติการขาย</div>}
         </div>
       </div>
       {selectedOrder ? (
@@ -1537,6 +1595,7 @@ function SalesHistoryPanel({ onReprintOrder, orders, shifts }) {
               }}
               order={selectedOrder}
               onReprint={reprint}
+              onVoidOrder={onVoidOrder}
               printNotice={printNotice}
             />
           </div>
@@ -1546,7 +1605,61 @@ function SalesHistoryPanel({ onReprintOrder, orders, shifts }) {
   );
 }
 
-function OrderDetailPanel({ onClose, onReprint, order, printNotice }) {
+function OrderDetailPanel({ onClose, onReprint, onVoidOrder, order, printNotice }) {
+  const isVoided = order.paymentStatus === "VOIDED";
+  const [showVoidForm, setShowVoidForm] = useState(false);
+  const [voidBusy, setVoidBusy] = useState(false);
+  const [voidNotice, setVoidNotice] = useState("");
+  const [voidForm, setVoidForm] = useState({
+    refundMethod: "NONE",
+    refundAmount: 0,
+    reason: "",
+    stockRestored: true,
+    confirmed: false,
+  });
+
+  useEffect(() => {
+    setShowVoidForm(false);
+    setVoidBusy(false);
+    setVoidNotice("");
+    setVoidForm({
+      refundMethod: "NONE",
+      refundAmount: 0,
+      reason: "",
+      stockRestored: true,
+      confirmed: false,
+    });
+  }, [order.id]);
+
+  function updateVoidRefundMethod(refundMethod) {
+    setVoidForm((current) => ({
+      ...current,
+      refundMethod,
+      refundAmount: refundMethod === "NONE" ? 0 : Number(order.totalAmount || 0),
+    }));
+  }
+
+  async function submitVoidOrder(event) {
+    event.preventDefault();
+    if (!voidForm.confirmed || voidBusy || !onVoidOrder) return;
+    setVoidBusy(true);
+    setVoidNotice("");
+    try {
+      await onVoidOrder(order, {
+        refundMethod: voidForm.refundMethod,
+        refundAmount: voidForm.refundMethod === "NONE" ? 0 : Number(voidForm.refundAmount || 0),
+        reason: voidForm.reason.trim() || "ยกเลิกจากประวัติการขาย",
+        stockRestored: voidForm.stockRestored,
+      });
+      setShowVoidForm(false);
+      setVoidNotice("ยกเลิกออร์เดอร์และบันทึกประวัติเรียบร้อย");
+    } catch (error) {
+      setVoidNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      setVoidBusy(false);
+    }
+  }
+
   return (
     <div className="order-detail-panel">
       <div className="panel-title">
@@ -1555,6 +1668,7 @@ function OrderDetailPanel({ onClose, onReprint, order, printNotice }) {
           <h3>{getOrderDisplayNo(order)}</h3>
           <p>{new Date(order.createdAt).toLocaleString("th-TH")} · {order.paymentMethod === "CASH" ? "เงินสด" : "เงินโอน"}</p>
         </div>
+        {isVoided ? <span className="void-badge">ยกเลิกแล้ว</span> : null}
         {onClose ? <button className="icon-close-button" onClick={onClose} type="button">ปิด</button> : null}
       </div>
       <div className="order-detail-list">
@@ -1580,13 +1694,89 @@ function OrderDetailPanel({ onClose, onReprint, order, printNotice }) {
           <span>เงินทอน {money(order.changeDue)} บาท</span>
         </div>
       ) : null}
+      {isVoided ? (
+        <div className="void-summary-box">
+          <strong>ข้อมูลการยกเลิก</strong>
+          <span>เวลา: {new Date(order.voidedAt || Date.now()).toLocaleString("th-TH")}</span>
+          <span>เหตุผล: {order.voidReason || "-"}</span>
+          <span>รูปแบบคืนเงิน: {formatRefundMethod(order.voidRefundMethod)} · {money(order.voidRefundAmount || 0)} บาท</span>
+          <span>คืนวัตถุดิบ: {order.voidStockRestored ? "คืนเข้าสต็อกแล้ว" : "ไม่คืนเข้าสต็อก"}</span>
+        </div>
+      ) : null}
       {printNotice ? <div className="inline-warning">{printNotice}</div> : null}
+      {voidNotice ? <div className={voidNotice.includes("เรียบร้อย") ? "inline-confirm" : "inline-warning"}>{voidNotice}</div> : null}
+      {showVoidForm && !isVoided ? (
+        <form className="void-order-form" onSubmit={submitVoidOrder}>
+          <strong>ยกเลิกออร์เดอร์นี้</strong>
+          <label>
+            รูปแบบการยกเลิก/คืนเงิน
+            <select value={voidForm.refundMethod} onChange={(event) => updateVoidRefundMethod(event.target.value)}>
+              <option value="NONE">กดผิด / ไม่ได้รับเงินจริง</option>
+              <option value="CASH">คืนเงินสดจากลิ้นชัก</option>
+              <option value="TRANSFER">คืนเงินผ่านเงินโอน</option>
+            </select>
+          </label>
+          {voidForm.refundMethod !== "NONE" ? (
+            <label>
+              จำนวนเงินที่คืน
+              <input
+                inputMode="decimal"
+                min="0"
+                onChange={(event) => setVoidForm((current) => ({ ...current, refundAmount: event.target.value }))}
+                type="number"
+                value={voidForm.refundAmount}
+              />
+            </label>
+          ) : null}
+          <label>
+            เหตุผล
+            <textarea
+              onChange={(event) => setVoidForm((current) => ({ ...current, reason: event.target.value }))}
+              placeholder="เช่น ลูกค้าขอคืนเงิน, กดผิด, พิมพ์ออร์เดอร์ผิด"
+              value={voidForm.reason}
+            />
+          </label>
+          <label className="check-line">
+            <input
+              checked={voidForm.stockRestored}
+              onChange={(event) => setVoidForm((current) => ({ ...current, stockRestored: event.target.checked }))}
+              type="checkbox"
+            />
+            คืนวัตถุดิบตามสูตรกลับเข้าสต็อก
+          </label>
+          <label className="check-line">
+            <input
+              checked={voidForm.confirmed}
+              onChange={(event) => setVoidForm((current) => ({ ...current, confirmed: event.target.checked }))}
+              type="checkbox"
+            />
+            ยืนยันว่าต้องการยกเลิกออร์เดอร์นี้
+          </label>
+          <div className="modal-actions">
+            <button className="ghost-button" onClick={() => setShowVoidForm(false)} type="button">ไม่ยกเลิก</button>
+            <button className="danger-button is-armed" disabled={!voidForm.confirmed || voidBusy} type="submit">
+              {voidBusy ? "กำลังบันทึก..." : "ยืนยันยกเลิก"}
+            </button>
+          </div>
+        </form>
+      ) : null}
       <div className="modal-actions">
         <button className="primary-button" onClick={() => onReprint(order, "RECEIPT")} type="button"><Printer size={18} /> พิมพ์ใบเสร็จ</button>
         <button className="ghost-button" onClick={() => onReprint(order, "KITCHEN")} type="button"><ReceiptText size={18} /> พิมพ์ใบออร์เดอร์</button>
+        {!isVoided && onVoidOrder ? (
+          <button className="danger-button" onClick={() => setShowVoidForm((current) => !current)} type="button">
+            ยกเลิกออร์เดอร์
+          </button>
+        ) : null}
       </div>
     </div>
   );
+}
+
+function formatRefundMethod(method) {
+  if (method === "CASH") return "คืนเงินสด";
+  if (method === "TRANSFER") return "คืนเงินโอน";
+  return "กดผิด / ไม่ได้รับเงินจริง";
 }
 
 function SalesHistory({ orders, shifts }) {
@@ -3446,10 +3636,11 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, orde
         </div>
         {printerNotice ? <div className="inline-confirm">{printerNotice}</div> : null}
         <div className="settings-subsection">
-          <strong>ค่าเริ่มต้นการพิมพ์ตอนปิดออเดอร์</strong>
-          <p>เลือกไว้ตรงนี้แทนการโชว์ตัวเลือกในตะกร้า เพื่อให้หน้าขายโล่งและกดชำระเงินได้เร็วขึ้น</p>
+          <strong>ค่าเริ่มต้นการพิมพ์</strong>
+          <p>เลือกใบที่ต้องการพิมพ์อัตโนมัติ ใบครัว/ใบเสร็จใช้ตอนปิดออเดอร์ ส่วนใบสรุปปิดกะใช้ตอนปิดกะ</p>
           <label className="check-line"><input checked={settings.defaultPrintOptions?.kitchen !== false} onChange={(event) => updateDefaultPrintOption("kitchen", event.target.checked)} type="checkbox" /> พิมพ์ใบครัวอัตโนมัติ</label>
           <label className="check-line"><input checked={settings.defaultPrintOptions?.receipt === true} onChange={(event) => updateDefaultPrintOption("receipt", event.target.checked)} type="checkbox" /> พิมพ์ใบเสร็จอัตโนมัติ</label>
+          <label className="check-line"><input checked={settings.defaultPrintOptions?.shiftSummary !== false} onChange={(event) => updateDefaultPrintOption("shiftSummary", event.target.checked)} type="checkbox" /> พิมพ์ใบสรุปปิดกะอัตโนมัติ</label>
         </div>
       </article>
       ) : null}
@@ -3781,6 +3972,28 @@ function makeSaleMovements(requirements, ingredients, orderId) {
   });
 }
 
+function makeVoidStockMovements(requirements, ingredients, order) {
+  const createdAt = order.voidedAt || new Date().toISOString();
+  return requirements.map((line) => {
+    const ingredient = ingredients.find((item) => item.id === line.ingredientId);
+    const quantityBefore = Number(ingredient?.stock || 0);
+    return {
+      id: `MOV-${Date.now()}-${line.ingredientId}`,
+      ingredientId: line.ingredientId,
+      ingredientName: ingredient?.name || line.ingredientId,
+      type: "VOID",
+      sourceType: "ORDER_VOID",
+      quantityBefore,
+      quantityDelta: line.quantity,
+      quantityAfter: quantityBefore + line.quantity,
+      unit: ingredient?.unit || "",
+      sourceId: order.id,
+      reason: `ยกเลิกออร์เดอร์ ${getOrderDisplayNo(order)} คืนวัตถุดิบเข้าสต็อก`,
+      createdAt,
+    };
+  });
+}
+
 function makeIngredientSaveMovement(previous, nextIngredient) {
   const quantityBefore = Number(previous?.stock || 0);
   const quantityAfter = Number(nextIngredient?.stock || 0);
@@ -3807,13 +4020,30 @@ function makeIngredientSaveMovement(previous, nextIngredient) {
 
 function calculateShiftSummary(shift, orders, closingCash = null) {
   const shiftOrders = orders.filter((order) => order.shiftId === shift.id);
+  const activeOrders = shiftOrders.filter((order) => order.paymentStatus !== "VOIDED");
+  const voidedOrders = shiftOrders.filter((order) => order.paymentStatus === "VOIDED");
+  const grossSales = shiftOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const voidAmount = voidedOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const cashRefundAmount = voidedOrders
+    .filter((order) => order.voidRefundMethod === "CASH")
+    .reduce((sum, order) => sum + Number(order.voidRefundAmount || 0), 0);
+  const transferRefundAmount = voidedOrders
+    .filter((order) => order.voidRefundMethod === "TRANSFER")
+    .reduce((sum, order) => sum + Number(order.voidRefundAmount || 0), 0);
   const cashSales = shiftOrders
-    .filter((order) => order.paymentMethod === "CASH")
+    .filter((order) => (
+      order.paymentMethod === "CASH"
+      && (order.paymentStatus !== "VOIDED" || order.voidRefundMethod === "CASH")
+    ))
     .reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
   const transferSales = shiftOrders
-    .filter((order) => order.paymentMethod === "TRANSFER")
+    .filter((order) => (
+      order.paymentMethod === "TRANSFER"
+      && (order.paymentStatus !== "VOIDED" || order.voidRefundMethod === "CASH" || order.voidRefundMethod === "TRANSFER")
+    ))
     .reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
-  const expectedCash = Number(shift.openingCash || 0) + cashSales;
+  const netSales = activeOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const expectedCash = Number(shift.openingCash || 0) + cashSales - cashRefundAmount;
   const countedCash = closingCash === null || closingCash === undefined ? expectedCash : Number(closingCash || 0);
   return {
     openingCash: Number(shift.openingCash || 0),
@@ -3822,22 +4052,30 @@ function calculateShiftSummary(shift, orders, closingCash = null) {
     expectedCash,
     closingCash: countedCash,
     cashDifference: countedCash - expectedCash,
-    orderCount: shiftOrders.length,
-    totalSales: cashSales + transferSales,
+    orderCount: activeOrders.length,
+    voidOrderCount: voidedOrders.length,
+    grossSales,
+    voidAmount,
+    cashRefundAmount,
+    transferRefundAmount,
+    netSales,
+    totalSales: netSales,
   };
 }
 
 function buildDashboardData(orders, expenses, ingredients, products, shifts) {
-  const totalSales = orders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
-  const cashOrders = orders.filter((order) => order.paymentMethod === "CASH");
-  const transferOrders = orders.filter((order) => order.paymentMethod === "TRANSFER");
+  const activeOrders = orders.filter((order) => order.paymentStatus !== "VOIDED");
+  const voidedOrders = orders.filter((order) => order.paymentStatus === "VOIDED");
+  const totalSales = activeOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const cashOrders = activeOrders.filter((order) => order.paymentMethod === "CASH");
+  const transferOrders = activeOrders.filter((order) => order.paymentMethod === "TRANSFER");
   const cashSales = cashOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
   const transferSales = transferOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
   const expenseTotal = expenses.reduce((sum, expense) => sum + Number(expense.totalAmount || 0), 0);
   const productMap = new Map(products.map((product) => [product.id, product.name]));
   const topProductMap = new Map();
 
-  orders.forEach((order) => {
+  activeOrders.forEach((order) => {
     (order.items || []).forEach((item) => {
       const name = item.name || productMap.get(item.productId) || item.productId;
       const previous = topProductMap.get(name) || { name, quantity: 0, total: 0 };
@@ -3854,7 +4092,7 @@ function buildDashboardData(orders, expenses, ingredients, products, shifts) {
     const key = date.toISOString().slice(0, 10);
     dailyRaw.set(key, { key, label: date.toLocaleDateString("th-TH", { day: "2-digit", month: "short" }), total: 0 });
   }
-  orders.forEach((order) => {
+  activeOrders.forEach((order) => {
     const key = new Date(order.createdAt).toISOString().slice(0, 10);
     if (dailyRaw.has(key)) {
       dailyRaw.get(key).total += Number(order.totalAmount || 0);
@@ -3865,8 +4103,8 @@ function buildDashboardData(orders, expenses, ingredients, products, shifts) {
 
   return {
     totalSales,
-    orderCount: orders.length,
-    averageOrder: orders.length ? totalSales / orders.length : 0,
+    orderCount: activeOrders.length,
+    averageOrder: activeOrders.length ? totalSales / activeOrders.length : 0,
     cashSales,
     cashOrders: cashOrders.length,
     transferSales,
@@ -3879,6 +4117,8 @@ function buildDashboardData(orders, expenses, ingredients, products, shifts) {
     netAfterExpenses: totalSales - expenseTotal,
     lowStock: ingredients.filter((item) => Number(item.stock || 0) <= Number(item.minimumStock || 0)).slice(0, 6),
     shiftCount: shifts.length,
+    voidOrderCount: voidedOrders.length,
+    voidAmount: voidedOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0),
   };
 }
 
