@@ -904,7 +904,7 @@ export default function App() {
             />
           ) : null}
           {activeTab === "dashboard" ? (
-            <DashboardScreen
+            <DashboardScreenV2
               expenses={expenses}
               ingredients={ingredients}
               orders={orders}
@@ -1240,6 +1240,186 @@ function DashboardScreen({ expenses, ingredients, orders, products, shifts }) {
                 <strong>{money(item.stock)} {item.unit}</strong>
               </div>
             )) : <div className="empty-compact">สต็อกยังปกติ</div>}
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function DashboardScreenV2({ expenses, ingredients, orders, products, shifts }) {
+  const [period, setPeriod] = useState("today");
+  const [comparePreviousMonth, setComparePreviousMonth] = useState(true);
+  const data = useMemo(
+    () => buildDashboardData(orders, expenses, ingredients, products, shifts, { period, comparePreviousMonth }),
+    [orders, expenses, ingredients, products, shifts, period, comparePreviousMonth],
+  );
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const animatedTotalSales = useAnimatedNumber(data.totalSales, { prefersReducedMotion });
+  const animatedAverageOrder = useAnimatedNumber(data.averageOrder, { prefersReducedMotion });
+  const animatedCashSales = useAnimatedNumber(data.cashSales, { prefersReducedMotion });
+  const animatedTransferSales = useAnimatedNumber(data.transferSales, { prefersReducedMotion });
+  const animatedOrderCount = useAnimatedNumber(data.orderCount, { duration: 520, prefersReducedMotion });
+  const animatedCashOrders = useAnimatedNumber(data.cashOrders, { duration: 520, prefersReducedMotion });
+  const animatedTransferOrders = useAnimatedNumber(data.transferOrders, { duration: 520, prefersReducedMotion });
+  const animatedCashPercent = useAnimatedNumber(data.cashPercent, { duration: 620, prefersReducedMotion });
+  const animatedExpenseTotal = useAnimatedNumber(data.expenseTotal, { prefersReducedMotion });
+  const animatedExpenseCount = useAnimatedNumber(data.expenseCount, { duration: 520, prefersReducedMotion });
+  const animatedNetAfterExpenses = useAnimatedNumber(data.netAfterExpenses, { prefersReducedMotion });
+
+  return (
+    <section className="dashboard-screen dashboard-v2 motion-dashboard">
+      <div className="dashboard-hero">
+        <div>
+          <p>สรุปผลประกอบการ</p>
+          <h2>{data.periodLabel}</h2>
+        </div>
+        <div className="dashboard-filter-row">
+          {[
+            ["today", "วันนี้"],
+            ["7days", "7 วัน"],
+            ["month", "เดือนนี้"],
+            ["all", "ทั้งหมด"],
+          ].map(([id, label]) => (
+            <button className={period === id ? "is-active" : ""} key={id} onClick={() => setPeriod(id)} type="button">{label}</button>
+          ))}
+          <label className="dashboard-compare-toggle">
+            <input checked={comparePreviousMonth} onChange={(event) => setComparePreviousMonth(event.target.checked)} type="checkbox" />
+            เทียบเดือนก่อน
+          </label>
+        </div>
+      </div>
+
+      <div className="dashboard-metrics">
+        <article className="metric-card metric-sales" style={{ "--motion-index": 0 }}>
+          <span><WalletCards size={18} /> ยอดขายสุทธิ</span>
+          <strong>{money(animatedTotalSales)} บาท</strong>
+          <small>{animatedOrderCount} ออร์เดอร์ · เฉลี่ย {money(animatedAverageOrder)} บาท</small>
+        </article>
+        <article className="metric-card metric-cash" style={{ "--motion-index": 1 }}>
+          <span><Banknote size={18} /> เงินสด</span>
+          <strong>{money(animatedCashSales)} บาท</strong>
+          <small>{animatedCashOrders} ออร์เดอร์</small>
+        </article>
+        <article className="metric-card metric-transfer" style={{ "--motion-index": 2 }}>
+          <span><CreditCard size={18} /> เงินโอน</span>
+          <strong>{money(animatedTransferSales)} บาท</strong>
+          <small>{animatedTransferOrders} ออร์เดอร์</small>
+        </article>
+        <article className="metric-card metric-net" style={{ "--motion-index": 3 }}>
+          <span><ReceiptText size={18} /> หลังหักรายจ่าย</span>
+          <strong>{money(animatedNetAfterExpenses)} บาท</strong>
+          <small>รายจ่าย {money(animatedExpenseTotal)} บาท · {animatedExpenseCount} รายการ</small>
+        </article>
+      </div>
+
+      <div className="dashboard-grid">
+        <article className="chart-card span-2 revenue-card" style={{ "--motion-index": 4 }}>
+          <div className="panel-title">
+            <BarChart3 size={22} />
+            <div>
+              <h3>ยอดขายรายวัน</h3>
+              <p>ใช้ดูแนวโน้มรายวันและเปรียบเทียบกับช่วงที่เลือก</p>
+            </div>
+          </div>
+          <div className="bar-chart">
+            {data.dailySales.map((day, index) => (
+              <div className="bar-row" key={day.key} style={{ "--bar-width": `${day.percent}%`, "--motion-index": index }}>
+                <span>{day.label}</span>
+                <div className="bar-track"><i /></div>
+                <strong>{money(day.total)}</strong>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="chart-card" style={{ "--motion-index": 5 }}>
+          <div className="panel-title">
+            <WalletCards size={22} />
+            <div>
+              <h3>ช่องทางชำระเงิน</h3>
+              <p>เงินสดเทียบกับเงินโอน</p>
+            </div>
+          </div>
+          <div className="payment-donut" style={{ "--cash": `${animatedCashPercent}%` }}>
+            <span>{animatedCashPercent}%</span>
+          </div>
+          <div className="legend-list">
+            <span><i className="legend-cash" /> เงินสด <strong>{money(animatedCashSales)} บาท</strong></span>
+            <span><i className="legend-transfer" /> เงินโอน <strong>{money(animatedTransferSales)} บาท</strong></span>
+          </div>
+        </article>
+
+        <article className="chart-card accent-card" style={{ "--motion-index": 6 }}>
+          <div className="panel-title">
+            <SlidersHorizontal size={22} />
+            <div>
+              <h3>เทียบเดือนก่อน</h3>
+              <p>ช่วยดูว่ารอบนี้ดีขึ้นหรือลดลง</p>
+            </div>
+          </div>
+          <div className="comparison-stack">
+            <strong className={data.comparison.delta >= 0 ? "is-up" : "is-down"}>
+              {data.comparison.delta >= 0 ? "+" : ""}{money(data.comparison.delta)} บาท
+            </strong>
+            <span>{data.comparison.percent >= 0 ? "+" : ""}{data.comparison.percent}% จากเดือนก่อน</span>
+            <small>เดือนก่อน {money(data.comparison.previousTotal)} บาท</small>
+          </div>
+        </article>
+
+        <article className="chart-card" style={{ "--motion-index": 7 }}>
+          <div className="panel-title">
+            <Utensils size={22} />
+            <div>
+              <h3>เมนูขายดี</h3>
+              <p>เรียงจากจำนวนชิ้น</p>
+            </div>
+          </div>
+          <div className="rank-list">
+            {data.topProducts.length ? data.topProducts.map((item, index) => (
+              <div key={item.name}>
+                <b>{index + 1}</b>
+                <span>{item.name}<small>{item.quantity} ชิ้น</small></span>
+                <strong>{money(item.total)} บาท</strong>
+              </div>
+            )) : <div className="empty-compact">ยังไม่มีข้อมูลขาย</div>}
+          </div>
+        </article>
+
+        <article className="chart-card" style={{ "--motion-index": 8 }}>
+          <div className="panel-title">
+            <AlertTriangle size={22} />
+            <div>
+              <h3>วัตถุดิบใกล้หมด</h3>
+              <p>ต่ำกว่าจุดแจ้งเตือน</p>
+            </div>
+          </div>
+          <div className="rank-list compact">
+            {data.lowStock.length ? data.lowStock.map((item) => (
+              <div key={item.id}>
+                <span>{item.name}<small>ขั้นต่ำ {money(item.minimumStock)} {item.unit}</small></span>
+                <strong>{money(item.stock)} {item.unit}</strong>
+              </div>
+            )) : <div className="empty-compact">สต็อกยังปกติ</div>}
+          </div>
+        </article>
+
+        <article className="chart-card span-2 channel-card" style={{ "--motion-index": 9 }}>
+          <div className="panel-title">
+            <Package size={22} />
+            <div>
+              <h3>ยอดขายตามช่องทาง</h3>
+              <p>หน้าร้านและแพลตฟอร์มเดลิเวอรี่</p>
+            </div>
+          </div>
+          <div className="channel-sales-grid">
+            {data.channelSales.map((channel) => (
+              <div key={channel.id}>
+                <span>{channel.label}</span>
+                <strong>{money(channel.total)} บาท</strong>
+                <small>{channel.orders} ออร์เดอร์</small>
+              </div>
+            ))}
           </div>
         </article>
       </div>
@@ -4066,19 +4246,26 @@ function calculateShiftSummary(shift, orders, closingCash = null) {
   };
 }
 
-function buildDashboardData(orders, expenses, ingredients, products, shifts) {
-  const activeOrders = orders.filter((order) => order.paymentStatus !== "VOIDED");
-  const voidedOrders = orders.filter((order) => order.paymentStatus === "VOIDED");
+function buildDashboardData(orders, expenses, ingredients, products, shifts, options = {}) {
+  const period = getDashboardPeriod(options.period || "today");
+  const periodOrders = filterByDashboardRange(orders, period.range, (order) => order.createdAt);
+  const periodExpenses = filterByDashboardRange(expenses, period.range, (expense) => expense.expenseDate || expense.createdAt);
+  const activeOrders = periodOrders.filter((order) => order.paymentStatus !== "VOIDED");
+  const voidedOrders = periodOrders.filter((order) => order.paymentStatus === "VOIDED");
   const totalSales = activeOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
   const cashOrders = activeOrders.filter((order) => order.paymentMethod === "CASH");
   const transferOrders = activeOrders.filter((order) => order.paymentMethod === "TRANSFER");
   const cashSales = cashOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
   const transferSales = transferOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
-  const expenseTotal = expenses.reduce((sum, expense) => sum + Number(expense.totalAmount || 0), 0);
+  const expenseTotal = periodExpenses.reduce((sum, expense) => sum + Number(expense.totalAmount || 0), 0);
   const productMap = new Map(products.map((product) => [product.id, product.name]));
   const topProductMap = new Map();
+  const channelMap = new Map(salesChannels.map((channel) => [channel.id, { ...channel, total: 0, orders: 0 }]));
 
   activeOrders.forEach((order) => {
+    const channel = channelMap.get(order.salesChannel || "store") || channelMap.get("store");
+    channel.total += Number(order.totalAmount || 0);
+    channel.orders += 1;
     (order.items || []).forEach((item) => {
       const name = item.name || productMap.get(item.productId) || item.productId;
       const previous = topProductMap.get(name) || { name, quantity: 0, total: 0 };
@@ -4088,23 +4275,24 @@ function buildDashboardData(orders, expenses, ingredients, products, shifts) {
     });
   });
 
-  const dailyRaw = new Map();
-  for (let offset = 6; offset >= 0; offset -= 1) {
-    const date = new Date();
-    date.setDate(date.getDate() - offset);
-    const key = date.toISOString().slice(0, 10);
-    dailyRaw.set(key, { key, label: date.toLocaleDateString("th-TH", { day: "2-digit", month: "short" }), total: 0 });
-  }
+  const dailyRaw = buildDashboardDayBuckets(period.range);
   activeOrders.forEach((order) => {
-    const key = new Date(order.createdAt).toISOString().slice(0, 10);
+    const key = toLocalDateKey(order.createdAt);
     if (dailyRaw.has(key)) {
       dailyRaw.get(key).total += Number(order.totalAmount || 0);
     }
   });
   const maxDaily = Math.max(1, ...Array.from(dailyRaw.values()).map((day) => day.total));
   const dailySales = Array.from(dailyRaw.values()).map((day) => ({ ...day, percent: Math.max(4, Math.round((day.total / maxDaily) * 100)) }));
+  const previousMonthRange = getPreviousMonthRange();
+  const previousMonthOrders = filterByDashboardRange(orders, previousMonthRange, (order) => order.createdAt)
+    .filter((order) => order.paymentStatus !== "VOIDED");
+  const previousTotal = previousMonthOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const delta = options.comparePreviousMonth ? totalSales - previousTotal : 0;
+  const percent = previousTotal ? Math.round((delta / previousTotal) * 100) : (totalSales ? 100 : 0);
 
   return {
+    periodLabel: period.label,
     totalSales,
     orderCount: activeOrders.length,
     averageOrder: activeOrders.length ? totalSales / activeOrders.length : 0,
@@ -4114,15 +4302,101 @@ function buildDashboardData(orders, expenses, ingredients, products, shifts) {
     transferOrders: transferOrders.length,
     cashPercent: totalSales ? Math.round((cashSales / totalSales) * 100) : 0,
     dailySales,
+    channelSales: Array.from(channelMap.values()).map((channel) => ({ ...channel, label: getSalesChannelLabel(channel.id) })),
     topProducts: Array.from(topProductMap.values()).sort((a, b) => b.quantity - a.quantity).slice(0, 5),
     expenseTotal,
-    expenseCount: expenses.reduce((sum, expense) => sum + Number(expense.items?.length || 0), 0),
+    expenseCount: periodExpenses.reduce((sum, expense) => sum + Number(expense.items?.length || 0), 0),
     netAfterExpenses: totalSales - expenseTotal,
     lowStock: ingredients.filter((item) => Number(item.stock || 0) <= Number(item.minimumStock || 0)).slice(0, 6),
-    shiftCount: shifts.length,
+    shiftCount: filterByDashboardRange(shifts, period.range, (shift) => shift.closedAt || shift.openedAt).length,
     voidOrderCount: voidedOrders.length,
     voidAmount: voidedOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0),
+    comparison: {
+      previousTotal,
+      delta,
+      percent,
+    },
   };
+}
+
+function getDashboardPeriod(period) {
+  const now = new Date();
+  const todayStart = startOfLocalDay(now);
+  const tomorrow = addDays(todayStart, 1);
+  if (period === "7days") {
+    return {
+      label: "7 วันล่าสุด",
+      range: { start: addDays(todayStart, -6), end: tomorrow },
+    };
+  }
+  if (period === "month") {
+    return {
+      label: now.toLocaleDateString("th-TH", { month: "long", year: "numeric" }),
+      range: { start: new Date(now.getFullYear(), now.getMonth(), 1), end: new Date(now.getFullYear(), now.getMonth() + 1, 1) },
+    };
+  }
+  if (period === "all") {
+    return { label: "ข้อมูลทั้งหมด", range: null };
+  }
+  return {
+    label: "วันนี้",
+    range: { start: todayStart, end: tomorrow },
+  };
+}
+
+function filterByDashboardRange(items, range, getDateValue) {
+  if (!range) return items;
+  return items.filter((item) => {
+    const date = parseDashboardDate(getDateValue(item));
+    if (!date) return false;
+    return date >= range.start && date < range.end;
+  });
+}
+
+function buildDashboardDayBuckets(range) {
+  const buckets = new Map();
+  const now = new Date();
+  const start = range?.start || addDays(startOfLocalDay(now), -6);
+  const end = range?.end || addDays(startOfLocalDay(now), 1);
+  const maxDays = Math.min(31, Math.max(1, Math.ceil((end - start) / 86400000)));
+  for (let offset = 0; offset < maxDays; offset += 1) {
+    const date = addDays(start, offset);
+    const key = toLocalDateKey(date);
+    buckets.set(key, { key, label: date.toLocaleDateString("th-TH", { day: "2-digit", month: "short" }), total: 0 });
+  }
+  return buckets;
+}
+
+function getPreviousMonthRange() {
+  const now = new Date();
+  return {
+    start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+    end: new Date(now.getFullYear(), now.getMonth(), 1),
+  };
+}
+
+function parseDashboardDate(value) {
+  if (!value) return null;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date(`${value}T12:00:00`);
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function startOfLocalDay(value) {
+  const date = new Date(value);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(value, days) {
+  const date = new Date(value);
+  date.setDate(date.getDate() + days);
+  return date;
+}
+
+function toLocalDateKey(value) {
+  const date = value instanceof Date ? value : parseDashboardDate(value);
+  if (!date) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function blankExpenseRow(ingredientId = "", ingredientSearch = "") {

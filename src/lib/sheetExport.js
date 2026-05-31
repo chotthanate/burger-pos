@@ -124,24 +124,28 @@ export function makeExpenseSheetJob(expense, movements = []) {
     ...buildExpenseRows(expense),
     ...buildStockMovementRows(movements, "EXPENSE"),
   ];
+  const operations = buildMonthlyExpenseOperations(expense);
   return makeSheetJob({
     syncId,
     type: "EXPENSE",
     sourceId: expense.id,
     description: `${expense.id} -> Expenses + Stock Movements`,
     rows,
+    operations,
   });
 }
 
 export function makeShiftSheetJob(shift, summary) {
   const syncId = `SYNC-SHIFT-${shift.id}-${Date.now()}`;
   const rows = [buildShiftRow(shift, summary)];
+  const operations = [buildMonthlyRevenueOperation(shift, summary)].filter(Boolean);
   return makeSheetJob({
     syncId,
     type: "SHIFT_SUMMARY",
     sourceId: shift.id,
     description: `${shift.id} -> Shift Summary`,
     rows,
+    operations,
   });
 }
 
@@ -157,7 +161,7 @@ export function makeStockMovementSheetJob(movement, sourceType = movement.source
   });
 }
 
-function makeSheetJob({ syncId, type, sourceId, description, rows }) {
+function makeSheetJob({ syncId, type, sourceId, description, rows, operations = [] }) {
   return {
     type,
     syncId,
@@ -165,7 +169,42 @@ function makeSheetJob({ syncId, type, sourceId, description, rows }) {
     description,
     targetTabs: Array.from(new Set(rows.map((row) => row.tab))),
     rows,
+    operations,
   };
+}
+
+function buildMonthlyRevenueOperation(shift, summary) {
+  const date = parseSheetDate(summary?.closedAt || shift?.closedAt || new Date().toISOString());
+  if (!date) return null;
+  return {
+    type: "UPSERT_DAILY_REVENUE",
+    monthTab: String(date.month),
+    day: date.day,
+    dateValue: date.day,
+    cashSales: Number(summary?.cashSales || 0),
+    transferSales: Number(summary?.transferSales || 0),
+    shiftId: shift?.id || "",
+  };
+}
+
+function buildMonthlyExpenseOperations(expense) {
+  const date = parseSheetDate(expense.expenseDate || expense.createdAt);
+  if (!date) return [];
+  return (expense.items || []).map((item, index) => ({
+    type: "APPEND_MONTHLY_EXPENSE",
+    monthTab: String(date.month),
+    expenseId: expense.id,
+    itemId: item?.id || `${expense.id}-${index + 1}`,
+    values: [
+      date.display,
+      item?.name || "",
+      item?.purchaseUnit || item?.baseUnit || "",
+      Number(item?.purchaseQuantity || 0),
+      Number(item?.unitPrice || 0),
+      Number(item?.lineTotal || 0),
+    ],
+    meta: [expense.id, item?.id || `${index + 1}`],
+  }));
 }
 
 function buildSalesRows(order, options = {}) {
@@ -281,5 +320,21 @@ function splitDateTime(value) {
   return {
     date: date.toLocaleDateString("th-TH"),
     time: date.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+  };
+}
+
+function parseSheetDate(value) {
+  if (!value) return null;
+  const isoDateOnly = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const date = isoDateOnly ? new Date(`${value}T12:00:00`) : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const day = date.getDate();
+  const month = date.getMonth() + 1;
+  const year = date.getFullYear();
+  return {
+    day,
+    month,
+    year,
+    display: `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`,
   };
 }
