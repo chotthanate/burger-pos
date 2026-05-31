@@ -59,7 +59,7 @@ import {
 import { makePrinterTestJob, printThaiCodePageTest, sendPrintJob, testPrintBridge } from "./lib/printBridge.js";
 import { getAndroidBluetoothPrinters, isNativeThaiPrinterAvailable, printAndroidBluetoothThaiPrototype, printAndroidThaiPrototype } from "./lib/nativeThaiPrinter.js";
 import { makeShiftSummaryLineJob, makeStockEditLineJob, sendLineNotificationJob } from "./lib/lineNotifications.js";
-import { BURGER_POS_SHEET_ID, SHEET_HEADERS, makeExpenseSheetJob, makeOrderSheetJob, makeOrderVoidSheetJob, makeShiftSheetJob, makeStockMovementSheetJob } from "./lib/sheetExport.js";
+import { BURGER_POS_SHEET_ID, SHEET_HEADERS, makeExpenseDeleteSheetJob, makeExpenseSheetJob, makeOrderSheetJob, makeOrderVoidSheetJob, makeShiftSheetJob, makeStockMovementSheetJob } from "./lib/sheetExport.js";
 import { usePersistentState } from "./lib/storage.js";
 
 const navItems = [
@@ -85,6 +85,8 @@ const modifierGroups = [
   { id: "other", label: "อื่นๆ" },
 ];
 
+const DEFAULT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwW69gre0yuX04oMcJ_6dja8gReINmlGMy7DW3_CeEzULnonMqrlc6m8eTA4lpGNSDagA/exec";
+
 const defaultSettings = {
   printerModel: "POS-8390",
   printerConnection: "BLUETOOTH_NATIVE",
@@ -102,8 +104,8 @@ const defaultSettings = {
   buzzerEnabled: true,
   defaultPrintOptions: { kitchen: true, receipt: false, shiftSummary: true },
   sheetId: BURGER_POS_SHEET_ID,
-  sheetWebAppUrl: "",
-  lineWebAppUrl: "",
+  sheetWebAppUrl: DEFAULT_WEB_APP_URL,
+  lineWebAppUrl: DEFAULT_WEB_APP_URL,
   lineStockAlertsEnabled: true,
   lineShiftSummaryEnabled: true,
   lineStockTargetName: "LINE ส่วนตัว",
@@ -332,7 +334,17 @@ export default function App() {
   const [shifts, setShifts] = usePersistentState("burger-pos.shifts", []);
   const [stockMovements, setStockMovements] = usePersistentState("burger-pos.stockMovements", []);
   const [settings, setSettings] = usePersistentState("burger-pos.settings", defaultSettings);
-  const resolvedSettings = useMemo(() => ({ ...defaultSettings, ...settings }), [settings]);
+  const resolvedSettings = useMemo(() => ({
+    ...defaultSettings,
+    ...settings,
+    sheetId: settings.sheetId || defaultSettings.sheetId,
+    sheetWebAppUrl: settings.sheetWebAppUrl || defaultSettings.sheetWebAppUrl,
+    lineWebAppUrl: settings.lineWebAppUrl || defaultSettings.lineWebAppUrl,
+    defaultPrintOptions: {
+      ...defaultSettings.defaultPrintOptions,
+      ...(settings.defaultPrintOptions || {}),
+    },
+  }), [settings]);
   const [cart, setCart] = useState([]);
   const [posView, setPosView] = useState("sale");
   const [salesChannel, setSalesChannel] = useState("store");
@@ -636,6 +648,7 @@ export default function App() {
     setCart([]);
     setPaymentOpen(false);
     await addLocalJob("sheetSyncJobs", makeShiftSheetJob({ ...openShift, closedAt, closingCash: Number(closingCash || 0) }, summary));
+    if (resolvedSettings.sheetWebAppUrl) void flushSheetQueue();
     if (resolvedSettings.defaultPrintOptions?.shiftSummary !== false) {
       await addLocalJob("printJobs", {
         type: "SHIFT_SUMMARY",
@@ -654,7 +667,10 @@ export default function App() {
 
   function queueStockMovementAudit(movement, { notifyLine = true } = {}) {
     void addLocalJob("sheetSyncJobs", makeStockMovementSheetJob(movement, movement.sourceType || movement.type))
-      .then(refreshQueues)
+      .then(() => {
+        if (resolvedSettings.sheetWebAppUrl) void flushSheetQueue();
+        return refreshQueues();
+      })
       .catch(() => {});
     if (notifyLine && resolvedSettings.lineStockAlertsEnabled) {
       void addLocalJob("lineNotifyJobs", makeStockEditLineJob(movement))
@@ -703,7 +719,46 @@ export default function App() {
     setExpenses((current) => [expense, ...current].slice(0, 200));
     setStockMovements((current) => [...movements, ...current].slice(0, 500));
     await addLocalJob("sheetSyncJobs", makeExpenseSheetJob(expense, movements));
+    if (resolvedSettings.sheetWebAppUrl) void flushSheetQueue();
     await refreshQueues();
+  }
+
+  async function deleteExpense(expenseId) {
+    const expense = expenses.find((item) => item.id === expenseId);
+    if (!expense) return false;
+    const movements = (expense.items || [])
+      .filter((item) => item.ingredientId && Number(item.stockQuantity || 0) > 0)
+      .map((item) => {
+        const ingredient = ingredients.find((candidate) => candidate.id === item.ingredientId);
+        const quantityBefore = Number(ingredient?.stock || 0);
+        const delta = -Number(item.stockQuantity || 0);
+        return {
+          id: `MOV-${Date.now()}-${item.ingredientId}`,
+          ingredientId: item.ingredientId,
+          ingredientName: ingredient?.name || item.ingredientName || item.name,
+          type: "EXPENSE_DELETE",
+          sourceType: "EXPENSE_DELETE",
+          quantityBefore,
+          quantityDelta: delta,
+          quantityAfter: quantityBefore + delta,
+          unit: ingredient?.unit || item.baseUnit || "",
+          sourceId: expense.id,
+          reason: "ลบรายจ่ายและคืนสต็อกย้อนหลัง",
+          createdAt: new Date().toISOString(),
+        };
+      });
+    setIngredients((current) =>
+      current.map((ingredient) => {
+        const movement = movements.find((item) => item.ingredientId === ingredient.id);
+        return movement ? { ...ingredient, stock: Number(movement.quantityAfter || 0) } : ingredient;
+      }),
+    );
+    setExpenses((current) => current.filter((item) => item.id !== expenseId));
+    setStockMovements((current) => [...movements, ...current].slice(0, 500));
+    await addLocalJob("sheetSyncJobs", makeExpenseDeleteSheetJob(expense, movements));
+    if (resolvedSettings.sheetWebAppUrl) void flushSheetQueue();
+    await refreshQueues();
+    return true;
   }
 
   function saveIngredient(nextIngredient) {
@@ -956,6 +1011,7 @@ export default function App() {
               ingredients={ingredients}
               onAddIngredient={saveIngredient}
               onAddPurchaseUnit={setPurchaseUnits}
+              onDeleteExpense={deleteExpense}
               onRecord={recordExpense}
               purchaseUnits={purchaseUnits}
               recentExpenses={expenses}
@@ -1263,9 +1319,6 @@ function DashboardScreenV2({ expenses, ingredients, orders, products, shifts }) 
   const animatedCashOrders = useAnimatedNumber(data.cashOrders, { duration: 520, prefersReducedMotion });
   const animatedTransferOrders = useAnimatedNumber(data.transferOrders, { duration: 520, prefersReducedMotion });
   const animatedCashPercent = useAnimatedNumber(data.cashPercent, { duration: 620, prefersReducedMotion });
-  const animatedExpenseTotal = useAnimatedNumber(data.expenseTotal, { prefersReducedMotion });
-  const animatedExpenseCount = useAnimatedNumber(data.expenseCount, { duration: 520, prefersReducedMotion });
-  const animatedNetAfterExpenses = useAnimatedNumber(data.netAfterExpenses, { prefersReducedMotion });
 
   return (
     <section className="dashboard-screen dashboard-v2 motion-dashboard">
@@ -1294,22 +1347,22 @@ function DashboardScreenV2({ expenses, ingredients, orders, products, shifts }) 
         <article className="metric-card metric-sales" style={{ "--motion-index": 0 }}>
           <span><WalletCards size={18} /> ยอดขายสุทธิ</span>
           <strong>{money(animatedTotalSales)} บาท</strong>
-          <small>{animatedOrderCount} ออร์เดอร์ · เฉลี่ย {money(animatedAverageOrder)} บาท</small>
+          <small>เฉลี่ย {money(animatedAverageOrder)} บาทต่อออร์เดอร์</small>
         </article>
-        <article className="metric-card metric-cash" style={{ "--motion-index": 1 }}>
+        <article className="metric-card metric-orders" style={{ "--motion-index": 1 }}>
+          <span><ReceiptText size={18} /> จำนวนออร์เดอร์</span>
+          <strong>{animatedOrderCount} ออร์เดอร์</strong>
+          <small>ยกเลิก {data.voidOrderCount} ออร์เดอร์</small>
+        </article>
+        <article className="metric-card metric-cash" style={{ "--motion-index": 2 }}>
           <span><Banknote size={18} /> เงินสด</span>
           <strong>{money(animatedCashSales)} บาท</strong>
-          <small>{animatedCashOrders} ออร์เดอร์</small>
+          <small>{animatedCashOrders} ออร์เดอร์หน้าร้าน</small>
         </article>
-        <article className="metric-card metric-transfer" style={{ "--motion-index": 2 }}>
+        <article className="metric-card metric-transfer" style={{ "--motion-index": 3 }}>
           <span><CreditCard size={18} /> เงินโอน</span>
           <strong>{money(animatedTransferSales)} บาท</strong>
-          <small>{animatedTransferOrders} ออร์เดอร์</small>
-        </article>
-        <article className="metric-card metric-net" style={{ "--motion-index": 3 }}>
-          <span><ReceiptText size={18} /> หลังหักรายจ่าย</span>
-          <strong>{money(animatedNetAfterExpenses)} บาท</strong>
-          <small>รายจ่าย {money(animatedExpenseTotal)} บาท · {animatedExpenseCount} รายการ</small>
+          <small>{animatedTransferOrders} ออร์เดอร์หน้าร้าน</small>
         </article>
       </div>
 
@@ -3149,7 +3202,7 @@ function ModifierManagementScreen({ ingredients, modifierRecipes, modifiers, pro
   );
 }
 
-function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onRecord, purchaseUnits, recentExpenses, setView, view }) {
+function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onDeleteExpense, onRecord, purchaseUnits, recentExpenses, setView, view }) {
   const [draft, setDraft] = usePersistentState("burger-pos.expenseDraft", makeEmptyExpenseDraft());
   const [leavingRowIds, setLeavingRowIds] = useState([]);
   const [ingredientModalOpen, setIngredientModalOpen] = useState(false);
@@ -3216,7 +3269,7 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onReco
   }
 
   if (view === "history") {
-    return <ExpenseHistoryPanel expenses={recentExpenses} onBack={() => setView("entry")} />;
+    return <ExpenseHistoryPanel expenses={recentExpenses} onBack={() => setView("entry")} onDeleteExpense={onDeleteExpense} />;
   }
 
   return (
@@ -4007,7 +4060,7 @@ function RecentExpenses({ expenses }) {
   );
 }
 
-function ExpenseHistoryPanel({ expenses, onBack }) {
+function ExpenseHistoryPanel({ expenses, onBack, onDeleteExpense }) {
   const [selectedExpenseId, setSelectedExpenseId] = useState(expenses[0]?.id || "");
   const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId) || expenses[0] || null;
 
@@ -4020,6 +4073,13 @@ function ExpenseHistoryPanel({ expenses, onBack }) {
       setSelectedExpenseId(expenses[0].id);
     }
   }, [expenses, selectedExpenseId]);
+
+  async function requestDeleteExpense() {
+    if (!selectedExpense) return;
+    const confirmed = window.confirm(`ลบรายจ่าย ${selectedExpense.id} และบันทึกลง Audit Log ใช่ไหม?`);
+    if (!confirmed) return;
+    await onDeleteExpense?.(selectedExpense.id);
+  }
 
   if (!expenses.length) {
     return (
@@ -4072,6 +4132,7 @@ function ExpenseHistoryPanel({ expenses, onBack }) {
             <h3>{selectedExpense?.id}</h3>
             <p>{selectedExpense ? formatExpenseDate(selectedExpense) : ""}</p>
           </div>
+          <button className="ghost-button danger-text" onClick={requestDeleteExpense} type="button">ลบรายจ่าย</button>
         </div>
         <div className="order-detail-items">
           {(selectedExpense?.items || []).map((item) => (
@@ -4253,8 +4314,9 @@ function buildDashboardData(orders, expenses, ingredients, products, shifts, opt
   const activeOrders = periodOrders.filter((order) => order.paymentStatus !== "VOIDED");
   const voidedOrders = periodOrders.filter((order) => order.paymentStatus === "VOIDED");
   const totalSales = activeOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
-  const cashOrders = activeOrders.filter((order) => order.paymentMethod === "CASH");
-  const transferOrders = activeOrders.filter((order) => order.paymentMethod === "TRANSFER");
+  const storeOrders = activeOrders.filter((order) => (order.salesChannel || "store") === "store");
+  const cashOrders = storeOrders.filter((order) => order.paymentMethod === "CASH");
+  const transferOrders = storeOrders.filter((order) => order.paymentMethod === "TRANSFER");
   const cashSales = cashOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
   const transferSales = transferOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
   const expenseTotal = periodExpenses.reduce((sum, expense) => sum + Number(expense.totalAmount || 0), 0);

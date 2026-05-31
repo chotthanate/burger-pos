@@ -1,0 +1,16 @@
+{
+  "scriptId": "1nKO1wl5MFjCHEEVVvsDOdXR3cfh179nqF1ZPgQaqUwdNJyUIvMiF6vts",
+  "rootDir": "scripts\\google-apps-script\\live",
+  "scriptExtensions": [
+    ".js",
+    ".gs"
+  ],
+  "htmlExtensions": [
+    ".html"
+  ],
+  "jsonExtensions": [
+    ".json"
+  ],
+  "filePushOrder": [],
+  "skipSubdirectories": false
+}

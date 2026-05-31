@@ -750,6 +750,10 @@ button {
   font-weight: 900;
 }
 
+.danger-text {
+  color: #b42318 !important;
+}
+
 .empty-state {
   min-height: 160px;
   border: 1px dashed var(--boy-border);
@@ -4161,6 +4165,8 @@ b {
   z-index: 49;
   border: 0;
   background: rgba(28, 24, 21, 0.48);
+  animation: navScrimFade 120ms ease-out both;
+  will-change: opacity;
 }
 
 .nav-close-button {
@@ -4186,14 +4192,22 @@ b {
   width: min(320px, calc(100vw - 42px)) !important;
   height: 100dvh !important;
   display: flex !important;
-  transform: translateX(-105%) !important;
-  transition: transform 220ms ease !important;
+  transform: translate3d(-105%, 0, 0) !important;
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+  will-change: transform;
+  backface-visibility: hidden;
+  contain: layout paint;
   border-radius: 0 18px 18px 0;
-  box-shadow: 24px 0 50px rgba(25, 21, 18, 0.28);
+  box-shadow: 14px 0 32px rgba(25, 21, 18, 0.2);
 }
 
 .app-grid.is-nav-open .nav-rail {
-  transform: translateX(0) !important;
+  transform: translate3d(0, 0, 0) !important;
+}
+
+@keyframes navScrimFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .nav-rail .brand-block,
@@ -5533,8 +5547,8 @@ b {
 }
 
 .dashboard-v2 .metric-card {
-  min-height: 132px;
-  padding: 18px;
+  min-height: 96px;
+  padding: 14px 16px 13px;
   position: relative;
   overflow: hidden;
 }
@@ -5554,7 +5568,7 @@ b {
 .dashboard-v2 .metric-sales::before { background: #ef6c3f; }
 .dashboard-v2 .metric-cash::before { background: #2bb673; }
 .dashboard-v2 .metric-transfer::before { background: #2676d8; }
-.dashboard-v2 .metric-net::before { background: #f2b632; }
+.dashboard-v2 .metric-orders::before { background: #f2b632; }
 
 .dashboard-v2 .metric-card span {
   display: inline-flex;
@@ -5565,7 +5579,8 @@ b {
 
 .dashboard-v2 .metric-card strong {
   color: #201d1a;
-  font-size: clamp(28px, 3vw, 38px);
+  font-size: clamp(24px, 2.15vw, 31px);
+  line-height: 1.05;
 }
 
 .dashboard-v2 .metric-card small {

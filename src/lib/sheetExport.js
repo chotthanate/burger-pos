@@ -5,6 +5,7 @@ export const SHEET_TABS = {
   expenses: "Expenses",
   stockMovements: "Stock Movements",
   shiftSummary: "Shift Summary",
+  auditLog: "Audit Log",
 };
 
 export const SHEET_HEADERS = {
@@ -86,6 +87,22 @@ export const SHEET_HEADERS = {
     "transfer_refund_amount",
     "net_sales",
   ],
+  [SHEET_TABS.auditLog]: [
+    "created_at",
+    "date",
+    "time",
+    "event_type",
+    "source_type",
+    "source_id",
+    "item_id",
+    "item_name",
+    "before_value",
+    "change_value",
+    "after_value",
+    "amount",
+    "reason",
+    "raw_json",
+  ],
 };
 
 export function makeOrderSheetJob(order, movements = []) {
@@ -123,6 +140,16 @@ export function makeExpenseSheetJob(expense, movements = []) {
   const rows = [
     ...buildExpenseRows(expense),
     ...buildStockMovementRows(movements, "EXPENSE"),
+    buildAuditRow({
+      createdAt: expense.createdAt,
+      eventType: "EXPENSE_CREATE",
+      sourceType: "EXPENSE",
+      sourceId: expense.id,
+      itemName: `${expense.items?.length || 0} รายการ`,
+      amount: expense.totalAmount,
+      reason: expense.note || "บันทึกรายจ่าย",
+      raw: expense,
+    }),
   ];
   const operations = buildMonthlyExpenseOperations(expense);
   return makeSheetJob({
@@ -130,6 +157,32 @@ export function makeExpenseSheetJob(expense, movements = []) {
     type: "EXPENSE",
     sourceId: expense.id,
     description: `${expense.id} -> Expenses + Stock Movements`,
+    rows,
+    operations,
+  });
+}
+
+export function makeExpenseDeleteSheetJob(expense, movements = []) {
+  const syncId = `SYNC-EXPENSE-DELETE-${expense.id}-${Date.now()}`;
+  const operations = buildMonthlyExpenseDeleteOperations(expense);
+  const rows = [
+    ...buildStockMovementRows(movements, "EXPENSE_DELETE"),
+    buildAuditRow({
+      createdAt: new Date().toISOString(),
+      eventType: "EXPENSE_DELETE",
+      sourceType: "EXPENSE",
+      sourceId: expense.id,
+      itemName: `${expense.items?.length || 0} รายการ`,
+      amount: expense.totalAmount,
+      reason: "ลบรายจ่าย",
+      raw: expense,
+    }),
+  ];
+  return makeSheetJob({
+    syncId,
+    type: "EXPENSE_DELETE",
+    sourceId: expense.id,
+    description: `${expense.id} delete -> Audit Log + monthly expense cleanup`,
     rows,
     operations,
   });
@@ -151,7 +204,22 @@ export function makeShiftSheetJob(shift, summary) {
 
 export function makeStockMovementSheetJob(movement, sourceType = movement.sourceType || "ADJUSTMENT") {
   const syncId = `SYNC-STOCK-${movement.id}-${Date.now()}`;
-  const rows = buildStockMovementRows([movement], sourceType);
+  const rows = [
+    ...buildStockMovementRows([movement], sourceType),
+    buildAuditRow({
+      createdAt: movement.createdAt,
+      eventType: "STOCK_CHANGE",
+      sourceType,
+      sourceId: movement.sourceId || movement.id,
+      itemId: movement.ingredientId,
+      itemName: movement.ingredientName,
+      beforeValue: movement.quantityBefore,
+      changeValue: movement.quantityDelta,
+      afterValue: movement.quantityAfter,
+      reason: movement.reason || movement.type || "",
+      raw: movement,
+    }),
+  ];
   return makeSheetJob({
     syncId,
     type: "STOCK_MOVEMENT",
@@ -159,6 +227,37 @@ export function makeStockMovementSheetJob(movement, sourceType = movement.source
     description: `${movement.ingredientName || movement.ingredientId} -> Stock Movements`,
     rows,
   });
+}
+
+function buildAuditRow(entry) {
+  const parts = splitDateTime(entry.createdAt);
+  return {
+    tab: SHEET_TABS.auditLog,
+    values: [
+      entry.createdAt || new Date().toISOString(),
+      parts.date,
+      parts.time,
+      entry.eventType || "",
+      entry.sourceType || "",
+      entry.sourceId || "",
+      entry.itemId || "",
+      entry.itemName || "",
+      entry.beforeValue ?? "",
+      entry.changeValue ?? "",
+      entry.afterValue ?? "",
+      entry.amount ?? "",
+      entry.reason || "",
+      safeJson(entry.raw || {}),
+    ],
+  };
+}
+
+function safeJson(value) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
 }
 
 function makeSheetJob({ syncId, type, sourceId, description, rows, operations = [] }) {
@@ -204,6 +303,17 @@ function buildMonthlyExpenseOperations(expense) {
       Number(item?.lineTotal || 0),
     ],
     meta: [expense.id, item?.id || `${index + 1}`],
+  }));
+}
+
+function buildMonthlyExpenseDeleteOperations(expense) {
+  const date = parseSheetDate(expense.expenseDate || expense.createdAt);
+  if (!date) return [];
+  return (expense.items || []).map((item, index) => ({
+    type: "DELETE_MONTHLY_EXPENSE",
+    monthTab: String(date.month),
+    expenseId: expense.id,
+    itemId: item?.id || `${index + 1}`,
   }));
 }
 
