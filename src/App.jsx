@@ -1711,11 +1711,14 @@ function OrderDetailPanel({ onClose, onReprint, onVoidOrder, order, printNotice 
           <label>
             รูปแบบการยกเลิก/คืนเงิน
             <select value={voidForm.refundMethod} onChange={(event) => updateVoidRefundMethod(event.target.value)}>
-              <option value="NONE">กดผิด / ไม่ได้รับเงินจริง</option>
+              <option value="NONE">กดผิด / ไม่ได้รับเงินจริง - ลบยอดรับเงินออก</option>
               <option value="CASH">คืนเงินสดจากลิ้นชัก</option>
               <option value="TRANSFER">คืนเงินผ่านเงินโอน</option>
             </select>
           </label>
+          <p className="void-form-hint">
+            กดผิด/ไม่ได้รับเงินจริงจะลบยอดออร์เดอร์ออกจากยอดขายและยอดรับเงินตามวิธีจ่ายเดิม ส่วนคืนเงินสดจะบันทึกเงินสดออกจากลิ้นชักเพิ่ม
+          </p>
           {voidForm.refundMethod !== "NONE" ? (
             <label>
               จำนวนเงินที่คืน
@@ -1776,7 +1779,7 @@ function OrderDetailPanel({ onClose, onReprint, onVoidOrder, order, printNotice 
 function formatRefundMethod(method) {
   if (method === "CASH") return "คืนเงินสด";
   if (method === "TRANSFER") return "คืนเงินโอน";
-  return "กดผิด / ไม่ได้รับเงินจริง";
+  return "กดผิด / ไม่ได้รับเงินจริง - ลบยอดรับเงินออก";
 }
 
 function SalesHistory({ orders, shifts }) {

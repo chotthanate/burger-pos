@@ -3368,6 +3368,14 @@ body {
   resize: vertical;
 }
 
+.void-form-hint {
+  margin: 0;
+  color: var(--boy-muted);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
 .order-detail-total {
   border-top: 1px solid var(--boy-border);
   padding-top: 12px;
