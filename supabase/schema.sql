@@ -38,6 +38,7 @@ create table public.recipes (
 create table public.modifiers (
   id uuid primary key default gen_random_uuid(),
   label text not null,
+  modifier_group text not null default 'addon',
   price_delta numeric not null default 0,
   active boolean not null default true
 );
@@ -128,11 +129,13 @@ create table public.expense_items (
 create table public.stock_movements (
   id uuid primary key default gen_random_uuid(),
   ingredient_id uuid not null references public.ingredients(id),
-  movement_type text not null check (movement_type in ('SALE', 'PURCHASE', 'ADJUSTMENT', 'VOID')),
+  movement_type text not null check (movement_type in ('SALE', 'PURCHASE', 'ADJUSTMENT', 'STOCK_EDIT', 'INITIAL_STOCK', 'VOID')),
+  quantity_before numeric,
   quantity_delta numeric not null,
   quantity_after numeric not null,
   source_table text not null,
-  source_id uuid not null,
+  source_id text not null,
+  reason text,
   created_at timestamptz not null default now()
 );
 
@@ -219,9 +222,9 @@ begin
       where id = target_ingredient.id;
 
       insert into public.stock_movements (
-        ingredient_id, movement_type, quantity_delta, quantity_after, source_table, source_id
+        ingredient_id, movement_type, quantity_before, quantity_delta, quantity_after, source_table, source_id, reason
       )
-      values (target_ingredient.id, 'PURCHASE', quantity_to_add, next_stock, 'expenses', new_expense_id);
+      values (target_ingredient.id, 'PURCHASE', target_ingredient.quantity_in_stock, quantity_to_add, next_stock, 'expenses', new_expense_id::text, 'บันทึกรายจ่ายซื้อวัตถุดิบ');
     end if;
   end loop;
 

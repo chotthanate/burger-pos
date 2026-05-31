@@ -842,6 +842,17 @@ button {
   margin-bottom: 18px;
 }
 
+.modifier-group {
+  display: grid;
+  gap: 8px;
+}
+
+.modifier-group > strong {
+  color: var(--boy-muted);
+  font-size: 12px;
+  font-weight: 950;
+}
+
 .modifier-modal-card .modal-actions {
   border-top: 1px solid var(--boy-border);
   padding-top: 16px;
@@ -1091,6 +1102,23 @@ button {
   gap: 8px;
 }
 
+.expense-helper-actions {
+  margin: -4px 0 12px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  color: var(--boy-muted);
+  font-size: 13px;
+}
+
+.subtle-button {
+  min-height: 36px;
+  padding: 0 12px;
+  color: var(--boy-ink);
+  box-shadow: none;
+}
+
 .expense-table-head,
 .expense-entry-row {
   display: grid;
@@ -1137,6 +1165,19 @@ button {
   border-radius: 8px;
   padding: 0 10px;
   background: #fffefb;
+}
+
+.inline-unit-create {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) auto;
+  gap: 6px;
+}
+
+.inline-unit-create .ghost-button {
+  min-height: 42px;
+  padding: 0 12px;
+  white-space: nowrap;
 }
 
 .expense-mode-toggle {
@@ -1441,6 +1482,11 @@ button {
   border-color: #fecaca;
   color: #b91c1c;
   background: #fff1f2;
+}
+
+.new-ingredient-unit-fields {
+  display: grid;
+  gap: 10px;
 }
 
 .compact-actions {
@@ -3893,6 +3939,11 @@ b {
     min-width: 0;
   }
 
+  .expense-helper-actions {
+    justify-content: flex-start;
+    margin-top: 0;
+  }
+
   .expense-table {
     gap: 8px;
   }
@@ -3934,6 +3985,15 @@ b {
 
   .expense-entry-row > .stock-preview {
     grid-column: 3;
+  }
+
+  .inline-unit-create {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .inline-unit-create .ghost-button {
+    grid-column: 1 / -1;
   }
 
   .expense-entry-row.is-custom > .expense-field:nth-child(3) {

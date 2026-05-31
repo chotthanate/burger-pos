@@ -49,9 +49,11 @@ export const SHEET_HEADERS = {
   [SHEET_TABS.stockMovements]: [
     "created_at",
     "date",
+    "time",
     "type",
     "ingredient_id",
     "ingredient_name",
+    "quantity_before",
     "quantity_delta",
     "quantity_after",
     "unit",
@@ -112,6 +114,18 @@ export function makeShiftSheetJob(shift, summary) {
     type: "SHIFT_SUMMARY",
     sourceId: shift.id,
     description: `${shift.id} -> Shift Summary`,
+    rows,
+  });
+}
+
+export function makeStockMovementSheetJob(movement, sourceType = movement.sourceType || "ADJUSTMENT") {
+  const syncId = `SYNC-STOCK-${movement.id}-${Date.now()}`;
+  const rows = buildStockMovementRows([movement], sourceType);
+  return makeSheetJob({
+    syncId,
+    type: "STOCK_MOVEMENT",
+    sourceId: movement.id,
+    description: `${movement.ingredientName || movement.ingredientId} -> Stock Movements`,
     rows,
   });
 }
@@ -186,9 +200,11 @@ function buildStockMovementRows(movements, sourceType) {
     values: [
       movement.createdAt || "",
       splitDateTime(movement.createdAt).date,
+      splitDateTime(movement.createdAt).time,
       movement.type || "",
       movement.ingredientId || "",
       movement.ingredientName || "",
+      movement.quantityBefore ?? "",
       Number(movement.quantityDelta || 0),
       Number(movement.quantityAfter || 0),
       movement.unit || "",

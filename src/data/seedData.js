@@ -40,9 +40,9 @@ export const recipes = [
 ];
 
 export const modifiers = [
-  { id: "extra_patty", label: "เพิ่มหมู", price: 25, productIds: ["pork_burger", "cheese_burger"] },
-  { id: "extra_cheese", label: "เพิ่มชีส", price: 15, productIds: ["pork_burger", "cheese_burger"] },
-  { id: "no_veg", label: "ไม่ใส่ผัก", price: 0, productIds: ["pork_burger", "cheese_burger"] },
+  { id: "extra_patty", label: "เพิ่มหมู", group: "addon", price: 25, productIds: ["pork_burger", "cheese_burger"] },
+  { id: "extra_cheese", label: "เพิ่มชีส", group: "addon", price: 15, productIds: ["pork_burger", "cheese_burger"] },
+  { id: "no_veg", label: "ไม่ใส่ผัก", group: "addon", price: 0, productIds: ["pork_burger", "cheese_burger"] },
 ];
 
 export const modifierRecipes = [
