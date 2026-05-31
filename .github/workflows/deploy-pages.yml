@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - gh-pages
   workflow_dispatch:
 
 permissions:
@@ -20,30 +19,25 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Download static site
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh_pages_sha="$(curl -fsSL \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/git/ref/heads/gh-pages" \
-            | jq -r '.object.sha')"
-          curl -fsSL --retry 3 \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -o gh-pages.zip \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/zipball/${gh_pages_sha}"
-          unzip -q gh-pages.zip
-          mkdir site
-          top_dir="$(find . -maxdepth 1 -type d -name '*burger-pos-*' | head -n 1)"
-          cp -a "${top_dir}/." site/
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build static site
+        run: npm run build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: site
+          path: dist
 
       - name: Deploy to GitHub Pages
         id: deployment
