@@ -87,7 +87,12 @@ const modifierGroups = [
   { id: "other", label: "อื่นๆ" },
 ];
 
-const DEFAULT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwW69gre0yuX04oMcJ_6dja8gReINmlGMy7DW3_CeEzULnonMqrlc6m8eTA4lpGNSDagA/exec";
+const DEFAULT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbytIrKYSNwOHj6MXCvB23YXDmfE0sgt2mcCRWrd2h5zmH3OSsG6YabKmmGdFasnTxZ2hw/exec";
+const legacyWebAppUrls = new Set([
+  "https://script.google.com/macros/s/AKfycbwW69gre0yuX04oMcJ_6dja8gReINmlGMy7DW3_CeEzULnonMqrlc6m8eTA4lpGNSDagA/exec",
+  "https://script.google.com/macros/s/AKfycbxsbToqWo3n-J41-ak5QM0XFPZq51_Afdaxs-7qnKWRjshDgpPPIawbGdpEDpTaO8CcXQ/exec",
+  "https://script.google.com/macros/s/AKfycbyaHJT2m9MJNvlTQ2bf1g4SibFbh8iaadKugMV-C6B3fVDPSIUz_ZKHW-7thIJuiKXgJg/exec",
+]);
 
 const defaultSettings = {
   printerModel: "POS-8390",
@@ -394,6 +399,19 @@ export default function App() {
       setSettings((current) => ({ ...current, sheetId: BURGER_POS_SHEET_ID }));
     }
   }, [setSettings, settings.sheetId]);
+
+  useEffect(() => {
+    if (
+      legacyWebAppUrls.has(settings.sheetWebAppUrl)
+      || legacyWebAppUrls.has(settings.lineWebAppUrl)
+    ) {
+      setSettings((current) => ({
+        ...current,
+        sheetWebAppUrl: legacyWebAppUrls.has(current.sheetWebAppUrl) ? DEFAULT_WEB_APP_URL : current.sheetWebAppUrl,
+        lineWebAppUrl: legacyWebAppUrls.has(current.lineWebAppUrl) ? DEFAULT_WEB_APP_URL : current.lineWebAppUrl,
+      }));
+    }
+  }, [setSettings, settings.lineWebAppUrl, settings.sheetWebAppUrl]);
 
   useEffect(() => {
     if (!activeProducts.some((product) => product.category === activeCategory)) {
