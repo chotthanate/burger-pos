@@ -25,6 +25,15 @@ export async function updateLocalJob(storeName, job) {
   await txStore(db, storeName, "readwrite").put({ ...job, updatedAt: new Date().toISOString() });
 }
 
+export async function clearLocalJobs(storeName) {
+  const db = await openDb();
+  await txStore(db, storeName, "readwrite").clear();
+}
+
+export async function clearAllLocalJobs() {
+  await Promise.all(STORES.map((storeName) => clearLocalJobs(storeName)));
+}
+
 function openDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -47,6 +56,7 @@ function txStore(db, name, mode) {
     add: (value) => requestToPromise(store.add(value), tx),
     put: (value) => requestToPromise(store.put(value), tx),
     getAll: () => requestToPromise(store.getAll(), tx),
+    clear: () => requestToPromise(store.clear(), tx),
   };
 }
 

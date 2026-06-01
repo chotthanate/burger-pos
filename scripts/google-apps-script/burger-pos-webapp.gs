@@ -43,6 +43,12 @@ function runSheetOperation_(spreadsheet, operation) {
   if (operation.type === "DELETE_MONTHLY_EXPENSE") {
     return deleteMonthlyExpense_(spreadsheet, operation);
   }
+  if (operation.type === "DELETE_RAW_EXPENSE") {
+    return deleteRawExpense_(spreadsheet, operation);
+  }
+  if (operation.type === "RESET_BURGER_POS_SHEET") {
+    return resetBurgerPosSheet_(spreadsheet, operation);
+  }
   return { ok: false, type: operation.type, error: "Unknown sheet operation" };
 }
 
@@ -83,6 +89,44 @@ function deleteMonthlyExpense_(spreadsheet, operation) {
   if (!target) return { ok: true, type: operation.type, deleted: false };
   shiftExpenseBlockUp_(sheet, target);
   return { ok: true, type: operation.type, deleted: true, row: target };
+}
+
+function deleteRawExpense_(spreadsheet, operation) {
+  const sheet = spreadsheet.getSheetByName("Expenses");
+  if (!sheet || !operation.expenseId) return { ok: true, type: operation.type, deletedRows: 0 };
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { ok: true, type: operation.type, deletedRows: 0 };
+  const values = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  let deletedRows = 0;
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    if (values[index][0] === operation.expenseId) {
+      sheet.deleteRow(index + 2);
+      deletedRows += 1;
+    }
+  }
+  return { ok: true, type: operation.type, deletedRows: deletedRows };
+}
+
+function resetBurgerPosSheet_(spreadsheet, operation) {
+  ["Sales", "Expenses", "Stock Movements", "Shift Summary"].forEach(function(tabName) {
+    clearDataRows_(spreadsheet.getSheetByName(tabName));
+  });
+  clearDataRows_(getOrCreateAuditSheet_(spreadsheet));
+  for (let month = 1; month <= 12; month += 1) {
+    const sheet = spreadsheet.getSheetByName(String(month));
+    if (!sheet) continue;
+    sheet.getRange(5, 2, 31, 3).clearContent(); // B5:D35 daily cash / transfer
+    const lastRow = Math.max(sheet.getLastRow(), 14);
+    sheet.getRange(14, 12, lastRow - 13, 8).clearContent(); // L:S expense area + hidden meta
+  }
+  return { ok: true, type: operation.type, mode: operation.mode || "transactions" };
+}
+
+function clearDataRows_(sheet) {
+  if (!sheet) return;
+  const lastRow = sheet.getLastRow();
+  const lastColumn = Math.max(sheet.getLastColumn(), 1);
+  if (lastRow > 1) sheet.getRange(2, 1, lastRow - 1, lastColumn).clearContent();
 }
 
 function getRequiredSheet_(spreadsheet, tabName) {

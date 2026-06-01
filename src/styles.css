@@ -3899,6 +3899,388 @@ b {
   }
 }
 
+@media (max-width: 560px) {
+  .pos-screen .product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .pos-screen .product-tile {
+    min-height: 172px !important;
+  }
+
+  .pos-screen .product-tile::before,
+  .pos-screen .product-tile-image {
+    height: clamp(78px, 22vw, 104px) !important;
+  }
+}
+
+/* Ultimate POS card override: this must stay last. Android WebView uses the same
+   CSS bundle as the web build, and older card experiments above can otherwise
+   squeeze Thai product names into the price column. */
+.pos-screen .product-tile {
+  grid-template-rows: auto minmax(64px, auto) !important;
+  gap: 10px !important;
+  padding: 10px !important;
+  padding-bottom: 10px !important;
+  min-height: 158px !important;
+  aspect-ratio: 1 / 1 !important;
+  overflow: hidden !important;
+}
+
+.pos-screen .product-tile::before,
+.pos-screen .product-tile-image {
+  height: clamp(78px, 8.8vw, 118px) !important;
+  min-height: 72px !important;
+  max-height: 120px !important;
+  width: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
+.product-tile-footer,
+.pos-screen .product-tile .product-tile-footer {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: auto auto !important;
+  align-content: end !important;
+  align-items: end !important;
+  gap: 1px !important;
+  min-height: 62px !important;
+  padding-right: 50px !important;
+}
+
+.product-tile-footer span,
+.pos-screen .product-tile .product-tile-footer span {
+  display: -webkit-box !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+  font-size: clamp(13px, 1vw, 15px) !important;
+  line-height: 1.05 !important;
+  word-break: keep-all !important;
+}
+
+.product-tile-footer strong,
+.pos-screen .product-tile .product-tile-footer strong {
+  justify-self: start !important;
+  align-self: end !important;
+  font-size: clamp(17px, 1.35vw, 20px) !important;
+  line-height: 1.05 !important;
+  white-space: nowrap !important;
+}
+
+.pos-screen .product-tile::after {
+  right: 10px !important;
+  bottom: 16px !important;
+}
+
+/* 2026-06-02 final runtime fixes for web + Android WebView. Keep at EOF so
+   repeated responsive rules above cannot override these critical surfaces. */
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+.main-pane {
+  padding-top: max(10px, env(safe-area-inset-top, 0px)) !important;
+}
+
+.topbar {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 48 !important;
+  background: rgba(246, 247, 251, 0.94) !important;
+  backdrop-filter: blur(14px) !important;
+}
+
+.nav-rail {
+  padding-top: calc(0px + env(safe-area-inset-top, 0px)) !important;
+  overflow: hidden !important;
+}
+
+.nav-rail .brand-block {
+  padding-top: calc(18px + env(safe-area-inset-top, 0px)) !important;
+}
+
+.nav-rail .nav-list {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+.nav-rail .status-card {
+  flex: 0 0 auto !important;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.pos-screen .product-tile,
+.pos-screen .product-tile-image,
+.pos-screen .product-tile::before {
+  border-radius: 14px !important;
+}
+
+.pos-screen .product-tile-image {
+  display: block !important;
+  overflow: hidden !important;
+  clip-path: inset(0 round 14px) !important;
+}
+
+.print-default-note {
+  display: none !important;
+}
+
+.notification-item {
+  position: relative !important;
+  padding-right: 54px !important;
+  touch-action: pan-y !important;
+}
+
+.notification-dismiss {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(30, 24, 18, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.92);
+  color: #6b6258;
+  transform: translateY(-50%);
+  box-shadow: none;
+}
+
+@media (orientation: landscape) and (max-height: 760px) {
+  .topbar {
+    min-height: 54px !important;
+    margin-bottom: 8px !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+  }
+}
+
+/* POS product card final geometry for Android WebView and web parity. */
+.pos-screen .product-tile {
+  position: relative !important;
+  display: block !important;
+  min-height: clamp(150px, 13.4vw, 214px) !important;
+  aspect-ratio: 1 / 1 !important;
+  padding: 10px !important;
+  overflow: hidden !important;
+}
+
+.pos-screen .product-tile::before,
+.pos-screen .product-tile-image {
+  position: absolute !important;
+  inset: 10px 10px auto 10px !important;
+  width: calc(100% - 20px) !important;
+  height: calc(100% - 76px) !important;
+  min-height: 72px !important;
+  max-height: none !important;
+  border-radius: 10px !important;
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
+.pos-screen .product-tile .product-tile-footer {
+  position: absolute !important;
+  left: 10px !important;
+  right: 10px !important;
+  bottom: 12px !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: auto auto !important;
+  align-items: end !important;
+  row-gap: 1px !important;
+  min-height: 40px !important;
+  padding: 0 !important;
+}
+
+.pos-screen .product-tile .product-tile-name {
+  display: block !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: clamp(13px, 0.95vw, 15px) !important;
+  line-height: 1.08 !important;
+  word-break: keep-all !important;
+}
+
+.pos-screen .product-tile .product-tile-price,
+.pos-screen .product-tile .product-tile-footer strong {
+  justify-self: start !important;
+  align-self: end !important;
+  font-size: clamp(16px, 1.28vw, 20px) !important;
+  line-height: 1.05 !important;
+  white-space: nowrap !important;
+}
+
+.pos-screen .product-tile::after {
+  right: 10px !important;
+  bottom: 14px !important;
+  width: 30px !important;
+  height: 30px !important;
+}
+
+@media (max-width: 720px) {
+  .pos-screen .product-tile {
+    min-height: 150px !important;
+  }
+
+  .pos-screen .product-tile::before,
+  .pos-screen .product-tile-image {
+    height: calc(100% - 72px) !important;
+  }
+
+  .pos-screen .product-tile .product-tile-footer {
+    right: 10px !important;
+  }
+}
+
+/* Final POS card rules. Keep these at the end so the web build and Android WebView
+   do not inherit older card experiments above. */
+.pos-screen .product-tile {
+  grid-template-rows: auto minmax(58px, auto) !important;
+  gap: 9px !important;
+  padding: 10px !important;
+  padding-bottom: 10px !important;
+}
+
+.pos-screen .product-tile::before,
+.pos-screen .product-tile-image {
+  height: clamp(74px, 8.8vw, 116px) !important;
+  min-height: 68px !important;
+  max-height: 118px !important;
+}
+
+.product-tile-footer,
+.pos-screen .product-tile .product-tile-footer {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: auto auto !important;
+  align-content: end !important;
+  align-items: end !important;
+  gap: 2px !important;
+  min-height: 58px !important;
+  padding-right: 48px !important;
+}
+
+.product-tile-footer span,
+.pos-screen .product-tile .product-tile-footer span {
+  display: -webkit-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+  font-size: clamp(14px, 1.08vw, 16px) !important;
+  line-height: 1.08 !important;
+  word-break: keep-all !important;
+}
+
+.product-tile-footer strong,
+.pos-screen .product-tile .product-tile-footer strong {
+  justify-self: start !important;
+  align-self: end !important;
+  font-size: clamp(17px, 1.45vw, 21px) !important;
+  line-height: 1.05 !important;
+  white-space: nowrap !important;
+}
+
+.pos-screen .product-tile::after {
+  right: 10px !important;
+  bottom: 14px !important;
+}
+
+@media (orientation: landscape) and (max-height: 900px) and (max-width: 1500px) {
+  .pos-screen .product-tile {
+    min-height: 172px !important;
+  }
+
+  .product-tile-footer,
+  .pos-screen .product-tile .product-tile-footer {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto auto !important;
+    gap: 2px !important;
+    align-content: end !important;
+    padding-right: 42px !important;
+  }
+
+  .product-tile-footer span,
+  .pos-screen .product-tile .product-tile-footer span {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    -webkit-line-clamp: 2;
+    word-break: keep-all;
+  }
+
+  .product-tile-footer strong,
+  .pos-screen .product-tile .product-tile-footer strong {
+    justify-self: start !important;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 1400px) and (max-width: 2200px) {
+  .product-tile-footer,
+  .pos-screen .product-tile .product-tile-footer {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto auto !important;
+    gap: 2px !important;
+    align-content: end !important;
+    padding-right: 48px !important;
+  }
+
+  .product-tile-footer span,
+  .pos-screen .product-tile .product-tile-footer span {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    -webkit-line-clamp: 2;
+    word-break: keep-all;
+  }
+
+  .product-tile-footer strong,
+  .pos-screen .product-tile .product-tile-footer strong {
+    justify-self: start !important;
+  }
+}
+
+.product-tile-footer,
+.pos-screen .product-tile .product-tile-footer {
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: auto auto !important;
+  gap: 2px !important;
+  align-content: end !important;
+  padding-right: 48px !important;
+}
+
+.product-tile-footer span,
+.pos-screen .product-tile .product-tile-footer span {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  -webkit-line-clamp: 2;
+  word-break: keep-all;
+}
+
+.product-tile-footer strong,
+.pos-screen .product-tile .product-tile-footer strong {
+  justify-self: start !important;
+}
+
 .mobile-child-tabs {
   display: none;
 }
@@ -5997,4 +6379,578 @@ b {
   .shift-close-secondary {
     grid-template-columns: 1fr !important;
   }
+}
+
+.pos-screen .product-tile {
+  display: grid !important;
+  grid-template-rows: minmax(82px, 1fr) auto !important;
+  gap: 10px !important;
+  padding: 10px !important;
+  min-height: 158px !important;
+  aspect-ratio: 1 / 1 !important;
+  align-items: stretch !important;
+}
+
+.pos-screen .product-tile::before,
+.pos-screen .product-tile-image {
+  height: clamp(82px, 9vw, 128px) !important;
+  width: 100% !important;
+  border-radius: 14px !important;
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
+.product-tile-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  padding-right: 44px;
+}
+
+.product-tile-footer span,
+.pos-screen .product-tile .product-tile-footer span {
+  align-self: end;
+  font-size: clamp(13px, 1.35vw, 17px) !important;
+  line-height: 1.15 !important;
+}
+
+.product-tile-footer strong,
+.pos-screen .product-tile .product-tile-footer strong {
+  align-self: end;
+  color: #9d1f1b;
+  font-size: clamp(16px, 1.75vw, 22px) !important;
+  line-height: 1.05 !important;
+  white-space: nowrap;
+}
+
+.modifier-modal-card {
+  max-height: calc(100dvh - 56px);
+  overflow: auto;
+}
+
+.modifier-modal-card .modifier-list {
+  max-height: min(38dvh, 260px);
+  overflow: auto;
+}
+
+.modifier-bottom-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 12px;
+  align-items: end;
+  margin-top: 12px;
+}
+
+.modifier-bottom-grid .modifier-note-field,
+.modifier-bottom-grid .modifier-quantity-field {
+  margin-top: 0;
+}
+
+.modifier-note-field input {
+  min-height: 46px;
+  width: 100%;
+  border: 1px solid rgba(30, 24, 18, 0.12);
+  border-radius: 12px;
+  background: #fffefb;
+  color: #171717;
+  font-weight: 700;
+  padding: 0 14px;
+}
+
+.modifier-bottom-grid .modifier-quantity-control {
+  width: 100%;
+  grid-template-columns: 42px minmax(54px, 1fr) 42px;
+}
+
+.danger-zone-card {
+  border-color: rgba(157, 31, 27, 0.2) !important;
+}
+
+.reset-option-list {
+  display: grid;
+  gap: 12px;
+}
+
+.reset-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid rgba(30, 24, 18, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 253, 248, 0.78);
+}
+
+.reset-option div {
+  display: grid;
+  gap: 4px;
+}
+
+.reset-option span {
+  color: #6b6258;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.danger-button {
+  min-height: 46px;
+  padding: 0 18px;
+  border: 1px solid rgba(157, 31, 27, 0.24);
+  border-radius: 13px;
+  background: linear-gradient(180deg, #d92b2b, #b71f1b);
+  color: #fff;
+  font-weight: 850;
+  box-shadow: 0 8px 0 #8f1815;
+}
+
+.danger-button.is-armed {
+  animation: reset-pulse 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes reset-pulse {
+  from { filter: brightness(1); }
+  to { filter: brightness(1.12); }
+}
+
+@media (orientation: landscape) and (max-height: 760px) {
+  .modifier-modal-card {
+    max-height: calc(100dvh - 34px);
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+
+  .modifier-modal-card h3 {
+    font-size: clamp(28px, 4vw, 38px);
+    margin-bottom: 2px;
+  }
+
+  .modifier-modal-card > p {
+    margin-bottom: 10px;
+  }
+
+  .modifier-row {
+    min-height: 50px;
+  }
+
+  .modifier-bottom-grid {
+    grid-template-columns: minmax(0, 1fr) 190px;
+    gap: 10px;
+  }
+
+  .modifier-note-field input,
+  .modifier-quantity-control button,
+  .modifier-quantity-control input {
+    min-height: 40px;
+  }
+
+  .modal-actions {
+    margin-top: 10px;
+  }
+}
+
+@media (max-width: 720px) {
+  .pos-screen .product-tile {
+    grid-template-rows: minmax(62px, 1fr) auto !important;
+    min-height: 128px !important;
+    aspect-ratio: 1 / 1 !important;
+  }
+
+  .pos-screen .product-tile::before,
+  .pos-screen .product-tile-image {
+    height: clamp(62px, 12vw, 86px) !important;
+  }
+
+  .product-tile-footer {
+    grid-template-columns: 1fr;
+    gap: 3px;
+    padding-right: 34px;
+  }
+
+  .modifier-bottom-grid,
+  .reset-option {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Final mobile/tablet polish for shared web + Android app */
+.topbar .top-status button,
+.nav-rail .status-card button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.topbar .top-status button {
+  min-height: 42px !important;
+  padding: 0 12px !important;
+  border: 1px solid rgba(30, 24, 18, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 253, 248, 0.82);
+  white-space: nowrap;
+}
+
+.nav-rail .status-card {
+  gap: 4px !important;
+}
+
+.nav-rail .status-card button {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 28px;
+  padding: 2px 0;
+  color: #514b43 !important;
+  text-align: left;
+}
+
+.nav-rail .status-card button.text-danger,
+.topbar .top-status button.text-danger {
+  color: #9d1f1b !important;
+}
+
+.notification-screen {
+  display: grid;
+  gap: 16px;
+}
+
+.notification-list {
+  display: grid;
+  gap: 10px;
+}
+
+.notification-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid rgba(30, 24, 18, 0.08);
+  border-left: 5px solid #2f7bdc;
+  border-radius: 14px;
+  background: rgba(255, 253, 248, 0.86);
+  padding: 14px;
+}
+
+.notification-item.is-warning {
+  border-left-color: #f2b735;
+}
+
+.notification-item.is-danger {
+  border-left-color: #c62828;
+}
+
+.notification-item p,
+.notification-item small {
+  margin: 4px 0 0;
+  color: #6b6258;
+}
+
+.pos-screen .product-grid {
+  align-content: start !important;
+}
+
+.pos-screen .product-tile {
+  grid-template-rows: auto minmax(48px, auto) !important;
+  min-height: 156px !important;
+  overflow: hidden !important;
+}
+
+.pos-screen .product-tile::before,
+.pos-screen .product-tile-image {
+  height: clamp(82px, 10vw, 126px) !important;
+  min-height: 74px !important;
+  flex: 0 0 auto !important;
+}
+
+.product-tile-footer,
+.pos-screen .product-tile .product-tile-footer {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-height: 46px;
+  padding-right: 42px !important;
+}
+
+.product-tile-footer span,
+.pos-screen .product-tile .product-tile-footer span {
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  align-self: center !important;
+  word-break: keep-all;
+}
+
+.product-tile-footer strong,
+.pos-screen .product-tile .product-tile-footer strong {
+  align-self: center !important;
+  justify-self: end;
+}
+
+.expense-header {
+  display: grid !important;
+  grid-template-columns: minmax(240px, 1fr) auto auto;
+  align-items: end !important;
+  gap: 14px !important;
+}
+
+.expense-header .panel-title p {
+  display: none;
+}
+
+.expense-header > label {
+  min-width: 190px !important;
+}
+
+.expense-header .expense-helper-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.readonly-stock-field {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgba(30, 24, 18, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 253, 248, 0.82);
+  padding: 12px 14px;
+}
+
+.readonly-stock-field span {
+  color: #6b6258;
+  font-weight: 750;
+}
+
+.readonly-stock-field strong {
+  color: #9d1f1b;
+  font-size: 28px;
+}
+
+.readonly-stock-field small {
+  color: #7a7167;
+}
+
+.stock-adjust-mode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stock-adjust-mode button {
+  min-height: 44px;
+  border: 1px solid rgba(30, 24, 18, 0.1);
+  border-radius: 12px;
+  background: #fffdf8;
+  color: #27221c;
+  font-weight: 850;
+}
+
+.stock-adjust-mode button.is-active {
+  border-color: rgba(198, 40, 40, 0.28);
+  background: linear-gradient(180deg, #d92b2b, #c62828);
+  color: #fff;
+}
+
+.editor-backdrop {
+  display: none;
+}
+
+.side-editor .panel-title,
+.pinned-panel-title {
+  position: sticky;
+  top: -1px;
+  z-index: 2;
+  border-bottom: 1px solid rgba(30, 24, 18, 0.08);
+  background: rgba(255, 250, 240, 0.96);
+  padding-bottom: 10px;
+  backdrop-filter: blur(8px);
+}
+
+.developer-card {
+  border-color: rgba(30, 24, 18, 0.08);
+}
+
+.developer-lock-form,
+.developer-shortcuts {
+  display: grid;
+  gap: 12px;
+}
+
+.developer-shortcuts {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+@media (max-width: 1366px) {
+  .management-layout:not(.is-single)::after {
+    display: none !important;
+  }
+
+  .editor-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 38;
+    border: 0;
+    background: rgba(33, 27, 23, 0.46);
+  }
+}
+
+@media (orientation: landscape) and (max-height: 760px) {
+  .main-pane {
+    padding-top: calc(16px + env(safe-area-inset-top, 0px)) !important;
+  }
+
+  .pos-screen .product-tile {
+    min-height: 146px !important;
+  }
+
+  .pos-screen .product-tile::before,
+  .pos-screen .product-tile-image {
+    height: clamp(76px, 11vh, 96px) !important;
+  }
+
+  .expense-header {
+    grid-template-columns: minmax(220px, 1fr) 180px auto;
+    padding-bottom: 6px;
+  }
+}
+
+@media (max-width: 720px) {
+  .main-pane {
+    padding-top: calc(14px + env(safe-area-inset-top, 0px)) !important;
+  }
+
+  .topbar .top-status button {
+    min-height: 38px !important;
+    padding: 0 9px !important;
+    font-size: 13px !important;
+  }
+
+  .expense-header,
+  .notification-item {
+    grid-template-columns: 1fr !important;
+  }
+
+  .expense-header .expense-helper-actions {
+    justify-content: space-between;
+    white-space: normal;
+  }
+
+  .pos-screen .product-tile {
+    min-height: 132px !important;
+  }
+
+  .pos-screen .product-tile::before,
+  .pos-screen .product-tile-image {
+    height: clamp(66px, 18vw, 88px) !important;
+  }
+
+  .product-tile-footer,
+  .pos-screen .product-tile .product-tile-footer {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto auto !important;
+    align-content: end !important;
+    gap: 2px !important;
+    padding-right: 32px !important;
+  }
+
+  .product-tile-footer span,
+  .pos-screen .product-tile .product-tile-footer span {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    -webkit-line-clamp: 2;
+  }
+
+  .product-tile-footer strong,
+  .pos-screen .product-tile .product-tile-footer strong {
+    justify-self: start !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .pos-screen .product-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .pos-screen .product-tile {
+    min-height: 172px !important;
+  }
+
+  .pos-screen .product-tile::before,
+  .pos-screen .product-tile-image {
+    height: clamp(78px, 22vw, 104px) !important;
+  }
+}
+
+/* Last applied POS card layout. This duplicate is intentionally placed at EOF
+   because Android WebView was still picking up older repeated rules above. */
+.pos-screen .product-tile {
+  grid-template-rows: auto minmax(64px, auto) !important;
+  gap: 10px !important;
+  padding: 10px !important;
+  padding-bottom: 10px !important;
+  min-height: 158px !important;
+  aspect-ratio: 1 / 1 !important;
+  overflow: hidden !important;
+}
+
+.pos-screen .product-tile::before,
+.pos-screen .product-tile-image {
+  height: clamp(78px, 8.8vw, 118px) !important;
+  min-height: 72px !important;
+  max-height: 120px !important;
+  width: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+}
+
+.product-tile-footer,
+.pos-screen .product-tile .product-tile-footer {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: auto auto !important;
+  align-content: end !important;
+  align-items: end !important;
+  gap: 1px !important;
+  min-height: 62px !important;
+  padding-right: 50px !important;
+}
+
+.product-tile-footer span,
+.pos-screen .product-tile .product-tile-footer span {
+  display: -webkit-box !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+  font-size: clamp(13px, 1vw, 15px) !important;
+  line-height: 1.05 !important;
+  word-break: keep-all !important;
+}
+
+.product-tile-footer strong,
+.pos-screen .product-tile .product-tile-footer strong {
+  justify-self: start !important;
+  align-self: end !important;
+  font-size: clamp(17px, 1.35vw, 20px) !important;
+  line-height: 1.05 !important;
+  white-space: nowrap !important;
+}
+
+.pos-screen .product-tile::after {
+  right: 10px !important;
+  bottom: 16px !important;
 }

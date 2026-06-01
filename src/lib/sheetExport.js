@@ -151,20 +151,24 @@ export function makeExpenseSheetJob(expense, movements = []) {
       raw: expense,
     }),
   ];
+  const exportRows = rows.filter((row) => row.tab !== SHEET_TABS.auditLog);
   const operations = buildMonthlyExpenseOperations(expense);
   return makeSheetJob({
     syncId,
     type: "EXPENSE",
     sourceId: expense.id,
     description: `${expense.id} -> Expenses + Stock Movements`,
-    rows,
+    rows: exportRows,
     operations,
   });
 }
 
 export function makeExpenseDeleteSheetJob(expense, movements = []) {
   const syncId = `SYNC-EXPENSE-DELETE-${expense.id}-${Date.now()}`;
-  const operations = buildMonthlyExpenseDeleteOperations(expense);
+  const operations = [
+    { type: "DELETE_RAW_EXPENSE", expenseId: expense.id },
+    ...buildMonthlyExpenseDeleteOperations(expense),
+  ];
   const rows = [
     ...buildStockMovementRows(movements, "EXPENSE_DELETE"),
     buildAuditRow({
@@ -185,6 +189,20 @@ export function makeExpenseDeleteSheetJob(expense, movements = []) {
     description: `${expense.id} delete -> Audit Log + monthly expense cleanup`,
     rows,
     operations,
+  });
+}
+
+export function makeResetSheetJob(mode = "transactions") {
+  const normalizedMode = mode === "all" ? "all" : "transactions";
+  return makeSheetJob({
+    syncId: `SYNC-RESET-${normalizedMode}-${Date.now()}`,
+    type: normalizedMode === "all" ? "RESET_ALL_DATA" : "RESET_TRANSACTION_DATA",
+    sourceId: normalizedMode,
+    description: normalizedMode === "all"
+      ? "Reset all POS data in Google Sheet"
+      : "Reset transaction POS data in Google Sheet",
+    rows: [],
+    operations: [{ type: "RESET_BURGER_POS_SHEET", mode: normalizedMode }],
   });
 }
 

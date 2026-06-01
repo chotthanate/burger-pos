@@ -43,7 +43,7 @@ import {
   recipes as seedRecipes,
   seedIngredients,
 } from "./data/seedData.js";
-import { addLocalJob, listLocalJobs, updateLocalJob } from "./lib/localQueues.js";
+import { addLocalJob, clearAllLocalJobs, listLocalJobs, updateLocalJob } from "./lib/localQueues.js";
 import { sendSheetSyncJob } from "./lib/googleSheetSync.js";
 import { getOrderDisplayNo, makeNextOrderNo } from "./lib/orderFormat.js";
 import {
@@ -59,7 +59,7 @@ import {
 import { makePrinterTestJob, printThaiCodePageTest, sendPrintJob, testPrintBridge } from "./lib/printBridge.js";
 import { getAndroidBluetoothPrinters, isNativeThaiPrinterAvailable, printAndroidBluetoothThaiPrototype, printAndroidThaiPrototype } from "./lib/nativeThaiPrinter.js";
 import { makeShiftSummaryLineJob, makeStockEditLineJob, sendLineNotificationJob } from "./lib/lineNotifications.js";
-import { BURGER_POS_SHEET_ID, SHEET_HEADERS, makeExpenseDeleteSheetJob, makeExpenseSheetJob, makeOrderSheetJob, makeOrderVoidSheetJob, makeShiftSheetJob, makeStockMovementSheetJob } from "./lib/sheetExport.js";
+import { BURGER_POS_SHEET_ID, SHEET_HEADERS, makeExpenseDeleteSheetJob, makeExpenseSheetJob, makeOrderSheetJob, makeOrderVoidSheetJob, makeResetSheetJob, makeShiftSheetJob, makeStockMovementSheetJob } from "./lib/sheetExport.js";
 import { useSupabaseAppState } from "./lib/supabaseAppState.js";
 import { SUPABASE_STORE_ID } from "./lib/supabaseClient.js";
 import { usePersistentState } from "./lib/storage.js";
@@ -67,6 +67,7 @@ import { usePersistentState } from "./lib/storage.js";
 const navItems = [
   { id: "pos", label: "ขาย", icon: Store, children: [{ id: "sales-history", label: "ประวัติขาย", tab: "pos", view: "history" }] },
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
+  { id: "notifications", label: "แจ้งเตือน", icon: Bell },
   { id: "menu", label: "รายการสินค้า", icon: Utensils, children: [{ id: "categories", label: "หมวดหมู่", tab: "categories" }, { id: "modifiers", label: "จัดการตัวเลือกเสริม", tab: "modifiers" }] },
   { id: "inventory", label: "วัตถุดิบ", icon: Package },
   { id: "expense", label: "รายจ่าย", icon: ReceiptText, children: [{ id: "expense-history", label: "ประวัติรายจ่าย", tab: "expense", view: "history" }] },
@@ -118,6 +119,7 @@ const defaultSettings = {
   lineShiftSummaryEnabled: true,
   lineStockTargetName: "LINE ส่วนตัว",
   lineShiftTargetName: "LINE กลุ่มร้าน",
+  developerPin: "2025",
   kitchenTemplate: "[ORDER_NO]\nรายการอาหาร: ตัวหนา\n  - ตัวเลือกเสริม: ตัวบางและเยื้อง\nหมายเหตุ\nเวลาสั่ง",
   receiptLogoDataUrl: "",
   receiptLogoName: "",
@@ -885,6 +887,37 @@ export default function App() {
     queueStockMovementAudit(movement);
   }
 
+  async function resetOperationalData({ includeMasterData = false } = {}) {
+    const resetMode = includeMasterData ? "all" : "transactions";
+    if (resolvedSettings.sheetWebAppUrl) {
+      await sendSheetSyncJob(makeResetSheetJob(resetMode), resolvedSettings);
+    }
+    await clearAllLocalJobs();
+    setOrders([]);
+    setExpenses([]);
+    setShifts([]);
+    setStockMovements([]);
+    setCart([]);
+    setLastOrder(null);
+    setPaymentOpen(false);
+    setCloseShiftToken((token) => token + 1);
+
+    if (includeMasterData) {
+      setMenuCategories([]);
+      setProducts([]);
+      setRecipes([]);
+      setModifiers([]);
+      setModifierRecipes([]);
+      setIngredients([]);
+      setPurchaseUnits([]);
+      setActiveCategory(categories[0]);
+      setActiveTab("settings");
+      return;
+    }
+
+    setIngredients((current) => current.map((ingredient) => ({ ...ingredient, stock: 0 })));
+  }
+
   function navigateMain(tabId) {
     setActiveTab(tabId);
     if (tabId === "pos") setPosView("sale");
@@ -913,7 +946,15 @@ export default function App() {
   const queueStats = {
     print: queueLists.print.filter((job) => job.status !== "PRINTED").length,
     sheet: queueLists.sheet.filter((job) => job.status !== "SYNCED").length,
+    line: (queueLists.line || []).filter((job) => job.status !== "SENT").length,
   };
+  const notificationItems = buildNotificationItems({
+    lowStock,
+    queueLists,
+    queueStats,
+    settings: resolvedSettings,
+    supabaseState,
+  });
 
   return (
     <div className="min-h-screen bg-soft text-ink">
@@ -961,7 +1002,14 @@ export default function App() {
               );
             })}
           </nav>
-          <StatusPanel lowStock={lowStock.length} queueStats={queueStats} supabaseState={supabaseState} />
+          <StatusPanel
+            lowStock={lowStock.length}
+            notificationCount={notificationItems.length}
+            onOpenInventory={() => navigateMain("inventory")}
+            onOpenNotifications={() => navigateMain("notifications")}
+            queueStats={queueStats}
+            supabaseState={supabaseState}
+          />
         </aside>
 
         <main className="main-pane">
@@ -970,6 +1018,7 @@ export default function App() {
             expenseView={expenseView}
             lowStock={lowStock.length}
             onOpenNav={() => setIsNavOpen(true)}
+            onOpenInventory={() => navigateMain("inventory")}
             onRequestCloseShift={() => setCloseShiftToken((token) => token + 1)}
             openShift={openShift}
             posView={posView}
@@ -977,6 +1026,13 @@ export default function App() {
             setSalesChannel={setSalesChannel}
           />
           <MobileSubnav activeTab={activeTab} expenseView={expenseView} navigateMain={navigateMain} navigateSub={navigateSub} />
+          {activeTab === "notifications" ? (
+            <NotificationScreen
+              items={notificationItems}
+              onOpenInventory={() => navigateMain("inventory")}
+              onOpenSettings={() => navigateMain("settings")}
+            />
+          ) : null}
           {activeTab === "pos" ? (
             <PosScreen
               activeCategory={activeCategory}
@@ -1074,6 +1130,7 @@ export default function App() {
               orders={orders}
               queueLists={queueLists}
               refreshQueues={refreshQueues}
+              onResetData={resetOperationalData}
               setSettings={setSettings}
               settings={resolvedSettings}
             />
@@ -1111,7 +1168,7 @@ export default function App() {
   );
 }
 
-function Header({ activeTab, expenseView, lowStock, onOpenNav, onRequestCloseShift, openShift, posView, salesChannel, setSalesChannel }) {
+function Header({ activeTab, expenseView, lowStock, onOpenInventory, onOpenNav, onRequestCloseShift, openShift, posView, salesChannel, setSalesChannel }) {
   const [topMenuOpen, setTopMenuOpen] = useState(false);
   const title = {
     pos: posView === "history" ? "ประวัติการขาย" : "ขายหน้าร้าน",
@@ -1120,6 +1177,7 @@ function Header({ activeTab, expenseView, lowStock, onOpenNav, onRequestCloseShi
     menu: "รายการสินค้า",
     categories: "หมวดหมู่สินค้า",
     modifiers: "จัดการตัวเลือกเสริม",
+    notifications: "แจ้งเตือนระบบ",
     expense: expenseView === "history" ? "ประวัติรายจ่าย" : "บันทึกรายจ่าย",
     settings: "ตั้งค่าระบบ",
   }[activeTab];
@@ -1143,7 +1201,7 @@ function Header({ activeTab, expenseView, lowStock, onOpenNav, onRequestCloseShi
         <h2>{title}</h2>
       )}
       <div className="top-status">
-        <span className={lowStock ? "text-danger" : ""}><Bell size={16} /> ใกล้หมด {lowStock}</span>
+        <button className={lowStock ? "text-danger" : ""} onClick={onOpenInventory} type="button"><Bell size={16} /> ใกล้หมด {lowStock}</button>
       </div>
       {showPosControls && openShift ? (
         <div className="pos-kebab topbar-kebab">
@@ -1210,13 +1268,69 @@ function MobileSubnav({ activeTab, expenseView, navigateMain, navigateSub }) {
   );
 }
 
-function StatusPanel({ lowStock, queueStats, supabaseState }) {
+function StatusPanel({ lowStock, notificationCount, onOpenInventory, onOpenNotifications, queueStats, supabaseState }) {
   return (
     <section className="status-card">
-      <div className={supabaseState?.connected ? "" : "text-muted"} title={supabaseState?.lastError || ""}><Wifi size={18} /> Supabase {supabaseState?.label || "Local"}</div>
-      <div><Printer size={18} /> คิวพิมพ์ {queueStats.print}</div>
-      <div><Database size={18} /> คิว Google Sheet {queueStats.sheet}</div>
-      <div className={lowStock ? "text-danger" : ""}><AlertTriangle size={18} /> แจ้งเตือน {lowStock}</div>
+      <button className={supabaseState?.connected ? "" : "text-muted"} onClick={onOpenNotifications} title={supabaseState?.lastError || ""} type="button"><Wifi size={18} /> Supabase {supabaseState?.label || "Local"}</button>
+      <button onClick={onOpenNotifications} type="button"><Printer size={18} /> คิวพิมพ์ {queueStats.print}</button>
+      <button onClick={onOpenNotifications} type="button"><Database size={18} /> คิว Google Sheet {queueStats.sheet}</button>
+      <button className={notificationCount ? "text-danger" : ""} onClick={onOpenNotifications} type="button"><AlertTriangle size={18} /> แจ้งเตือน {notificationCount}</button>
+      <button className={lowStock ? "text-danger" : ""} onClick={onOpenInventory} type="button"><Package size={18} /> ใกล้หมด {lowStock}</button>
+    </section>
+  );
+}
+
+function NotificationScreen({ items, onOpenInventory, onOpenSettings }) {
+  const [dismissedIds, setDismissedIds] = useState([]);
+  const [touchStarts, setTouchStarts] = useState({});
+  const visibleItems = items.filter((item) => !dismissedIds.includes(item.id));
+  const dismissItem = (id) => {
+    setDismissedIds((current) => (current.includes(id) ? current : [...current, id]));
+  };
+
+  return (
+    <section className="notification-screen work-panel">
+      <div className="panel-title pinned-panel-title">
+        <Bell size={22} />
+        <div>
+          <h3>แจ้งเตือนระบบ</h3>
+          <p>รวมปัญหาที่ควรรู้ เช่น บันทึกไม่สำเร็จ คิวค้าง หรือวัตถุดิบใกล้หมด</p>
+        </div>
+      </div>
+      {visibleItems.length ? (
+        <div className="notification-list">
+          {visibleItems.map((item) => (
+            <article
+              className={`notification-item is-${item.severity || "info"}`}
+              key={item.id}
+              onTouchStart={(event) => {
+                const touch = event.touches?.[0];
+                if (!touch) return;
+                setTouchStarts((current) => ({ ...current, [item.id]: touch.clientX }));
+              }}
+              onTouchEnd={(event) => {
+                const touch = event.changedTouches?.[0];
+                const start = touchStarts[item.id];
+                if (!touch || typeof start !== "number") return;
+                if (start - touch.clientX > 64) dismissItem(item.id);
+              }}
+            >
+              <div>
+                <strong>{item.title}</strong>
+                <p>{item.detail}</p>
+                {item.meta ? <small>{item.meta}</small> : null}
+              </div>
+              {item.action === "inventory" ? <button className="ghost-button" onClick={onOpenInventory} type="button">ไปหน้าวัตถุดิบ</button> : null}
+              {item.action === "settings" ? <button className="ghost-button" onClick={onOpenSettings} type="button">ไปหน้าตั้งค่า</button> : null}
+              <button className="notification-dismiss" onClick={() => dismissItem(item.id)} type="button" aria-label="dismiss notification">
+                <X size={18} />
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-state">ตอนนี้ยังไม่มีแจ้งเตือนสำคัญ</div>
+      )}
     </section>
   );
 }
@@ -1559,6 +1673,7 @@ function PosScreen({
   const [shiftPanelOpen, setShiftPanelOpen] = useState(false);
   const [closedShiftSummary, setClosedShiftSummary] = useState(null);
   const [productSearch, setProductSearch] = useState("");
+  const handledCloseShiftTokenRef = useRef(0);
   const productCategories = Array.from(new Set([...(menuCategories || categories), ...products.map((product) => product.category)]));
   const normalizedProductSearch = productSearch.trim().toLocaleLowerCase("th-TH");
   const visibleProducts = products.filter((product) => {
@@ -1568,7 +1683,15 @@ function PosScreen({
   });
   const currentSummary = openShift ? calculateShiftSummary(openShift, orders) : null;
   useEffect(() => {
-    if (closeShiftToken && openShift && posView === "sale") setShiftPanelOpen(true);
+    if (
+      closeShiftToken
+      && closeShiftToken !== handledCloseShiftTokenRef.current
+      && openShift
+      && posView === "sale"
+    ) {
+      handledCloseShiftTokenRef.current = closeShiftToken;
+      setShiftPanelOpen(true);
+    }
   }, [closeShiftToken, openShift, posView]);
   async function submitCloseShift(closingCash) {
     const closed = await onCloseShift(closingCash);
@@ -1623,8 +1746,10 @@ function PosScreen({
                     type="button"
                   >
                     {product.imageDataUrl ? <img alt={product.name} className="product-tile-image" src={product.imageDataUrl} /> : null}
-                    <span>{product.name}</span>
-                    <strong>{money(getChannelPrice(product, salesChannel))} บาท</strong>
+                    <div className="product-tile-footer">
+                      <span className="product-tile-name">{product.name}</span>
+                      <strong>{money(getChannelPrice(product, salesChannel))} บาท</strong>
+                    </div>
                     {!openShift ? <em>ต้องเปิดกะก่อนขาย</em> : !available ? <em>วัตถุดิบไม่พอ</em> : null}
                   </button>
                 );
@@ -1712,9 +1837,6 @@ function CartPanel({
             </div>
           </div>
         )) : <div className="empty-state">แตะเมนูเพื่อเริ่มออเดอร์</div>}
-      </div>
-      <div className="print-default-note">
-        พิมพ์ตามค่าเริ่มต้น: {printOptions.kitchen ? "ใบครัว" : ""}{printOptions.kitchen && printOptions.receipt ? " + " : ""}{printOptions.receipt ? "ใบเสร็จ" : ""}{!printOptions.kitchen && !printOptions.receipt ? "ปิดทั้งหมด" : ""}
       </div>
       <div className="cart-total">
         <span>รวมสุทธิ</span>
@@ -2160,28 +2282,30 @@ function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, n
             </div>
           ))}
         </div>
-        <label className="modifier-quantity-field">
-          <span>จำนวน</span>
-          <div className="modifier-quantity-control">
-            <button onClick={() => updateQuantity(safeQuantity - 1)} type="button">-</button>
+        <div className="modifier-bottom-grid">
+          <label className="modifier-note-field">
+            หมายเหตุรายการ
             <input
-              inputMode="numeric"
-              min="1"
-              onChange={(event) => updateQuantity(event.target.value)}
-              type="number"
-              value={safeQuantity}
+              onChange={(event) => onNoteChange(event.target.value)}
+              placeholder="เช่น ไม่เผ็ด ขอเกรียมๆ"
+              value={note}
             />
-            <button onClick={() => updateQuantity(safeQuantity + 1)} type="button">+</button>
-          </div>
-        </label>
-        <label className="modifier-note-field">
-          หมายเหตุรายการ
-          <textarea
-            onChange={(event) => onNoteChange(event.target.value)}
-            placeholder="เช่น ไม่เผ็ด ขอเกรียมๆ"
-            value={note}
-          />
-        </label>
+          </label>
+          <label className="modifier-quantity-field">
+            <span>จำนวน</span>
+            <div className="modifier-quantity-control">
+              <button onClick={() => updateQuantity(safeQuantity - 1)} type="button">-</button>
+              <input
+                inputMode="numeric"
+                min="1"
+                onChange={(event) => updateQuantity(event.target.value)}
+                type="number"
+                value={safeQuantity}
+              />
+              <button onClick={() => updateQuantity(safeQuantity + 1)} type="button">+</button>
+            </div>
+          </label>
+        </div>
         {missing.length ? <div className="warning-box">วัตถุดิบไม่พอ: {missing.map((item) => item.name).join(", ")}</div> : null}
         <div className="modal-actions">
           <button className="ghost-button" onClick={onClose} type="button">ยกเลิก</button>
@@ -2229,11 +2353,11 @@ function PaymentModal({ cart, onClose, onSubmit, total }) {
       <div className="modal-card payment-card">
         <h3>ชำระเงิน</h3>
         <div className="payment-tabs">
-          <button className={method === "TRANSFER" ? "is-active" : ""} onClick={() => setMethod("TRANSFER")} type="button">
-            <CreditCard size={18} /> เงินโอน
-          </button>
           <button className={method === "CASH" ? "is-active" : ""} onClick={() => setMethod("CASH")} type="button">
             <Banknote size={18} /> เงินสด
+          </button>
+          <button className={method === "TRANSFER" ? "is-active" : ""} onClick={() => setMethod("TRANSFER")} type="button">
+            <CreditCard size={18} /> เงินโอน
           </button>
         </div>
         <div className="receipt-preview">
@@ -2292,7 +2416,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
   const [editorOpen, setEditorOpen] = useState(false);
   const selected = selectedId ? ingredients.find((item) => item.id === selectedId) : null;
   const [form, setForm] = useState(emptyIngredient());
-  const [adjustment, setAdjustment] = useState({ quantityDelta: "", reason: "" });
+  const [adjustment, setAdjustment] = useState({ mode: "in", quantity: "", reason: "" });
   const [unitForm, setUnitForm] = useState({ label: "แพ็ค", ratio: 1 });
   const [editingUnitId, setEditingUnitId] = useState("");
   const [unitEditorOpen, setUnitEditorOpen] = useState(false);
@@ -2370,7 +2494,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
       id: form.id || `ing_${Date.now()}`,
       name: form.name || "",
       unit: form.unit || "ชิ้น",
-      stock: Number(form.stock || 0),
+      stock: selected ? Number(selected.stock || 0) : Number(form.stock || 0),
       minimumStock: Number(form.minimumStock || 0),
     };
     saveIngredient(next);
@@ -2465,8 +2589,23 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
 
   function submitAdjustment(event) {
     event.preventDefault();
-    adjustStock({ ingredientId: selected.id, ...adjustment });
-    setAdjustment({ quantityDelta: "", reason: "" });
+    if (!selected) return;
+    const quantity = Number(adjustment.quantity || 0);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setEditorNotice("กรุณาใส่จำนวนที่ต้องการปรับสต็อก");
+      window.setTimeout(() => setEditorNotice(""), 1800);
+      return;
+    }
+    const quantityDelta = adjustment.mode === "out" ? -quantity : quantity;
+    const actionText = quantityDelta > 0 ? "เพิ่ม" : "ลด";
+    const confirmed = window.confirm(`${actionText}สต็อก ${selected.name} ${money(Math.abs(quantityDelta))} ${selected.unit} ใช่ไหม?`);
+    if (!confirmed) return;
+    adjustStock({
+      ingredientId: selected.id,
+      quantityDelta,
+      reason: adjustment.reason || `${actionText}สต็อก manual`,
+    });
+    setAdjustment({ mode: "in", quantity: "", reason: "" });
   }
 
   return (
@@ -2510,6 +2649,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
           })}
         </div>
       </div>
+      {editorOpen ? <button aria-label="ปิดหน้าจัดการวัตถุดิบ" className="editor-backdrop" onClick={closeEditor} type="button" /> : null}
       {editorOpen ? (
       <aside className={`side-editor ${editorNotice ? "is-unsaved" : ""}`}>
         <form onSubmit={saveForm}>
@@ -2521,7 +2661,15 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
           {editorNotice ? <div className="inline-warning">{editorNotice}</div> : null}
           <label className={hasUnsavedChanges && normalizeIngredientForm(form).name !== normalizeIngredientForm(savedForm).name ? "is-dirty" : ""}>ชื่อ<input value={form.name || ""} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, name: event.target.value })); }} /></label>
           <label className={hasUnsavedChanges && normalizeIngredientForm(form).unit !== normalizeIngredientForm(savedForm).unit ? "is-dirty" : ""}>หน่วยหลัก<input value={form.unit || ""} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, unit: event.target.value })); }} /></label>
-          <label className={hasUnsavedChanges && normalizeIngredientForm(form).stock !== normalizeIngredientForm(savedForm).stock ? "is-dirty" : ""}>คงเหลือ<input inputMode="decimal" type="number" value={form.stock ?? 0} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, stock: event.target.value })); }} /></label>
+          {selected ? (
+            <div className="readonly-stock-field">
+              <span>คงเหลือ</span>
+              <strong>{money(selected.stock)} {selected.unit}</strong>
+              <small>ปรับจำนวนผ่านช่อง “ปรับ stock manual” ด้านล่างเท่านั้น</small>
+            </div>
+          ) : (
+            <label className={hasUnsavedChanges && normalizeIngredientForm(form).stock !== normalizeIngredientForm(savedForm).stock ? "is-dirty" : ""}>คงเหลือเริ่มต้น<input inputMode="decimal" type="number" value={form.stock ?? 0} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, stock: event.target.value })); }} /></label>
+          )}
           <label className={hasUnsavedChanges && normalizeIngredientForm(form).minimumStock !== normalizeIngredientForm(savedForm).minimumStock ? "is-dirty" : ""}>แจ้งเตือนเมื่อเหลือ<input inputMode="decimal" type="number" value={form.minimumStock ?? 0} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, minimumStock: event.target.value })); }} /></label>
           {!selected ? (
             <div className="new-ingredient-unit-fields">
@@ -2562,7 +2710,11 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
             </form>
             <form onSubmit={submitAdjustment}>
               <h3>ปรับ stock manual</h3>
-              <label>จำนวน + / -<input inputMode="decimal" type="number" value={adjustment.quantityDelta} onChange={(event) => setAdjustment((current) => ({ ...current, quantityDelta: event.target.value }))} /></label>
+              <div className="stock-adjust-mode" role="group" aria-label="เลือกวิธีปรับสต็อก">
+                <button className={adjustment.mode === "in" ? "is-active" : ""} onClick={() => setAdjustment((current) => ({ ...current, mode: "in" }))} type="button">เพิ่ม</button>
+                <button className={adjustment.mode === "out" ? "is-active" : ""} onClick={() => setAdjustment((current) => ({ ...current, mode: "out" }))} type="button">ลด</button>
+              </div>
+              <label>จำนวน<input inputMode="decimal" min="0" type="number" value={adjustment.quantity} onChange={(event) => setAdjustment((current) => ({ ...current, quantity: event.target.value }))} /></label>
               <label>เหตุผล<input value={adjustment.reason} onChange={(event) => setAdjustment((current) => ({ ...current, reason: event.target.value }))} placeholder="เช่น นับจริง, เสียหาย" /></label>
               <button className="ghost-button" type="submit">บันทึกการปรับ</button>
             </form>
@@ -3381,11 +3533,10 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onDele
             วันที่
             <input aria-label="วันที่รายจ่าย" type="date" value={expenseDate} onChange={(event) => setExpenseDate(event.target.value)} />
           </label>
-        </div>
-
-        <div className="expense-helper-actions">
-          <span>ไม่มีวัตถุดิบในรายการ?</span>
-          <button className="ghost-button subtle-button" onClick={() => setIngredientModalOpen(true)} type="button">เพิ่มวัตถุดิบใหม่</button>
+          <div className="expense-helper-actions">
+            <span>ไม่มีวัตถุดิบในรายการ?</span>
+            <button className="ghost-button subtle-button" onClick={() => setIngredientModalOpen(true)} type="button">เพิ่มวัตถุดิบใหม่</button>
+          </div>
         </div>
 
         <div className="expense-table">
@@ -3689,22 +3840,33 @@ function NewIngredientModal({ onClose, onSubmit }) {
   );
 }
 
-function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, orders, queueLists, refreshQueues, setSettings, settings }) {
+function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onResetData, orders, queueLists, refreshQueues, setSettings, settings }) {
   const [activeSection, setActiveSection] = useState("printer");
   const [printerNotice, setPrinterNotice] = useState("");
   const [syncNotice, setSyncNotice] = useState("");
   const [syncBusy, setSyncBusy] = useState(false);
   const [printerBusy, setPrinterBusy] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetNotice, setResetNotice] = useState("");
+  const [resetArmed, setResetArmed] = useState("");
   const [bluetoothDevices, setBluetoothDevices] = useState([]);
+  const [developerUnlocked, setDeveloperUnlocked] = useState(false);
+  const [developerPin, setDeveloperPin] = useState("");
+  const [developerNotice, setDeveloperNotice] = useState("");
   const receiptTemplateValue = settings.receiptTemplate?.includes("[TOTAL (price*quantity)]") ? settings.receiptTemplate : defaultSettings.receiptTemplate;
   const bridgeMethodValue = settings.bridgeMethod === "RAWBT_INTENT" ? "RAWBT_INTENT" : /^wss?:\/\//i.test(settings.bridgeUrl || "") ? "RAWBT_WS" : settings.bridgeMethod || "POST";
-  const sections = [
+  const basicSections = [
     { id: "printer", label: "เครื่องพิมพ์", icon: Printer },
+    { id: "orders", label: "ประวัติออร์เดอร์", icon: ReceiptText },
+    { id: "developer", label: "โหมดผู้พัฒนา", icon: SlidersHorizontal },
+  ];
+  const developerSections = [
     { id: "thaiPrototype", label: "ทดสอบพิมพ์ไทย", icon: FileImage },
     { id: "sync", label: "Google Sheet", icon: Database },
     { id: "line", label: "LINE แจ้งเตือน", icon: Bell },
-    { id: "orders", label: "ประวัติออร์เดอร์", icon: ReceiptText },
+    { id: "data", label: "ล้างข้อมูล", icon: Trash2 },
   ];
+  const sections = developerUnlocked ? [...basicSections, ...developerSections] : basicSections;
   const nativeThaiPrinterAvailable = isNativeThaiPrinterAvailable();
 
   function update(key, value) {
@@ -3720,6 +3882,17 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, orde
         [key]: checked,
       },
     }));
+  }
+
+  function unlockDeveloperMode(event) {
+    event.preventDefault();
+    if (developerPin === String(settings.developerPin || defaultSettings.developerPin)) {
+      setDeveloperUnlocked(true);
+      setDeveloperPin("");
+      setDeveloperNotice("เปิดโหมดผู้พัฒนาแล้ว");
+      return;
+    }
+    setDeveloperNotice("รหัสโหมดผู้พัฒนาไม่ถูกต้อง");
   }
 
   function applyPos8390Preset() {
@@ -3852,6 +4025,29 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, orde
     }
   }
 
+  async function runDataReset(mode) {
+    if (!onResetData || resetBusy) return;
+    if (resetArmed !== mode) {
+      setResetArmed(mode);
+      setResetNotice(mode === "all"
+        ? "กดอีกครั้งเพื่อล้างทั้งระบบ รวมสินค้า หมวด ตัวเลือกเสริม และวัตถุดิบ"
+        : "กดอีกครั้งเพื่อล้างข้อมูลทดลอง โดยเก็บสินค้า หมวด ตัวเลือกเสริม และวัตถุดิบไว้");
+      return;
+    }
+    setResetBusy(true);
+    setResetNotice("");
+    try {
+      await onResetData({ includeMasterData: mode === "all" });
+      setResetNotice(mode === "all" ? "ล้างข้อมูลทั้งระบบแล้ว" : "ล้างข้อมูลทดลองแล้ว");
+      setResetArmed("");
+      await refreshQueues();
+    } catch (error) {
+      setResetNotice(`ล้างข้อมูลไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
   async function runNativeThaiPrint(type) {
     setPrinterBusy(true);
     setPrinterNotice("");
@@ -3906,6 +4102,36 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, orde
         })}
       </div>
       <div className="settings-grid">
+      {activeSection === "developer" ? (
+      <article className="settings-card settings-card-wide developer-card">
+        <SlidersHorizontal size={24} />
+        <h3>โหมดผู้พัฒนา</h3>
+        <p>ใช้สำหรับเมนูที่มีผลกับข้อมูลจริงหรือการเชื่อมต่อภายนอก เช่น Google Sheet, LINE, ล้างข้อมูล และทดสอบพิมพ์ไทย</p>
+        {!developerUnlocked ? (
+          <form className="developer-lock-form" onSubmit={unlockDeveloperMode}>
+            <label>รหัสผู้พัฒนา<input autoComplete="off" inputMode="numeric" type="password" value={developerPin} onChange={(event) => setDeveloperPin(event.target.value)} /></label>
+            <button className="primary-button" type="submit">ปลดล็อก</button>
+          </form>
+        ) : (
+          <>
+            <div className="inline-confirm">โหมดผู้พัฒนาถูกเปิดอยู่ในเครื่องนี้</div>
+            <div className="developer-shortcuts">
+              {developerSections.map((section) => {
+                const Icon = section.icon;
+                return (
+                  <button className="ghost-button" key={section.id} onClick={() => setActiveSection(section.id)} type="button">
+                    <Icon size={18} />
+                    {section.label}
+                  </button>
+                );
+              })}
+            </div>
+            <button className="ghost-button" onClick={() => { setDeveloperUnlocked(false); setDeveloperNotice("ปิดโหมดผู้พัฒนาแล้ว"); }} type="button">ล็อกโหมดผู้พัฒนา</button>
+          </>
+        )}
+        {developerNotice ? <div className={developerUnlocked ? "inline-confirm" : "inline-warning"}>{developerNotice}</div> : null}
+      </article>
+      ) : null}
       {activeSection === "printer" ? (
       <article className="settings-card">
         <Printer size={24} />
@@ -3974,7 +4200,7 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, orde
         </div>
       </article>
       ) : null}
-      {activeSection === "sync" ? (
+      {activeSection === "sync" && developerUnlocked ? (
       <article className="settings-card">
         <Database size={24} />
         <h3>Google Sheet Sync</h3>
@@ -4005,7 +4231,7 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, orde
         <QueueList jobs={queueLists.sheet} onDone={(job) => markFirstJobDone("sheetSyncJobs", job)} />
       </article>
       ) : null}
-      {activeSection === "line" ? (
+      {activeSection === "line" && developerUnlocked ? (
       <article className="settings-card settings-card-wide">
         <Bell size={24} />
         <h3>LINE แจ้งเตือน</h3>
@@ -4030,7 +4256,7 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, orde
         <QueueList jobs={queueLists.line || []} onDone={(job) => markFirstJobDone("lineNotifyJobs", job)} />
       </article>
       ) : null}
-      {activeSection === "thaiPrototype" ? (
+      {activeSection === "thaiPrototype" && developerUnlocked ? (
       <article className="settings-card settings-card-wide thai-printer-prototype">
         <FileImage size={24} />
         <h3>Prototype พิมพ์ภาษาไทยผ่าน Android App</h3>
@@ -4061,6 +4287,34 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, orde
           <button className="ghost-button" disabled={printerBusy || !nativeThaiPrinterAvailable} onClick={() => runNativeThaiPrint("KITCHEN")} type="button"><ReceiptText size={18} /> พิมพ์ใบออร์เดอร์ไทยทดสอบ</button>
         </div>
         {printerNotice ? <div className={printerNotice.includes("สำเร็จ") ? "inline-confirm" : "inline-warning"}>{printerNotice}</div> : null}
+      </article>
+      ) : null}
+      {activeSection === "data" && developerUnlocked ? (
+      <article className="settings-card settings-card-wide danger-zone-card">
+        <Trash2 size={24} />
+        <h3>ล้างข้อมูลก่อนใช้งานจริง</h3>
+        <p>ใช้หลังช่วงทดลอง 2-3 อาทิตย์ เพื่อล้างข้อมูลทดสอบในเครื่อง, Supabase/local queue และ Google Sheet ให้เริ่มใช้งานจริงแบบสะอาด</p>
+        <div className="reset-option-list">
+          <div className="reset-option">
+            <div>
+              <strong>ล้างข้อมูลทดลอง</strong>
+              <span>ลบออร์เดอร์ รายจ่าย กะ คิวพิมพ์ คิวซิงก์ และข้อมูลใน Google Sheet แต่เก็บสินค้า หมวด ตัวเลือกเสริม และรายการวัตถุดิบไว้</span>
+            </div>
+            <button className={resetArmed === "transactions" ? "danger-button is-armed" : "ghost-button"} disabled={resetBusy} onClick={() => runDataReset("transactions")} type="button">
+              {resetArmed === "transactions" ? "ยืนยันล้างข้อมูลทดลอง" : "ล้างข้อมูลทดลอง"}
+            </button>
+          </div>
+          <div className="reset-option reset-option-danger">
+            <div>
+              <strong>ล้างทั้งระบบ</strong>
+              <span>ลบข้อมูลทั้งหมด รวมสินค้า หมวด ตัวเลือกเสริม สูตร วัตถุดิบ หน่วยซื้อ รายจ่าย ออร์เดอร์ และ Google Sheet</span>
+            </div>
+            <button className={resetArmed === "all" ? "danger-button is-armed" : "ghost-button"} disabled={resetBusy} onClick={() => runDataReset("all")} type="button">
+              {resetArmed === "all" ? "ยืนยันล้างทั้งระบบ" : "ล้างทั้งระบบ"}
+            </button>
+          </div>
+        </div>
+        {resetNotice ? <div className={resetNotice.includes("ไม่สำเร็จ") ? "inline-warning" : "inline-confirm"}>{resetNotice}</div> : null}
       </article>
       ) : null}
       {activeSection === "printer" ? (
@@ -4110,10 +4364,11 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, orde
 }
 
 function QueueList({ jobs, onDone }) {
-  if (!jobs.length) return <div className="empty-compact">ยังไม่มีงานค้าง</div>;
+  const visibleJobs = jobs.filter((job) => !["PRINTED", "SYNCED", "SENT"].includes(job.status));
+  if (!visibleJobs.length) return <div className="empty-compact">ยังไม่มีงานค้าง</div>;
   return (
     <div className="queue-list">
-      {jobs.slice(-5).reverse().map((job) => (
+      {visibleJobs.slice(-5).reverse().map((job) => (
         <div className="queue-item" key={job.id}>
           <span>
             {job.description || job.type || job.job_type}
@@ -4330,6 +4585,80 @@ function makeVoidStockMovements(requirements, ingredients, order) {
       createdAt,
     };
   });
+}
+
+function buildNotificationItems({ lowStock, queueLists, queueStats, settings, supabaseState }) {
+  const items = [];
+  if (!supabaseState?.connected) {
+    items.push({
+      id: "supabase-not-ready",
+      severity: supabaseState?.mode === "error" ? "danger" : "warning",
+      title: supabaseState?.mode === "local" ? "Supabase ยังไม่ได้ตั้งค่า" : "Supabase เชื่อมต่อไม่สำเร็จ",
+      detail: supabaseState?.lastError || "เครื่องนี้จะใช้ข้อมูลในเครื่องก่อน ถ้าต้องการให้เว็บและแอพเห็นข้อมูลเดียวกัน ต้องตั้งค่า VITE_SUPABASE_URL และ VITE_SUPABASE_ANON_KEY แล้ว build ใหม่",
+      action: "settings",
+    });
+  }
+  if (!settings?.sheetWebAppUrl) {
+    items.push({
+      id: "sheet-url-missing",
+      severity: "warning",
+      title: "ยังไม่ได้ตั้งค่า Google Sheet sync",
+      detail: "รายรับตอนปิดกะและรายจ่ายจะยังไม่ถูกส่งไป Google Sheet จนกว่าจะใส่ Apps Script Web App URL",
+      action: "settings",
+    });
+  }
+  if (queueStats.print > 0) {
+    items.push({
+      id: "print-queue-pending",
+      severity: "warning",
+      title: `คิวพิมพ์ค้าง ${queueStats.print} งาน`,
+      detail: "มีงานพิมพ์ที่ยังไม่สำเร็จ กดส่งคิวค้างในหน้าตั้งค่าเครื่องพิมพ์ได้",
+      action: "settings",
+    });
+  }
+  if (queueStats.sheet > 0) {
+    items.push({
+      id: "sheet-queue-pending",
+      severity: "warning",
+      title: `คิว Google Sheet ค้าง ${queueStats.sheet} งาน`,
+      detail: "ข้อมูลถูกเก็บไว้ในเครื่องแล้ว แต่ยังส่งเข้า Google Sheet ไม่ครบ",
+      action: "settings",
+    });
+  }
+  if (queueStats.line > 0) {
+    items.push({
+      id: "line-queue-pending",
+      severity: "info",
+      title: `คิว LINE ค้าง ${queueStats.line} งาน`,
+      detail: "มีแจ้งเตือน LINE ที่รอส่งซ้ำ",
+      action: "settings",
+    });
+  }
+  const failedJobs = [
+    ...(queueLists.print || []).filter((job) => ["FAILED", "ERROR"].includes(job.status)),
+    ...(queueLists.sheet || []).filter((job) => ["FAILED", "ERROR"].includes(job.status)),
+    ...(queueLists.line || []).filter((job) => ["FAILED", "ERROR"].includes(job.status)),
+  ].slice(0, 6);
+  failedJobs.forEach((job) => {
+    items.push({
+      id: `failed-${job.id}`,
+      severity: "danger",
+      title: job.description || job.type || "บันทึก/ส่งข้อมูลไม่สำเร็จ",
+      detail: job.lastError || "ระบบจะเก็บคิวไว้และสามารถลองส่งซ้ำได้",
+      meta: job.status,
+      action: "settings",
+    });
+  });
+  lowStock.slice(0, 12).forEach((item) => {
+    items.push({
+      id: `low-${item.id}`,
+      severity: Number(item.stock) <= 0 ? "danger" : "warning",
+      title: `${item.name} ใกล้หมด`,
+      detail: `คงเหลือ ${money(item.stock)} ${item.unit} / แจ้งเตือนที่ ${money(item.minimumStock)} ${item.unit}`,
+      action: "inventory",
+    });
+  });
+  return items;
 }
 
 function makeIngredientSaveMovement(previous, nextIngredient) {
