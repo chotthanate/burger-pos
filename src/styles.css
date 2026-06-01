@@ -5468,6 +5468,56 @@ b {
   display: grid !important;
 }
 
+/* Drawer performance and landscape usability: keep the click-away layer light and
+   let the menu list scroll inside the drawer instead of clipping at the bottom. */
+.nav-scrim {
+  background: transparent !important;
+  animation: none !important;
+  will-change: auto !important;
+}
+
+.nav-rail {
+  overflow: hidden !important;
+}
+
+.nav-rail .brand-block,
+.nav-rail .status-card {
+  flex: 0 0 auto !important;
+}
+
+.nav-rail .nav-list {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.nav-rail .status-card {
+  margin-top: 0 !important;
+}
+
+.nav-rail .status-card div.text-muted {
+  color: rgba(81, 75, 67, 0.58) !important;
+}
+
+@media (orientation: landscape) and (max-height: 720px) {
+  .nav-rail .brand-block {
+    min-height: 104px !important;
+    padding: 12px 16px 24px !important;
+  }
+
+  .nav-rail .brand-mark {
+    width: 48px !important;
+    height: 48px !important;
+  }
+
+  .nav-rail .nav-button {
+    min-height: 46px !important;
+  }
+}
+
 .dashboard-v2 {
   gap: 18px;
 }

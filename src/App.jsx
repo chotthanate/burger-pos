@@ -60,6 +60,8 @@ import { makePrinterTestJob, printThaiCodePageTest, sendPrintJob, testPrintBridg
 import { getAndroidBluetoothPrinters, isNativeThaiPrinterAvailable, printAndroidBluetoothThaiPrototype, printAndroidThaiPrototype } from "./lib/nativeThaiPrinter.js";
 import { makeShiftSummaryLineJob, makeStockEditLineJob, sendLineNotificationJob } from "./lib/lineNotifications.js";
 import { BURGER_POS_SHEET_ID, SHEET_HEADERS, makeExpenseDeleteSheetJob, makeExpenseSheetJob, makeOrderSheetJob, makeOrderVoidSheetJob, makeShiftSheetJob, makeStockMovementSheetJob } from "./lib/sheetExport.js";
+import { useSupabaseAppState } from "./lib/supabaseAppState.js";
+import { SUPABASE_STORE_ID } from "./lib/supabaseClient.js";
 import { usePersistentState } from "./lib/storage.js";
 
 const navItems = [
@@ -104,6 +106,7 @@ const defaultSettings = {
   buzzerEnabled: true,
   defaultPrintOptions: { kitchen: true, receipt: false, shiftSummary: true },
   sheetId: BURGER_POS_SHEET_ID,
+  supabaseStoreId: SUPABASE_STORE_ID,
   sheetWebAppUrl: DEFAULT_WEB_APP_URL,
   lineWebAppUrl: DEFAULT_WEB_APP_URL,
   lineStockAlertsEnabled: true,
@@ -361,6 +364,19 @@ export default function App() {
 
   const catalog = useMemo(() => ({ recipes, modifierRecipes }), [recipes, modifierRecipes]);
   const printOptions = resolvedSettings.defaultPrintOptions || defaultSettings.defaultPrintOptions;
+  const supabaseState = useSupabaseAppState({
+    menuCategories: [menuCategories, setMenuCategories],
+    ingredients: [ingredients, setIngredients],
+    purchaseUnits: [purchaseUnits, setPurchaseUnits],
+    products: [products, setProducts],
+    recipes: [recipes, setRecipes],
+    modifiers: [modifiers, setModifiers],
+    modifierRecipes: [modifierRecipes, setModifierRecipes],
+    orders: [orders, setOrders],
+    expenses: [expenses, setExpenses],
+    shifts: [shifts, setShifts],
+    stockMovements: [stockMovements, setStockMovements],
+  }, { storeId: resolvedSettings.supabaseStoreId || SUPABASE_STORE_ID });
   const activeProducts = useMemo(() => products.filter((product) => isProductActiveForChannel(product, salesChannel)), [products, salesChannel]);
   const lowStock = useMemo(
     () => ingredients.filter((item) => Number(item.stock) <= Number(item.minimumStock)),
@@ -914,7 +930,7 @@ export default function App() {
               );
             })}
           </nav>
-          <StatusPanel lowStock={lowStock.length} queueStats={queueStats} />
+          <StatusPanel lowStock={lowStock.length} queueStats={queueStats} supabaseState={supabaseState} />
         </aside>
 
         <main className="main-pane">
@@ -1160,10 +1176,10 @@ function MobileSubnav({ activeTab, expenseView, navigateMain, navigateSub }) {
   );
 }
 
-function StatusPanel({ lowStock, queueStats }) {
+function StatusPanel({ lowStock, queueStats, supabaseState }) {
   return (
     <section className="status-card">
-      <div><Wifi size={18} /> Realtime listener</div>
+      <div className={supabaseState?.connected ? "" : "text-muted"} title={supabaseState?.lastError || ""}><Wifi size={18} /> Supabase {supabaseState?.label || "Local"}</div>
       <div><Printer size={18} /> คิวพิมพ์ {queueStats.print}</div>
       <div><Database size={18} /> คิว Google Sheet {queueStats.sheet}</div>
       <div className={lowStock ? "text-danger" : ""}><AlertTriangle size={18} /> แจ้งเตือน {lowStock}</div>

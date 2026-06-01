@@ -184,6 +184,37 @@ create table public.sheet_sync_jobs (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.pos_app_state (
+  store_id text not null default 'boy-burger-main',
+  key text not null,
+  payload jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (store_id, key)
+);
+
+create index if not exists pos_app_state_updated_at_idx
+  on public.pos_app_state (updated_at desc);
+
+alter table public.pos_app_state enable row level security;
+
+drop policy if exists "pos_app_state_read" on public.pos_app_state;
+drop policy if exists "pos_app_state_write" on public.pos_app_state;
+
+create policy "pos_app_state_read"
+  on public.pos_app_state
+  for select
+  using (true);
+
+create policy "pos_app_state_write"
+  on public.pos_app_state
+  for all
+  using (true)
+  with check (true);
+
+-- Run once in SQL editor. If Supabase says the table is already in the
+-- realtime publication, the warning can be ignored.
+alter publication supabase_realtime add table public.pos_app_state;
+
 create or replace function public.record_expense_purchase(payload jsonb)
 returns uuid
 language plpgsql
