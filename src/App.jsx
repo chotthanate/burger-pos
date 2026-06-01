@@ -360,6 +360,7 @@ export default function App() {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [modifierIds, setModifierIds] = useState([]);
   const [modifierNote, setModifierNote] = useState("");
+  const [modifierQuantity, setModifierQuantity] = useState(1);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
@@ -508,6 +509,7 @@ export default function App() {
     setSelectedProduct(product);
     setModifierIds([]);
     setModifierNote("");
+    setModifierQuantity(1);
   }
 
   function toggleModifierSelection(modifierId) {
@@ -525,8 +527,9 @@ export default function App() {
     });
   }
 
-  function addToCart(product, selectedModifierIds, note = "") {
+  function addToCart(product, selectedModifierIds, note = "", quantity = 1) {
     preserveScrollPosition();
+    const safeQuantity = Math.max(1, Number.parseInt(quantity, 10) || 1);
     const selectedModifiers = modifiers.filter((modifier) => selectedModifierIds.includes(modifier.id));
     const unitPrice = getChannelPrice(product, salesChannel) + selectedModifiers.reduce((sum, modifier) => sum + Number(modifier.price || 0), 0);
     const normalizedModifierIds = [...selectedModifierIds].sort();
@@ -538,7 +541,7 @@ export default function App() {
         (item.note || "") === normalizedNote
       );
       if (existing) {
-        return current.map((item) => (item.key === existing.key ? { ...item, quantity: item.quantity + 1 } : item));
+        return current.map((item) => (item.key === existing.key ? { ...item, quantity: item.quantity + safeQuantity } : item));
       }
       const key = `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       return [
@@ -546,7 +549,7 @@ export default function App() {
         {
           key,
           product,
-          quantity: 1,
+          quantity: safeQuantity,
           unitPrice,
           modifierIds: normalizedModifierIds,
           modifiers: selectedModifiers,
@@ -556,6 +559,7 @@ export default function App() {
     });
     setSelectedProduct(null);
     setModifierNote("");
+    setModifierQuantity(1);
   }
 
   function changeQuantity(key, delta) {
@@ -601,11 +605,20 @@ export default function App() {
     setCart([]);
     setPaymentOpen(false);
 
-    if (printOptions.kitchen) await addLocalJob("printJobs", { type: "KITCHEN", order });
-    if (printOptions.receipt) await addLocalJob("printJobs", { type: "RECEIPT", order });
-    await addLocalJob("sheetSyncJobs", makeOrderSheetJob(order, movements));
-    await refreshQueues();
+    try {
+      if (printOptions.kitchen) await addLocalJob("printJobs", { type: "KITCHEN", order });
+      if (printOptions.receipt) await addLocalJob("printJobs", { type: "RECEIPT", order });
+      await addLocalJob("sheetSyncJobs", makeOrderSheetJob(order, movements));
+    } catch (error) {
+      console.error("Failed to queue order follow-up jobs", error);
+    }
+    try {
+      await refreshQueues();
+    } catch (error) {
+      console.error("Failed to refresh queues after order", error);
+    }
     void flushPrintQueue();
+    return true;
   }
 
   async function queueHistoricalPrint(order, type) {
@@ -1077,12 +1090,15 @@ export default function App() {
           onClose={() => {
             setSelectedProduct(null);
             setModifierNote("");
+            setModifierQuantity(1);
           }}
           note={modifierNote}
-          onConfirm={() => addToCart(selectedProduct, modifierIds, modifierNote)}
+          onConfirm={() => addToCart(selectedProduct, modifierIds, modifierNote, modifierQuantity)}
           onNoteChange={setModifierNote}
+          onQuantityChange={setModifierQuantity}
           onToggle={(id) => toggleModifierSelection(id)}
           product={selectedProduct}
+          quantity={modifierQuantity}
         />
       ) : null}
 
@@ -1784,21 +1800,28 @@ function ShiftClosedSummary({ onClose, summary }) {
         <h3>สรุปปิดกะ</h3>
         <p>ปิดกะแล้ว ตรวจยอดก่อนออกจากหน้าต่างนี้</p>
       </div>
-      <div className="shift-metrics">
-        <span>ยอดขายก่อนยกเลิก <strong>{money(summary.grossSales ?? summary.totalSales)} บาท</strong></span>
+      <div className="shift-close-focus">
         <span>ยอดขายสุทธิ <strong>{money(summary.netSales ?? summary.totalSales)} บาท</strong></span>
-        <span>เงินสดเริ่มต้น <strong>{money(summary.openingCash)} บาท</strong></span>
+        <span>เงินสดที่นับได้ <strong>{money(summary.closingCash)} บาท</strong></span>
+        <span>ส่วนต่างเงินสด <strong className={summary.cashDifference < 0 ? "text-danger" : ""}>{money(summary.cashDifference)} บาท</strong></span>
+      </div>
+      <div className="shift-close-secondary">
         <span>เงินสดขาย <strong>{money(summary.cashSales)} บาท</strong></span>
         <span>เงินโอน <strong>{money(summary.transferSales)} บาท</strong></span>
         <span>ออเดอร์ <strong>{summary.orderCount}</strong></span>
-        <span>ยกเลิก <strong>{summary.voidOrderCount || 0} ออร์เดอร์</strong></span>
-        <span>ยอดยกเลิก <strong>{money(summary.voidAmount || 0)} บาท</strong></span>
-        <span>คืนเงินสด <strong>{money(summary.cashRefundAmount || 0)} บาท</strong></span>
-        <span>คืนเงินโอน <strong>{money(summary.transferRefundAmount || 0)} บาท</strong></span>
-        <span>เงินสดที่ควรมี <strong>{money(summary.expectedCash)} บาท</strong></span>
-        <span>เงินสดที่นับได้ <strong>{money(summary.closingCash)} บาท</strong></span>
-        <span className="span-2">ส่วนต่างเงินสด <strong className={summary.cashDifference < 0 ? "text-danger" : ""}>{money(summary.cashDifference)} บาท</strong></span>
+        <span>ยกเลิก <strong>{summary.voidOrderCount || 0}</strong></span>
       </div>
+      <details className="shift-close-details">
+        <summary>รายละเอียดเพิ่มเติม</summary>
+        <div className="shift-metrics compact">
+          <span>ยอดก่อนยกเลิก <strong>{money(summary.grossSales ?? summary.totalSales)} บาท</strong></span>
+          <span>เงินสดเริ่มต้น <strong>{money(summary.openingCash)} บาท</strong></span>
+          <span>ยอดยกเลิก <strong>{money(summary.voidAmount || 0)} บาท</strong></span>
+          <span>คืนเงินสด <strong>{money(summary.cashRefundAmount || 0)} บาท</strong></span>
+          <span>คืนเงินโอน <strong>{money(summary.transferRefundAmount || 0)} บาท</strong></span>
+          <span>เงินสดที่ควรมี <strong>{money(summary.expectedCash)} บาท</strong></span>
+        </div>
+      </details>
       <div className="modal-actions">
         <button className="primary-button" onClick={onClose} type="button">ออกจากสรุป</button>
       </div>
@@ -2092,7 +2115,7 @@ function SalesHistory({ orders, shifts }) {
   );
 }
 
-function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, note, onClose, onConfirm, onNoteChange, onToggle, product }) {
+function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, note, onClose, onConfirm, onNoteChange, onQuantityChange, onToggle, product, quantity = 1 }) {
   const { backdropRef } = useAnimeModal(onClose, modifierModalChildren);
   const productModifiers = modifiers.filter((modifier) => modifier.productIds.includes(product.id));
   const knownModifierGroupIds = new Set(modifierGroups.map((group) => group.id));
@@ -2108,8 +2131,12 @@ function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, n
     .filter((group) => group.modifiers.length);
   const selectedRecipeLines = modifierRecipes
     .filter((recipe) => modifierIds.includes(recipe.modifierId))
-    .map((recipe) => ({ ingredientId: recipe.ingredientId, quantity: Math.max(0, recipe.quantity) }));
+    .map((recipe) => ({ ingredientId: recipe.ingredientId, quantity: Math.max(0, recipe.quantity) * Math.max(1, Number(quantity || 1)) }));
   const missing = getMissingIngredients(selectedRecipeLines, ingredients);
+  const safeQuantity = Math.max(1, Number.parseInt(quantity, 10) || 1);
+  const updateQuantity = (nextValue) => {
+    onQuantityChange(Math.max(1, Number.parseInt(nextValue, 10) || 1));
+  };
   return (
     <div className="modal-backdrop anime-modal" ref={backdropRef}>
       <div className="modal-card modifier-modal-card">
@@ -2133,6 +2160,20 @@ function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, n
             </div>
           ))}
         </div>
+        <label className="modifier-quantity-field">
+          <span>จำนวน</span>
+          <div className="modifier-quantity-control">
+            <button onClick={() => updateQuantity(safeQuantity - 1)} type="button">-</button>
+            <input
+              inputMode="numeric"
+              min="1"
+              onChange={(event) => updateQuantity(event.target.value)}
+              type="number"
+              value={safeQuantity}
+            />
+            <button onClick={() => updateQuantity(safeQuantity + 1)} type="button">+</button>
+          </div>
+        </label>
         <label className="modifier-note-field">
           หมายเหตุรายการ
           <textarea
@@ -2156,6 +2197,8 @@ function PaymentModal({ cart, onClose, onSubmit, total }) {
   const [method, setMethod] = useState("CASH");
   const [cash, setCash] = useState(() => Number(total || 0));
   const [quickCashTouched, setQuickCashTouched] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const change = Math.max(0, cash - total);
   function addCash(amount) {
     setCash((current) => (quickCashTouched ? Number(current || 0) + amount : amount));
@@ -2164,6 +2207,22 @@ function PaymentModal({ cart, onClose, onSubmit, total }) {
   function updateCash(value) {
     setCash(Number(value || 0));
     setQuickCashTouched(true);
+  }
+  async function submitPayment() {
+    if (isSubmitting || (method === "CASH" && cash < total)) return;
+    setIsSubmitting(true);
+    setSubmitError("");
+    try {
+      const saved = await onSubmit({ paymentMethod: method, cashReceived: method === "CASH" ? cash : total });
+      if (saved !== true) {
+        setSubmitError("ยังบันทึกออร์เดอร์ไม่สำเร็จ กรุณาตรวจยอดและลองอีกครั้ง");
+        setIsSubmitting(false);
+      }
+    } catch (error) {
+      console.error("Failed to complete order", error);
+      setSubmitError("บันทึกออร์เดอร์ไม่สำเร็จ กรุณาลองอีกครั้ง");
+      setIsSubmitting(false);
+    }
   }
   return (
     <div className="modal-backdrop anime-modal" ref={backdropRef}>
@@ -2209,15 +2268,16 @@ function PaymentModal({ cart, onClose, onSubmit, total }) {
             <div className="change-line">เงินทอน {money(change)} บาท</div>
           </>
         ) : <div className="transfer-ready"><Check size={20} /> เงินโอนสำเร็จได้ทันทีเมื่อกดยืนยัน</div>}
+        {submitError ? <div className="inline-warning">{submitError}</div> : null}
         <div className="modal-actions">
-          <button className="ghost-button" onClick={closeWithAnimation} type="button">ยกเลิก</button>
+          <button className="ghost-button" disabled={isSubmitting} onClick={closeWithAnimation} type="button">ยกเลิก</button>
           <button
             className="primary-button"
-            disabled={method === "CASH" && cash < total}
-            onClick={() => onSubmit({ paymentMethod: method, cashReceived: method === "CASH" ? cash : total })}
+            disabled={isSubmitting || (method === "CASH" && cash < total)}
+            onClick={submitPayment}
             type="button"
           >
-            ยืนยันออเดอร์
+            {isSubmitting ? "กำลังบันทึก..." : "ยืนยันออเดอร์"}
           </button>
         </div>
       </div>

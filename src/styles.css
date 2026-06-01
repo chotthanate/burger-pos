@@ -510,6 +510,69 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.shift-close-focus,
+.shift-close-secondary {
+  display: grid;
+  gap: 10px;
+}
+
+.shift-close-focus {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.shift-close-secondary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.shift-close-focus span,
+.shift-close-secondary span {
+  border: 1px solid var(--boy-border);
+  border-radius: 12px;
+  background: #fffdf8;
+  display: grid;
+  gap: 5px;
+  color: var(--boy-muted);
+  font-weight: 800;
+}
+
+.shift-close-focus span {
+  min-height: 92px;
+  padding: 16px;
+}
+
+.shift-close-secondary span {
+  min-height: 62px;
+  padding: 11px 12px;
+  font-size: 12px;
+}
+
+.shift-close-focus strong {
+  color: var(--boy-red-dark);
+  font-size: clamp(24px, 2.5vw, 34px);
+}
+
+.shift-close-secondary strong {
+  color: var(--boy-ink);
+  font-size: 18px;
+}
+
+.shift-close-details {
+  border: 1px dashed var(--boy-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 253, 248, 0.72);
+}
+
+.shift-close-details summary {
+  cursor: pointer;
+  color: var(--boy-muted);
+  font-weight: 850;
+}
+
+.shift-close-details .shift-metrics {
+  margin-top: 10px;
+}
+
 .history-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
@@ -5276,6 +5339,41 @@ b {
   resize: vertical;
 }
 
+.modifier-quantity-field {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  color: #4d463d;
+  font-weight: 800;
+}
+
+.modifier-quantity-control {
+  width: min(260px, 100%);
+  display: grid;
+  grid-template-columns: 48px minmax(72px, 1fr) 48px;
+  align-items: center;
+  gap: 8px;
+}
+
+.modifier-quantity-control button,
+.modifier-quantity-control input {
+  min-height: 46px;
+  border: 1px solid rgba(30, 24, 18, 0.12);
+  border-radius: 12px;
+  background: #fffefb;
+  color: #171717;
+  font-weight: 850;
+  text-align: center;
+}
+
+.modifier-quantity-control button {
+  font-size: 22px;
+}
+
+.modifier-quantity-control input {
+  font-size: 20px;
+}
+
 .settings-subsection {
   display: grid;
   gap: 8px;
@@ -5520,6 +5618,11 @@ b {
 
 .dashboard-v2 {
   gap: 18px;
+}
+
+.dashboard-v2 .dashboard-metrics {
+  grid-template-columns: repeat(4, minmax(180px, 240px));
+  justify-content: start;
 }
 
 .dashboard-hero {
@@ -5873,6 +5976,25 @@ b {
   }
 
   .channel-price-grid .channel-price-row {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 1180px) {
+  .dashboard-v2 .dashboard-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .shift-close-focus,
+  .shift-close-secondary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-v2 .dashboard-metrics,
+  .shift-close-focus,
+  .shift-close-secondary {
     grid-template-columns: 1fr !important;
   }
 }
