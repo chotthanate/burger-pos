@@ -1282,10 +1282,50 @@ function StatusPanel({ lowStock, notificationCount, onOpenInventory, onOpenNotif
 
 function NotificationScreen({ items, onOpenInventory, onOpenSettings }) {
   const [dismissedIds, setDismissedIds] = useState([]);
-  const [touchStarts, setTouchStarts] = useState({});
+  const [swipeState, setSwipeState] = useState({});
   const visibleItems = items.filter((item) => !dismissedIds.includes(item.id));
   const dismissItem = (id) => {
+    setSwipeState((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
     setDismissedIds((current) => (current.includes(id) ? current : [...current, id]));
+  };
+  const startSwipe = (item, event) => {
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    setSwipeState((current) => ({
+      ...current,
+      [item.id]: { startX: touch.clientX, x: current[item.id]?.x || 0, removing: false },
+    }));
+  };
+  const moveSwipe = (item, event) => {
+    const touch = event.touches?.[0];
+    const current = swipeState[item.id];
+    if (!touch || !current || current.removing) return;
+    const delta = Math.min(0, Math.max(-118, touch.clientX - current.startX));
+    if (Math.abs(delta) > 6) event.preventDefault();
+    setSwipeState((state) => ({
+      ...state,
+      [item.id]: { ...current, x: delta },
+    }));
+  };
+  const endSwipe = (item) => {
+    const current = swipeState[item.id];
+    if (!current || current.removing) return;
+    if (current.x <= -74) {
+      setSwipeState((state) => ({
+        ...state,
+        [item.id]: { ...current, x: -132, removing: true },
+      }));
+      window.setTimeout(() => dismissItem(item.id), 180);
+      return;
+    }
+    setSwipeState((state) => ({
+      ...state,
+      [item.id]: { ...current, x: 0, removing: false },
+    }));
   };
 
   return (
@@ -1301,18 +1341,20 @@ function NotificationScreen({ items, onOpenInventory, onOpenSettings }) {
         <div className="notification-list">
           {visibleItems.map((item) => (
             <article
-              className={`notification-item is-${item.severity || "info"}`}
+              className={`notification-item is-${item.severity || "info"} ${swipeState[item.id]?.x < -10 ? "is-swiping" : ""} ${swipeState[item.id]?.removing ? "is-removing" : ""}`}
               key={item.id}
+              style={{ "--swipe-x": `${swipeState[item.id]?.x || 0}px` }}
               onTouchStart={(event) => {
-                const touch = event.touches?.[0];
-                if (!touch) return;
-                setTouchStarts((current) => ({ ...current, [item.id]: touch.clientX }));
+                startSwipe(item, event);
               }}
-              onTouchEnd={(event) => {
-                const touch = event.changedTouches?.[0];
-                const start = touchStarts[item.id];
-                if (!touch || typeof start !== "number") return;
-                if (start - touch.clientX > 64) dismissItem(item.id);
+              onTouchMove={(event) => {
+                moveSwipe(item, event);
+              }}
+              onTouchEnd={() => {
+                endSwipe(item);
+              }}
+              onTouchCancel={() => {
+                endSwipe(item);
               }}
             >
               <div>
@@ -1745,7 +1787,11 @@ function PosScreen({
                     onClick={() => onProduct(product)}
                     type="button"
                   >
-                    {product.imageDataUrl ? <img alt={product.name} className="product-tile-image" src={product.imageDataUrl} /> : null}
+                    {product.imageDataUrl ? (
+                      <span className="product-image-frame" aria-hidden="true">
+                        <img alt="" className="product-tile-image" src={product.imageDataUrl} />
+                      </span>
+                    ) : null}
                     <div className="product-tile-footer">
                       <span className="product-tile-name">{product.name}</span>
                       <strong>{money(getChannelPrice(product, salesChannel))} บาท</strong>

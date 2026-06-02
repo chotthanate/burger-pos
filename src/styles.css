@@ -6954,3 +6954,117 @@ body,
   right: 10px !important;
   bottom: 16px !important;
 }
+
+/* Absolute final overrides for Android WebView and GitHub Pages runtime. */
+.main-pane {
+  height: 100dvh !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  padding-top: 0 !important;
+}
+
+.topbar {
+  position: sticky !important;
+  top: max(12px, env(safe-area-inset-top, 0px)) !important;
+  z-index: 80 !important;
+}
+
+.nav-rail {
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow-y: auto !important;
+  padding-top: env(safe-area-inset-top, 0px) !important;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.nav-rail .brand-block {
+  padding-top: calc(18px + env(safe-area-inset-top, 0px)) !important;
+}
+
+.modal-backdrop {
+  z-index: 120 !important;
+  padding-top: calc(18px + env(safe-area-inset-top, 0px)) !important;
+}
+
+.modal-backdrop.anime-modal.is-open {
+  --overlay-alpha: 0.52 !important;
+  background: rgba(33, 27, 23, 0.52) !important;
+}
+
+.modal-card {
+  z-index: 121 !important;
+}
+
+.pos-screen .product-tile {
+  border-radius: 18px !important;
+  isolation: isolate !important;
+  overflow: hidden !important;
+  transform: translateZ(0) !important;
+}
+
+.pos-screen .product-tile.has-image::before {
+  display: none !important;
+}
+
+.pos-screen .product-tile .product-image-frame {
+  background: #171412 !important;
+  border-radius: 14px !important;
+  display: block !important;
+  height: clamp(78px, 8.8vw, 118px) !important;
+  max-height: 120px !important;
+  min-height: 72px !important;
+  overflow: hidden !important;
+  position: relative !important;
+  transform: translateZ(0) !important;
+  width: 100% !important;
+}
+
+.pos-screen .product-tile .product-image-frame > .product-tile-image {
+  border-radius: 14px !important;
+  clip-path: inset(0 round 14px) !important;
+  display: block !important;
+  height: 100% !important;
+  inset: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  position: static !important;
+  width: 100% !important;
+}
+
+.notification-item {
+  position: relative !important;
+  transform: translateX(var(--swipe-x, 0px)) !important;
+  transition:
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 160ms ease,
+    max-height 180ms ease,
+    margin 180ms ease !important;
+  touch-action: pan-y !important;
+  will-change: transform !important;
+}
+
+.notification-item.is-swiping {
+  box-shadow: 118px 0 0 #cf2f2f !important;
+}
+
+.notification-item.is-swiping::after {
+  align-items: center;
+  color: #fff;
+  content: "ลบ";
+  display: flex;
+  font-weight: 900;
+  inset: 0 -104px 0 auto;
+  justify-content: center;
+  position: absolute;
+  width: 104px;
+}
+
+.notification-item.is-removing {
+  max-height: 0 !important;
+  margin-block: 0 !important;
+  opacity: 0 !important;
+  overflow: hidden !important;
+  transform: translateX(-132px) !important;
+}
