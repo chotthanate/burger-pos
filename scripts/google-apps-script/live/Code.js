@@ -28,8 +28,45 @@ function appendSheetSyncJob_(payload) {
     if (!sheet) throw new Error("Missing sheet tab: " + row.tab);
     sheet.appendRow(row.values || []);
   });
-  const operationResults = operations.map((operation) => runSheetOperation_(spreadsheet, operation));
+  const operationResults = runSheetOperations_(spreadsheet, operations);
   return { ok: true, appendedRows: rows.length, operations: operationResults };
+}
+
+function runSheetOperations_(spreadsheet, operations) {
+  const results = [];
+  const monthlyExpenseGroups = {};
+
+  (operations || []).forEach(function(operation) {
+    if (operation && operation.type === "APPEND_MONTHLY_EXPENSE") {
+      const monthTab = String(operation.monthTab || "");
+      if (!monthlyExpenseGroups[monthTab]) monthlyExpenseGroups[monthTab] = [];
+      monthlyExpenseGroups[monthTab].push(operation);
+      return;
+    }
+    results.push(runSheetOperation_(spreadsheet, operation));
+  });
+
+  Object.keys(monthlyExpenseGroups).forEach(function(monthTab) {
+    const group = monthlyExpenseGroups[monthTab];
+    const sheet = getRequiredSheet_(spreadsheet, monthTab);
+    const row = findFirstEmptyExpenseRow_(sheet);
+    const values = group.map(function(operation) {
+      return buildMonthlyExpenseValues_(operation);
+    });
+    sheet.getRange(row, 12, values.length, 8).setValues(values);
+    group.forEach(function(operation, index) {
+      results.push({
+        ok: true,
+        type: "APPEND_MONTHLY_EXPENSE",
+        tab: monthTab,
+        row: row + index,
+        expenseId: operation.expenseId || "",
+        itemId: operation.itemId || "",
+      });
+    });
+  });
+
+  return results;
 }
 
 function runSheetOperation_(spreadsheet, operation) {
@@ -68,9 +105,14 @@ function upsertDailyRevenue_(spreadsheet, operation) {
 function appendMonthlyExpense_(spreadsheet, operation) {
   const sheet = getRequiredSheet_(spreadsheet, operation.monthTab);
   const row = findFirstEmptyExpenseRow_(sheet);
+  sheet.getRange(row, 12, 1, 8).setValues([buildMonthlyExpenseValues_(operation)]);
+  return { ok: true, type: operation.type, tab: operation.monthTab, row: row };
+}
+
+function buildMonthlyExpenseValues_(operation) {
   const values = operation.values || [];
   const meta = operation.meta || [operation.expenseId || "", operation.itemId || ""];
-  sheet.getRange(row, 12, 1, 8).setValues([[
+  return [
     values[0] || "",
     values[1] || "",
     values[2] || "",
@@ -79,8 +121,7 @@ function appendMonthlyExpense_(spreadsheet, operation) {
     Number(values[5] || 0),
     meta[0] || "",
     meta[1] || "",
-  ]]);
-  return { ok: true, type: operation.type, tab: operation.monthTab, row: row };
+  ];
 }
 
 function deleteMonthlyExpense_(spreadsheet, operation) {

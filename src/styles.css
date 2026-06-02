@@ -7045,6 +7045,65 @@ body,
   will-change: transform !important;
 }
 
+/* Runtime layer fixes: drawer must sit above the sticky app header, while page
+   content should not visually bleed through the header as it scrolls. */
+.main-pane {
+  background: #f3f5f8 !important;
+}
+
+.topbar {
+  background: #f3f5f8 !important;
+  backdrop-filter: none !important;
+  box-shadow: 0 12px 28px rgba(17, 20, 28, 0.04) !important;
+}
+
+.nav-scrim {
+  z-index: 150 !important;
+}
+
+.nav-rail {
+  z-index: 220 !important;
+  box-shadow: 18px 0 40px rgba(25, 21, 18, 0.16) !important;
+}
+
+.app-grid.is-nav-open .nav-rail {
+  z-index: 220 !important;
+}
+
+.app-grid.is-nav-open .topbar {
+  z-index: 70 !important;
+}
+
+.dashboard-v2 .accent-card {
+  background: #fffdf8 !important;
+  color: #171412 !important;
+  border-color: rgba(239, 108, 63, 0.22) !important;
+  box-shadow: 0 18px 38px rgba(239, 108, 63, 0.08) !important;
+}
+
+.dashboard-v2 .accent-card .panel-title h3,
+.dashboard-v2 .accent-card .comparison-stack strong {
+  color: #171412 !important;
+}
+
+.dashboard-v2 .accent-card .panel-title svg {
+  color: #ef6c3f !important;
+}
+
+.dashboard-v2 .accent-card .panel-title p,
+.dashboard-v2 .accent-card .comparison-stack span,
+.dashboard-v2 .accent-card .comparison-stack small {
+  color: #6a6259 !important;
+}
+
+.dashboard-v2 .accent-card .comparison-stack strong.is-up {
+  color: #2bb673 !important;
+}
+
+.dashboard-v2 .accent-card .comparison-stack strong.is-down {
+  color: #ef6c3f !important;
+}
+
 .notification-item.is-swiping {
   box-shadow: 118px 0 0 #cf2f2f !important;
 }
@@ -7067,4 +7126,61 @@ body,
   opacity: 0 !important;
   overflow: hidden !important;
   transform: translateX(-132px) !important;
+}
+
+/* Final app-shell layout fix. Keep the header in document flow so page panels
+   sit below it, and let the drawer own the top layer when opened. */
+.app-grid {
+  isolation: isolate !important;
+}
+
+.main-pane {
+  height: auto !important;
+  min-height: 100dvh !important;
+  overflow-y: visible !important;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px)) !important;
+}
+
+.topbar {
+  position: relative !important;
+  top: auto !important;
+  z-index: 30 !important;
+  background: #f3f5f8 !important;
+  margin-bottom: 18px !important;
+}
+
+.nav-scrim {
+  position: fixed !important;
+  z-index: 900 !important;
+  inset: 0 !important;
+}
+
+.nav-rail {
+  position: fixed !important;
+  inset: 0 auto 0 0 !important;
+  width: min(360px, calc(100vw - 32px)) !important;
+  z-index: 920 !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  transform: translateX(-105%) !important;
+  transition: transform 180ms ease-out !important;
+  will-change: transform !important;
+}
+
+.app-grid.is-nav-open .nav-rail {
+  transform: translateX(0) !important;
+}
+
+.nav-rail .brand-block {
+  padding-top: calc(18px + env(safe-area-inset-top, 0px)) !important;
+}
+
+.nav-rail .status-card {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.pos-screen .product-tile .product-image-frame,
+.pos-screen .product-tile .product-image-frame > .product-tile-image {
+  border-radius: 14px !important;
+  overflow: hidden !important;
 }
