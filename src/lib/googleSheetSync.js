@@ -1,8 +1,11 @@
+import { normalizeSheetJobForSync } from "./sheetExport.js";
+
 export async function sendSheetSyncJob(job, settings = {}) {
   const url = (settings.sheetWebAppUrl || "").trim();
   if (!url) {
     throw new Error("ยังไม่ได้ตั้งค่า Google Apps Script Web App URL");
   }
+  const normalizedJob = normalizeSheetJobForSync(job);
 
   const response = await fetch(url, {
     method: "POST",
@@ -10,7 +13,7 @@ export async function sendSheetSyncJob(job, settings = {}) {
     body: JSON.stringify({
       action: "appendSheetSyncJob",
       sheetId: settings.sheetId,
-      job,
+      job: normalizedJob,
     }),
   });
 

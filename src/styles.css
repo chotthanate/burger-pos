@@ -5965,6 +5965,57 @@ body,
   flex: 0 0 auto !important;
 }
 
+/* Absolute final drawer layer guard. Keep this at the end of the file so the
+   invisible scrim never sits above the menu buttons. */
+.app-grid .nav-scrim {
+  z-index: 1000 !important;
+}
+
+.app-grid .nav-rail,
+.app-grid.is-nav-open .nav-rail {
+  z-index: 1200 !important;
+  pointer-events: auto !important;
+}
+
+/* Absolute final drawer layer guard. The drawer must be above its invisible
+   click-catcher; otherwise tapping menu items only closes the drawer. */
+.app-grid .nav-scrim {
+  z-index: 1000 !important;
+}
+
+.app-grid .nav-rail,
+.app-grid.is-nav-open .nav-rail {
+  z-index: 1200 !important;
+}
+
+/* Post-build safety overrides for Android WebView and tablet browsers. */
+.nav-scrim {
+  z-index: 900 !important;
+}
+
+.nav-rail,
+.app-grid.is-nav-open .nav-rail {
+  z-index: 1100 !important;
+  pointer-events: auto !important;
+}
+
+.app-grid.is-nav-open .topbar {
+  z-index: 40 !important;
+}
+
+.pos-screen .product-tile .product-image-frame {
+  clip-path: inset(0 round 14px) !important;
+  -webkit-mask-image: none !important;
+  isolation: isolate !important;
+}
+
+.pos-screen .product-tile .product-image-frame > .product-tile-image {
+  height: 100% !important;
+  max-width: none !important;
+  object-fit: cover !important;
+  width: 100% !important;
+}
+
 .nav-rail .nav-list {
   flex: 1 1 auto !important;
   min-height: 0 !important;
@@ -7183,4 +7234,87 @@ body,
 .pos-screen .product-tile .product-image-frame > .product-tile-image {
   border-radius: 14px !important;
   overflow: hidden !important;
+}
+
+/* Final POS polish: keep product images clipped, make stock blocks obvious, and
+   keep the drawer above app chrome without a heavy overlay. */
+.pos-screen .product-tile .product-image-frame {
+  border-radius: 14px !important;
+  contain: paint !important;
+  overflow: hidden !important;
+  -webkit-mask-image: -webkit-radial-gradient(white, black) !important;
+}
+
+.pos-screen .product-tile .product-image-frame > .product-tile-image {
+  border-radius: inherit !important;
+  clip-path: none !important;
+  transform: none !important;
+}
+
+.product-stock-overlay {
+  align-items: center;
+  background: rgba(166, 31, 28, 0.82);
+  color: #fffdf8;
+  display: flex;
+  font-size: clamp(15px, 1.25vw, 20px);
+  font-weight: 900;
+  inset: 0;
+  justify-content: center;
+  line-height: 1.1;
+  padding: 8px;
+  position: absolute;
+  text-align: center;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  z-index: 3;
+}
+
+.pos-screen .product-tile.is-disabled .product-image-frame {
+  opacity: 1 !important;
+}
+
+.pos-screen .product-tile.is-disabled .product-tile-image {
+  filter: saturate(0.55) contrast(0.92);
+  opacity: 0.44;
+}
+
+.success-modal-card {
+  align-items: center;
+  gap: 14px !important;
+  max-width: 420px !important;
+  text-align: center;
+}
+
+.success-modal-card p {
+  color: #6a6259;
+  margin: 0;
+}
+
+.nav-scrim {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  z-index: 1000 !important;
+}
+
+.nav-rail {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  pointer-events: auto !important;
+  z-index: 1200 !important;
+}
+
+.app-grid.is-nav-open .nav-rail {
+  pointer-events: auto !important;
+  z-index: 1200 !important;
+}
+
+.nav-rail .nav-list {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+}
+
+.nav-rail .status-card {
+  flex: 0 0 auto !important;
 }

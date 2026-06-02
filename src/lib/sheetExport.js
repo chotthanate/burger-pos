@@ -206,6 +206,41 @@ export function makeResetSheetJob(mode = "transactions") {
   });
 }
 
+export function normalizeSheetJobForSync(job) {
+  if (!job || job.type !== "EXPENSE") return job;
+  const rows = Array.isArray(job.rows) ? job.rows : [];
+  const expenseRows = rows.filter((row) => row?.tab === SHEET_TABS.expenses && Array.isArray(row.values));
+  if (!expenseRows.length) return job;
+
+  const rebuiltExpenseOperations = expenseRows.map((row, index) => {
+    const values = row.values || [];
+    const parsedDate = parseSheetDate(values[1] || values[2] || new Date().toISOString());
+    if (!parsedDate) return null;
+    const expenseId = values[0] || job.sourceId || `EXP-${index + 1}`;
+    const itemId = `${expenseId}-${index + 1}`;
+    return {
+      type: "APPEND_MONTHLY_EXPENSE",
+      monthTab: String(parsedDate.month),
+      expenseId,
+      itemId,
+      values: [
+        parsedDate.display,
+        values[4] || values[5] || "",
+        values[6] || values[7] || "",
+        Number(values[8] || 0),
+        Number(values[9] || 0),
+        Number(values[10] || 0),
+      ],
+      meta: [expenseId, itemId],
+    };
+  }).filter(Boolean);
+
+  if (!rebuiltExpenseOperations.length) return job;
+  const otherOperations = (Array.isArray(job.operations) ? job.operations : [])
+    .filter((operation) => operation?.type !== "APPEND_MONTHLY_EXPENSE");
+  return { ...job, operations: [...otherOperations, ...rebuiltExpenseOperations] };
+}
+
 export function makeShiftSheetJob(shift, summary) {
   const syncId = `SYNC-SHIFT-${shift.id}-${Date.now()}`;
   const rows = [buildShiftRow(shift, summary)];
@@ -307,21 +342,24 @@ function buildMonthlyRevenueOperation(shift, summary) {
 function buildMonthlyExpenseOperations(expense) {
   const date = parseSheetDate(expense.expenseDate || expense.createdAt);
   if (!date) return [];
-  return (expense.items || []).map((item, index) => ({
-    type: "APPEND_MONTHLY_EXPENSE",
-    monthTab: String(date.month),
-    expenseId: expense.id,
-    itemId: item?.id || `${expense.id}-${index + 1}`,
-    values: [
-      date.display,
-      item?.name || "",
-      item?.purchaseUnit || item?.baseUnit || "",
-      Number(item?.purchaseQuantity || 0),
-      Number(item?.unitPrice || 0),
-      Number(item?.lineTotal || 0),
-    ],
-    meta: [expense.id, item?.id || `${index + 1}`],
-  }));
+  return (expense.items || []).map((item, index) => {
+    const itemId = `${expense.id}-${index + 1}`;
+    return {
+      type: "APPEND_MONTHLY_EXPENSE",
+      monthTab: String(date.month),
+      expenseId: expense.id,
+      itemId,
+      values: [
+        date.display,
+        item?.name || "",
+        item?.purchaseUnit || item?.baseUnit || "",
+        Number(item?.purchaseQuantity || 0),
+        Number(item?.unitPrice || 0),
+        Number(item?.lineTotal || 0),
+      ],
+      meta: [expense.id, itemId],
+    };
+  });
 }
 
 function buildMonthlyExpenseDeleteOperations(expense) {
@@ -331,7 +369,7 @@ function buildMonthlyExpenseDeleteOperations(expense) {
     type: "DELETE_MONTHLY_EXPENSE",
     monthTab: String(date.month),
     expenseId: expense.id,
-    itemId: item?.id || `${index + 1}`,
+    itemId: `${expense.id}-${index + 1}`,
   }));
 }
 

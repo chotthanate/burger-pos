@@ -103,9 +103,9 @@ const defaultSettings = {
   printerPort: "9100",
   bluetoothPrinterAddress: "",
   bluetoothPrintTimeoutMs: 20000,
-  bluetoothPrintChunkSize: 256,
-  bluetoothPrintChunkDelayMs: 24,
-  bluetoothPrintFinalDelayMs: 2200,
+  bluetoothPrintChunkSize: 320,
+  bluetoothPrintChunkDelayMs: 20,
+  bluetoothPrintFinalDelayMs: 2000,
   paperSize: "80mm",
   bridgeMethod: "RAWBT_INTENT",
   thaiCodePage: "42",
@@ -1779,6 +1779,7 @@ function PosScreen({
             <div className="product-grid">
               {visibleProducts.map((product) => {
                 const available = openShift && canSellProduct(product.id, ingredients, [], catalog);
+                const stockBlocked = Boolean(openShift && !available);
                 return (
                   <button
                     className={`product-tile ${product.imageDataUrl ? "has-image" : ""} ${product.color || "bg-white"} ${available ? "" : "is-disabled"}`}
@@ -1790,13 +1791,14 @@ function PosScreen({
                     {product.imageDataUrl ? (
                       <span className="product-image-frame" aria-hidden="true">
                         <img alt="" className="product-tile-image" src={product.imageDataUrl} />
+                        {stockBlocked ? <span className="product-stock-overlay">วัตถุดิบไม่พอ</span> : null}
                       </span>
                     ) : null}
                     <div className="product-tile-footer">
                       <span className="product-tile-name">{product.name}</span>
                       <strong>{money(getChannelPrice(product, salesChannel))} บาท</strong>
                     </div>
-                    {!openShift ? <em>ต้องเปิดกะก่อนขาย</em> : !available ? <em>วัตถุดิบไม่พอ</em> : null}
+                    {!openShift ? <em>ต้องเปิดกะก่อนขาย</em> : !available && !product.imageDataUrl ? <em>วัตถุดิบไม่พอ</em> : null}
                   </button>
                 );
               })}
@@ -3498,6 +3500,7 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onDele
   const [draft, setDraft] = usePersistentState("burger-pos.expenseDraft", makeEmptyExpenseDraft());
   const [leavingRowIds, setLeavingRowIds] = useState([]);
   const [ingredientModalOpen, setIngredientModalOpen] = useState(false);
+  const [saveNotice, setSaveNotice] = useState(null);
   const normalizedDraft = normalizeExpenseDraft(draft);
   const expenseDate = normalizedDraft.expenseDate;
   const rows = normalizedDraft.rows;
@@ -3544,6 +3547,7 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onDele
     };
     await onRecord(expense);
     setDraft(makeEmptyExpenseDraft());
+    setSaveNotice({ count: previewItems.length, totalAmount });
   }
 
   function createIngredientFromExpense({ name, unit, stock, minimumStock, purchaseLabel, ratio }) {
@@ -3633,6 +3637,15 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onDele
           onClose={() => setIngredientModalOpen(false)}
           onSubmit={createIngredientFromExpense}
         />
+      ) : null}
+      {saveNotice ? (
+        <div className="modal-backdrop success-modal-backdrop">
+          <div className="modal-card success-modal-card">
+            <h3>บันทึกรายจ่ายสำเร็จ</h3>
+            <p>บันทึก {saveNotice.count} รายการ รวม {money(saveNotice.totalAmount)} บาท</p>
+            <button className="primary-button" onClick={() => setSaveNotice(null)} type="button">ตกลง</button>
+          </div>
+        </div>
       ) : null}
     </section>
   );
@@ -3949,9 +3962,9 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
       paperSize: "80mm",
       printerPort: "9100",
       bluetoothPrintTimeoutMs: 20000,
-      bluetoothPrintChunkSize: 256,
-      bluetoothPrintChunkDelayMs: 24,
-      bluetoothPrintFinalDelayMs: 2200,
+      bluetoothPrintChunkSize: 320,
+      bluetoothPrintChunkDelayMs: 20,
+      bluetoothPrintFinalDelayMs: 2000,
       bridgeMethod: "RAWBT_INTENT",
       thaiCodePage: current.thaiCodePage || "42",
       bridgeUrl: "ws://127.0.0.1:40213/",
@@ -4183,6 +4196,13 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
         <Printer size={24} />
         <h3>เครื่องพิมพ์ครัว</h3>
         <p>รองรับเครื่องพิมพ์ความร้อน 58/80mm แบบ ESC/POS ผ่าน RawBT หรือ local print bridge ในเครื่อง Android</p>
+        <div className="settings-subsection">
+          <strong>ค่าเริ่มต้นการพิมพ์</strong>
+          <p>เลือกใบที่ต้องการพิมพ์อัตโนมัติ ใบครัว/ใบเสร็จใช้ตอนปิดออเดอร์ ส่วนใบสรุปปิดกะใช้ตอนปิดกะ</p>
+          <label className="check-line"><input checked={settings.defaultPrintOptions?.kitchen !== false} onChange={(event) => updateDefaultPrintOption("kitchen", event.target.checked)} type="checkbox" /> พิมพ์ใบครัวอัตโนมัติ</label>
+          <label className="check-line"><input checked={settings.defaultPrintOptions?.receipt === true} onChange={(event) => updateDefaultPrintOption("receipt", event.target.checked)} type="checkbox" /> พิมพ์ใบเสร็จอัตโนมัติ</label>
+          <label className="check-line"><input checked={settings.defaultPrintOptions?.shiftSummary !== false} onChange={(event) => updateDefaultPrintOption("shiftSummary", event.target.checked)} type="checkbox" /> พิมพ์ใบสรุปปิดกะอัตโนมัติ</label>
+        </div>
         <div className="printer-preset-card">
           <strong>POS-8390 Thermal Receipt Printer</strong>
           <span>USB + LAN + BT + WiFi · กระดาษ 80mm · ESC/POS · RAW TCP port 9100</span>
@@ -4237,13 +4257,6 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
           <button className="ghost-button" disabled={printerBusy} onClick={sendPendingPrintQueue} type="button"><RefreshCw size={18} /> ส่งคิวค้าง</button>
         </div>
         {printerNotice ? <div className="inline-confirm">{printerNotice}</div> : null}
-        <div className="settings-subsection">
-          <strong>ค่าเริ่มต้นการพิมพ์</strong>
-          <p>เลือกใบที่ต้องการพิมพ์อัตโนมัติ ใบครัว/ใบเสร็จใช้ตอนปิดออเดอร์ ส่วนใบสรุปปิดกะใช้ตอนปิดกะ</p>
-          <label className="check-line"><input checked={settings.defaultPrintOptions?.kitchen !== false} onChange={(event) => updateDefaultPrintOption("kitchen", event.target.checked)} type="checkbox" /> พิมพ์ใบครัวอัตโนมัติ</label>
-          <label className="check-line"><input checked={settings.defaultPrintOptions?.receipt === true} onChange={(event) => updateDefaultPrintOption("receipt", event.target.checked)} type="checkbox" /> พิมพ์ใบเสร็จอัตโนมัติ</label>
-          <label className="check-line"><input checked={settings.defaultPrintOptions?.shiftSummary !== false} onChange={(event) => updateDefaultPrintOption("shiftSummary", event.target.checked)} type="checkbox" /> พิมพ์ใบสรุปปิดกะอัตโนมัติ</label>
-        </div>
       </article>
       ) : null}
       {activeSection === "sync" && developerUnlocked ? (

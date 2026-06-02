@@ -7,9 +7,9 @@ const PAPER_WIDTH_DOTS = 576;
 const LOGO_URL = `${import.meta.env.BASE_URL}boy-burger-logo.png`;
 const DEFAULT_BLUETOOTH_PRINT_OPTIONS = {
   timeoutMs: 20000,
-  chunkSize: 256,
-  chunkDelayMs: 24,
-  finalDelayMs: 2200,
+  chunkSize: 320,
+  chunkDelayMs: 20,
+  finalDelayMs: 2000,
 };
 
 export function isNativeThaiPrinterAvailable() {
@@ -46,10 +46,10 @@ export async function printAndroidBluetoothThaiPrototype({ type, address }) {
   const result = await ThaiPrinter.printBluetoothEscPos({
     address: String(address || "").trim(),
     escposBase64: base64EncodeBytes(escposBytes),
-    timeoutMs: 20000,
-    chunkSize: 256,
-    chunkDelayMs: 24,
-    finalDelayMs: 2200,
+    timeoutMs: DEFAULT_BLUETOOTH_PRINT_OPTIONS.timeoutMs,
+    chunkSize: DEFAULT_BLUETOOTH_PRINT_OPTIONS.chunkSize,
+    chunkDelayMs: DEFAULT_BLUETOOTH_PRINT_OPTIONS.chunkDelayMs,
+    finalDelayMs: DEFAULT_BLUETOOTH_PRINT_OPTIONS.finalDelayMs,
   });
   return result;
 }
@@ -98,12 +98,7 @@ async function buildThaiPrototypeEscPos(type) {
   let y = 18;
   const logo = await loadImage(LOGO_URL).catch(() => null);
   if (logo) {
-    const logoMaxWidth = 150;
-    const logoMaxHeight = 112;
-    const scale = Math.min(logoMaxWidth / logo.width, logoMaxHeight / logo.height);
-    const logoWidth = Math.round(logo.width * scale);
-    const logoHeight = Math.round(logo.height * scale);
-    context.drawImage(logo, Math.round((width - logoWidth) / 2), y, logoWidth, logoHeight);
+    const logoHeight = drawReceiptLogo(context, logo, width, y, 200, 150);
     y += logoHeight + 14;
   } else {
     drawCenteredText(context, "BOY BURGER", y, 34, "bold");
@@ -173,12 +168,14 @@ async function buildThaiJobEscPos(job = {}, settings = {}) {
   let y = 16;
   const logo = await loadImage(LOGO_URL).catch(() => null);
   if (logo) {
-    const logoMaxWidth = width === PAPER_WIDTH_DOTS ? 150 : 110;
-    const logoMaxHeight = width === PAPER_WIDTH_DOTS ? 112 : 82;
-    const scale = Math.min(logoMaxWidth / logo.width, logoMaxHeight / logo.height);
-    const logoWidth = Math.round(logo.width * scale);
-    const logoHeight = Math.round(logo.height * scale);
-    context.drawImage(logo, Math.round((width - logoWidth) / 2), y, logoWidth, logoHeight);
+    const logoHeight = drawReceiptLogo(
+      context,
+      logo,
+      width,
+      y,
+      width === PAPER_WIDTH_DOTS ? 210 : 145,
+      width === PAPER_WIDTH_DOTS ? 156 : 108,
+    );
     y += logoHeight + 12;
   }
 
@@ -250,12 +247,14 @@ async function buildThaiShiftSummaryEscPos(job = {}, settings = {}) {
   let y = 16;
   const logo = await loadImage(LOGO_URL).catch(() => null);
   if (logo) {
-    const logoMaxWidth = width === PAPER_WIDTH_DOTS ? 150 : 110;
-    const logoMaxHeight = width === PAPER_WIDTH_DOTS ? 112 : 82;
-    const scale = Math.min(logoMaxWidth / logo.width, logoMaxHeight / logo.height);
-    const logoWidth = Math.round(logo.width * scale);
-    const logoHeight = Math.round(logo.height * scale);
-    context.drawImage(logo, Math.round((width - logoWidth) / 2), y, logoWidth, logoHeight);
+    const logoHeight = drawReceiptLogo(
+      context,
+      logo,
+      width,
+      y,
+      width === PAPER_WIDTH_DOTS ? 210 : 145,
+      width === PAPER_WIDTH_DOTS ? 156 : 108,
+    );
     y += logoHeight + 12;
   }
 
@@ -311,6 +310,21 @@ async function buildThaiShiftSummaryEscPos(job = {}, settings = {}) {
     0x0a, 0x0a, 0x0a, 0x0a,
     0x1d, 0x56, 0x00,
   ];
+}
+
+function drawReceiptLogo(context, logo, width, y, maxWidth, maxHeight) {
+  const scale = Math.min(maxWidth / logo.width, maxHeight / logo.height);
+  const logoWidth = Math.max(1, Math.round(logo.width * scale));
+  const logoHeight = Math.max(1, Math.round(logo.height * scale));
+  context.save();
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  if ("filter" in context) {
+    context.filter = "grayscale(1) contrast(1.55)";
+  }
+  context.drawImage(logo, Math.round((width - logoWidth) / 2), y, logoWidth, logoHeight);
+  context.restore();
+  return logoHeight;
 }
 
 function drawOrderItem(context, item, y, x, width, includePrice) {

@@ -20,7 +20,7 @@ function doPost(e) {
 function appendSheetSyncJob_(payload) {
   const spreadsheet = SpreadsheetApp.openById(payload.sheetId);
   const rows = payload.job && payload.job.rows ? payload.job.rows : [];
-  const operations = payload.job && payload.job.operations ? payload.job.operations : [];
+  const operations = normalizeSheetOperations_(payload.job || {}, payload.job && payload.job.operations ? payload.job.operations : []);
   rows.forEach((row) => {
     const sheet = row.tab === "Audit Log"
       ? getOrCreateAuditSheet_(spreadsheet)
@@ -67,6 +67,86 @@ function runSheetOperations_(spreadsheet, operations) {
   });
 
   return results;
+}
+
+function normalizeSheetOperations_(job, operations) {
+  const currentOperations = operations || [];
+  if (!job || job.type !== "EXPENSE") return currentOperations;
+  const rows = job.rows || [];
+  const expenseRows = rows.filter(function(row) {
+    return row && row.tab === "Expenses" && row.values;
+  });
+  if (!expenseRows.length) return currentOperations;
+
+  const otherOperations = currentOperations.filter(function(operation) {
+    return !operation || operation.type !== "APPEND_MONTHLY_EXPENSE";
+  });
+  const rebuiltOperations = expenseRows.map(function(row, index) {
+    return buildMonthlyExpenseOperationFromRow_(row, index, job);
+  }).filter(function(operation) {
+    return !!operation;
+  });
+  return otherOperations.concat(rebuiltOperations);
+}
+
+function buildMonthlyExpenseOperationFromRow_(row, index, job) {
+  const values = row.values || [];
+  const parsedDate = parseMonthlyExpenseDate_(values[1], values[2]);
+  if (!parsedDate) return null;
+  const expenseId = values[0] || job.sourceId || ("EXP-" + (index + 1));
+  const itemId = expenseId + "-" + (index + 1);
+  return {
+    type: "APPEND_MONTHLY_EXPENSE",
+    monthTab: String(parsedDate.month),
+    expenseId: expenseId,
+    itemId: itemId,
+    values: [
+      parsedDate.display,
+      values[4] || values[5] || "",
+      values[6] || values[7] || "",
+      Number(values[8] || 0),
+      Number(values[9] || 0),
+      Number(values[10] || 0),
+    ],
+    meta: [expenseId, itemId],
+  };
+}
+
+function parseMonthlyExpenseDate_(value, fallbackValue) {
+  const source = value || fallbackValue || new Date();
+  if (Object.prototype.toString.call(source) === "[object Date]" && !isNaN(source.getTime())) {
+    return buildMonthlyExpenseDate_(source.getDate(), source.getMonth() + 1, source.getFullYear());
+  }
+  const text = String(source || "").trim();
+  let match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (match) {
+    return buildMonthlyExpenseDate_(Number(match[3]), Number(match[2]), Number(match[1]));
+  }
+  match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (match) {
+    let year = Number(match[3]);
+    if (year > 2400) year -= 543;
+    return buildMonthlyExpenseDate_(Number(match[1]), Number(match[2]), year);
+  }
+  const parsed = new Date(source);
+  if (!isNaN(parsed.getTime())) {
+    return buildMonthlyExpenseDate_(parsed.getDate(), parsed.getMonth() + 1, parsed.getFullYear());
+  }
+  return null;
+}
+
+function buildMonthlyExpenseDate_(day, month, year) {
+  if (!day || !month || !year) return null;
+  const displayYear = year < 2400 ? year + 543 : year;
+  return {
+    day: day,
+    month: month,
+    display: pad2_(day) + "/" + pad2_(month) + "/" + displayYear,
+  };
+}
+
+function pad2_(value) {
+  return String(value).padStart(2, "0");
 }
 
 function runSheetOperation_(spreadsheet, operation) {
