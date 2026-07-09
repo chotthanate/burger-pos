@@ -70,7 +70,7 @@ const navItems = [
   { id: "notifications", label: "แจ้งเตือน", icon: Bell },
   { id: "menu", label: "รายการสินค้า", icon: Utensils, children: [{ id: "categories", label: "หมวดหมู่", tab: "categories" }, { id: "modifiers", label: "จัดการตัวเลือกเสริม", tab: "modifiers" }] },
   { id: "inventory", label: "วัตถุดิบ", icon: Package },
-  { id: "expense", label: "รายจ่าย", icon: ReceiptText, children: [{ id: "expense-history", label: "ประวัติรายจ่าย", tab: "expense", view: "history" }] },
+  { id: "expense", label: "รายจ่าย", icon: ReceiptText, children: [{ id: "expense-history", label: "ประวัติรายจ่าย", tab: "expense", view: "history" }, { id: "expense-master", label: "ฐานข้อมูลรายจ่ายทั่วไป", tab: "expense", view: "master" }] },
   { id: "settings", label: "ตั้งค่า", icon: Settings },
 ];
 
@@ -81,11 +81,27 @@ const salesChannels = [
   { id: "shopee", label: "Shopee Food" },
 ];
 
-const modifierGroups = [
+const defaultModifierGroups = [
   { id: "addon", label: "Add on" },
   { id: "spice", label: "ระดับความเผ็ด" },
   { id: "sauce", label: "ซอส" },
   { id: "other", label: "อื่นๆ" },
+];
+const defaultIngredientCategories = ["เนื้อสัตว์", "ขนมปัง", "ผัก", "ซอส", "เครื่องดื่ม", "อื่นๆ"];
+const defaultGeneralExpenseCategories = ["บรรจุภัณฑ์", "ค่าสาธารณูปโภค", "ค่าซ่อมบำรุง", "ค่าเดินทาง", "ค่าใช้จ่ายอื่นๆ"];
+const defaultGeneralExpenseSubcategories = [
+  { id: "expense_sub_packaging", category: "บรรจุภัณฑ์", name: "ถุงและบรรจุภัณฑ์" },
+  { id: "expense_sub_gas", category: "ค่าสาธารณูปโภค", name: "แก๊สหุงต้ม" },
+  { id: "expense_sub_utility", category: "ค่าสาธารณูปโภค", name: "ค่าน้ำและค่าไฟ" },
+  { id: "expense_sub_repair", category: "ค่าซ่อมบำรุง", name: "ซ่อมอุปกรณ์" },
+  { id: "expense_sub_travel", category: "ค่าเดินทาง", name: "เดินทางและขนส่ง" },
+  { id: "expense_sub_other", category: "ค่าใช้จ่ายอื่นๆ", name: "ทั่วไป" },
+];
+const defaultGeneralExpenseItems = [
+  { id: "general_gas", name: "ค่าแก๊ส", category: "ค่าสาธารณูปโภค", subcategory: "แก๊สหุงต้ม", unit: "ถัง", active: true },
+  { id: "general_paper_bag", name: "ถุงกระดาษ", category: "บรรจุภัณฑ์", subcategory: "ถุงและบรรจุภัณฑ์", unit: "แพ็ค", active: true },
+  { id: "general_repair", name: "ค่าซ่อม", category: "ค่าซ่อมบำรุง", subcategory: "ซ่อมอุปกรณ์", unit: "ครั้ง", active: true },
+  { id: "general_travel", name: "ค่าเดินทาง", category: "ค่าเดินทาง", subcategory: "เดินทางและขนส่ง", unit: "ครั้ง", active: true },
 ];
 
 const DEFAULT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbytIrKYSNwOHj6MXCvB23YXDmfE0sgt2mcCRWrd2h5zmH3OSsG6YabKmmGdFasnTxZ2hw/exec";
@@ -334,10 +350,15 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState(categories[0]);
   const [menuCategories, setMenuCategories] = usePersistentState("burger-pos.menuCategories", categories);
   const [ingredients, setIngredients] = usePersistentState("burger-pos.ingredients", seedIngredients);
+  const [ingredientCategories, setIngredientCategories] = usePersistentState("burger-pos.ingredientCategories", defaultIngredientCategories);
   const [purchaseUnits, setPurchaseUnits] = usePersistentState("burger-pos.purchaseUnits", seedPurchaseUnits);
+  const [generalExpenseCategories, setGeneralExpenseCategories] = usePersistentState("burger-pos.generalExpenseCategories", defaultGeneralExpenseCategories);
+  const [generalExpenseSubcategories, setGeneralExpenseSubcategories] = usePersistentState("burger-pos.generalExpenseSubcategories", defaultGeneralExpenseSubcategories);
+  const [generalExpenseItems, setGeneralExpenseItems] = usePersistentState("burger-pos.generalExpenseItems", defaultGeneralExpenseItems);
   const [products, setProducts] = usePersistentState("burger-pos.products", seedProducts);
   const [recipes, setRecipes] = usePersistentState("burger-pos.recipes", seedRecipes);
   const [modifiers, setModifiers] = usePersistentState("burger-pos.modifiers", seedModifiers);
+  const [modifierGroups, setModifierGroups] = usePersistentState("burger-pos.modifierGroups", defaultModifierGroups);
   const [modifierRecipes, setModifierRecipes] = usePersistentState("burger-pos.modifierRecipes", seedModifierRecipes);
   const [orders, setOrders] = usePersistentState("burger-pos.orders", []);
   const [expenses, setExpenses] = usePersistentState("burger-pos.expenses", []);
@@ -375,10 +396,15 @@ export default function App() {
   const supabaseState = useSupabaseAppState({
     menuCategories: [menuCategories, setMenuCategories],
     ingredients: [ingredients, setIngredients],
+    ingredientCategories: [ingredientCategories, setIngredientCategories],
     purchaseUnits: [purchaseUnits, setPurchaseUnits],
+    generalExpenseCategories: [generalExpenseCategories, setGeneralExpenseCategories],
+    generalExpenseSubcategories: [generalExpenseSubcategories, setGeneralExpenseSubcategories],
+    generalExpenseItems: [generalExpenseItems, setGeneralExpenseItems],
     products: [products, setProducts],
     recipes: [recipes, setRecipes],
     modifiers: [modifiers, setModifiers],
+    modifierGroups: [modifierGroups, setModifierGroups],
     modifierRecipes: [modifierRecipes, setModifierRecipes],
     orders: [orders, setOrders],
     expenses: [expenses, setExpenses],
@@ -396,6 +422,22 @@ export default function App() {
   useEffect(() => {
     refreshQueues();
   }, []);
+
+  useEffect(() => {
+    if (ingredients.every((item) => item.category)) return;
+    setIngredients((current) => current.map((item) => (
+      item.category ? item : { ...item, category: inferIngredientCategory(item.name) }
+    )));
+  }, [ingredients, setIngredients]);
+
+  useEffect(() => {
+    if (generalExpenseItems.every((item) => item.subcategory)) return;
+    setGeneralExpenseItems((current) => current.map((item) => {
+      if (item.subcategory) return item;
+      const fallback = generalExpenseSubcategories.find((subcategory) => subcategory.category === item.category);
+      return { ...item, subcategory: fallback?.name || "ทั่วไป" };
+    }));
+  }, [generalExpenseItems, generalExpenseSubcategories, setGeneralExpenseItems]);
 
   useEffect(() => {
     if (!settings.sheetId || legacySheetIds.has(settings.sheetId)) {
@@ -910,6 +952,9 @@ export default function App() {
       setModifierRecipes([]);
       setIngredients([]);
       setPurchaseUnits([]);
+      setGeneralExpenseCategories([]);
+      setGeneralExpenseSubcategories([]);
+      setGeneralExpenseItems([]);
       setActiveCategory(categories[0]);
       setActiveTab("settings");
       return;
@@ -1025,6 +1070,7 @@ export default function App() {
             salesChannel={salesChannel}
             setSalesChannel={setSalesChannel}
           />
+          <div className="main-scroll">
           <MobileSubnav activeTab={activeTab} expenseView={expenseView} navigateMain={navigateMain} navigateSub={navigateSub} />
           {activeTab === "notifications" ? (
             <NotificationScreen
@@ -1074,15 +1120,19 @@ export default function App() {
             <InventoryScreen
               adjustStock={adjustStock}
               deleteIngredient={deleteIngredient}
+              ingredientCategories={ingredientCategories}
               ingredients={ingredients}
               onAddPurchaseUnit={setPurchaseUnits}
               purchaseUnits={purchaseUnits}
               saveIngredient={saveIngredient}
+              setIngredientCategories={setIngredientCategories}
+              setIngredients={setIngredients}
             />
           ) : null}
           {activeTab === "menu" ? (
             <MenuRecipeScreen
               ingredients={ingredients}
+              ingredientCategories={ingredientCategories}
               menuCategories={menuCategories}
               products={products}
               recipes={recipes}
@@ -1102,15 +1152,20 @@ export default function App() {
           {activeTab === "modifiers" ? (
             <ModifierManagementScreen
               ingredients={ingredients}
+              modifierGroups={modifierGroups}
               modifierRecipes={modifierRecipes}
               modifiers={modifiers}
               products={products}
               setModifierRecipes={setModifierRecipes}
+              setModifierGroups={setModifierGroups}
               setModifiers={setModifiers}
             />
           ) : null}
           {activeTab === "expense" ? (
             <ExpenseScreen
+              generalExpenseCategories={generalExpenseCategories}
+              generalExpenseItems={generalExpenseItems}
+              generalExpenseSubcategories={generalExpenseSubcategories}
               ingredients={ingredients}
               onAddIngredient={saveIngredient}
               onAddPurchaseUnit={setPurchaseUnits}
@@ -1118,6 +1173,9 @@ export default function App() {
               onRecord={recordExpense}
               purchaseUnits={purchaseUnits}
               recentExpenses={expenses}
+              setGeneralExpenseCategories={setGeneralExpenseCategories}
+              setGeneralExpenseItems={setGeneralExpenseItems}
+              setGeneralExpenseSubcategories={setGeneralExpenseSubcategories}
               setView={setExpenseView}
               view={expenseView}
             />
@@ -1135,12 +1193,14 @@ export default function App() {
               settings={resolvedSettings}
             />
           ) : null}
+          </div>
         </main>
       </div>
 
       {selectedProduct ? (
         <ModifierModal
           ingredients={ingredients}
+          modifierGroups={modifierGroups}
           modifierIds={modifierIds}
           modifierRecipes={modifierRecipes}
           modifiers={modifiers}
@@ -1178,7 +1238,7 @@ function Header({ activeTab, expenseView, lowStock, onOpenInventory, onOpenNav, 
     categories: "หมวดหมู่สินค้า",
     modifiers: "จัดการตัวเลือกเสริม",
     notifications: "แจ้งเตือนระบบ",
-    expense: expenseView === "history" ? "ประวัติรายจ่าย" : "บันทึกรายจ่าย",
+    expense: expenseView === "history" ? "ประวัติรายจ่าย" : expenseView === "master" ? "ฐานข้อมูลรายจ่ายทั่วไป" : "บันทึกรายจ่าย",
     settings: "ตั้งค่าระบบ",
   }[activeTab];
   const channelLabel = getSalesChannelLabel(salesChannel);
@@ -1243,6 +1303,7 @@ function MobileSubnav({ activeTab, expenseView, navigateMain, navigateSub }) {
   const expenseChildren = [
     { id: "expense-entry-main", label: "บันทึกรายจ่าย", tab: "expense", view: "entry" },
     { id: "expense-history-main", label: "ประวัติรายจ่าย", tab: "expense", view: "history" },
+    { id: "expense-master-main", label: "ฐานข้อมูลทั่วไป", tab: "expense", view: "master" },
   ];
   const items = activeTab === "menu" || activeTab === "categories" || activeTab === "modifiers" ? menuChildren : activeTab === "expense" ? expenseChildren : [];
   if (!items.length) return null;
@@ -1269,9 +1330,10 @@ function MobileSubnav({ activeTab, expenseView, navigateMain, navigateSub }) {
 }
 
 function StatusPanel({ lowStock, notificationCount, onOpenInventory, onOpenNotifications, queueStats, supabaseState }) {
+  const supabaseLabel = supabaseState?.connected ? "Supabase พร้อมใช้" : "Supabase ไม่สำเร็จ";
   return (
     <section className="status-card">
-      <button className={supabaseState?.connected ? "" : "text-muted"} onClick={onOpenNotifications} title={supabaseState?.lastError || ""} type="button"><Wifi size={18} /> Supabase {supabaseState?.label || "Local"}</button>
+      <button className={supabaseState?.connected ? "" : "text-muted"} onClick={onOpenNotifications} title={supabaseState?.lastError || ""} type="button"><Wifi size={18} /> {supabaseLabel}</button>
       <button onClick={onOpenNotifications} type="button"><Printer size={18} /> คิวพิมพ์ {queueStats.print}</button>
       <button onClick={onOpenNotifications} type="button"><Database size={18} /> คิว Google Sheet {queueStats.sheet}</button>
       <button className={notificationCount ? "text-danger" : ""} onClick={onOpenNotifications} type="button"><AlertTriangle size={18} /> แจ้งเตือน {notificationCount}</button>
@@ -2285,7 +2347,7 @@ function SalesHistory({ orders, shifts }) {
   );
 }
 
-function ModifierModal({ ingredients, modifierIds, modifierRecipes, modifiers, note, onClose, onConfirm, onNoteChange, onQuantityChange, onToggle, product, quantity = 1 }) {
+function ModifierModal({ ingredients, modifierGroups, modifierIds, modifierRecipes, modifiers, note, onClose, onConfirm, onNoteChange, onQuantityChange, onToggle, product, quantity = 1 }) {
   const { backdropRef } = useAnimeModal(onClose, modifierModalChildren);
   const productModifiers = modifiers.filter((modifier) => modifier.productIds.includes(product.id));
   const knownModifierGroupIds = new Set(modifierGroups.map((group) => group.id));
@@ -2457,8 +2519,12 @@ function PaymentModal({ cart, onClose, onSubmit, total }) {
   );
 }
 
-function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurchaseUnit, purchaseUnits, saveIngredient }) {
+function InventoryScreen({ adjustStock, deleteIngredient, ingredientCategories, ingredients, onAddPurchaseUnit, purchaseUnits, saveIngredient, setIngredientCategories, setIngredients }) {
   const [filter, setFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [newCategory, setNewCategory] = useState("");
+  const [reorderMode, setReorderMode] = useState(false);
+  const [categoryDeleteTarget, setCategoryDeleteTarget] = useState("");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -2530,8 +2596,32 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
     const low = Number(item.stock) <= Number(item.minimumStock);
     if (filter === "low" && !low) return false;
     if (filter === "out" && Number(item.stock) > 0) return false;
+    if (categoryFilter !== "all" && (item.category || "อื่นๆ") !== categoryFilter) return false;
     return item.name.toLowerCase().includes(query.trim().toLowerCase());
   });
+
+  function moveIngredient(ingredientId, direction) {
+    setIngredients((current) => moveArrayItem(current, ingredientId, direction));
+  }
+
+  function moveIngredientTo(ingredientId, position) {
+    setIngredients((current) => moveArrayItemToPosition(current, ingredientId, position));
+  }
+
+  function addIngredientCategory(event) {
+    event.preventDefault();
+    const name = newCategory.trim();
+    if (!name || ingredientCategories.includes(name)) return;
+    setIngredientCategories((current) => [...current, name]);
+    setNewCategory("");
+  }
+
+  function removeIngredientCategory(category) {
+    setIngredientCategories((current) => current.filter((item) => item !== category));
+    setIngredients((current) => current.map((item) => (item.category === category ? { ...item, category: "อื่นๆ" } : item)));
+    if (categoryFilter === category) setCategoryFilter("all");
+    setCategoryDeleteTarget("");
+  }
 
   function saveForm(event) {
     event.preventDefault();
@@ -2544,6 +2634,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
       unit: form.unit || "ชิ้น",
       stock: selected ? Number(selected.stock || 0) : Number(form.stock || 0),
       minimumStock: Number(form.minimumStock || 0),
+      category: form.category || ingredientCategories[0] || "อื่นๆ",
     };
     saveIngredient(next);
     if (isNew && purchaseLabel && purchaseRatio > 0) {
@@ -2659,43 +2750,63 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
   return (
     <section className={`management-layout ${editorOpen ? "" : "is-single"}`}>
       <div className="work-panel">
-        <div className="toolbar">
+        <div className="toolbar inventory-toolbar">
           <div className="search-box"><Search size={18} /><input placeholder="ค้นหาวัตถุดิบ" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
           <button className={filter === "all" ? "is-active" : ""} onClick={() => setFilter("all")} type="button">ทั้งหมด</button>
           <button className={filter === "low" ? "is-active" : ""} onClick={() => setFilter("low")} type="button">ใกล้หมด</button>
           <button className={filter === "out" ? "is-active" : ""} onClick={() => setFilter("out")} type="button">หมดแล้ว</button>
+          <select aria-label="กรองประเภทวัตถุดิบ" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+            <option value="all">ทุกประเภท</option>
+            {ingredientCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+          </select>
           <button
             className="new-record-button toolbar-add-button"
             onClick={startNewIngredient}
             type="button"
           >
             <Plus size={20} />
-            เพิ่มรายการวัตถุดิบใหม่
+            เพิ่มรายการ
+          </button>
+          <button className={`reorder-toggle-button ${reorderMode ? "is-active" : ""}`} onClick={() => setReorderMode((current) => !current)} type="button">
+            <SlidersHorizontal size={18} /> {reorderMode ? "เสร็จสิ้นการจัดลำดับ" : "จัดลำดับ"}
           </button>
         </div>
         <div className="inventory-grid">
           {rows.map((item) => {
+            const absoluteIndex = ingredients.findIndex((ingredient) => ingredient.id === item.id);
             const low = Number(item.stock) <= Number(item.minimumStock);
             return (
-              <button
-                className={`inventory-card ${low ? "is-low" : ""} ${selectedId === item.id ? "is-active" : ""}`}
+              <article
+                className={`inventory-card ${low ? "is-low" : ""} ${selectedId === item.id ? "is-active" : ""} ${reorderMode ? "is-reordering" : ""}`}
                 key={item.id}
                 onClick={() => {
                   if (editorOpen && selectedId === item.id) closeEditor();
                   else openEditorFor(item);
                 }}
-                type="button"
+                role="button"
+                tabIndex={0}
               >
+                {reorderMode ? <span className="admin-item-order">
+                  <ReorderPositionInput label={item.name} max={ingredients.length} onMove={(position) => moveIngredientTo(item.id, position)} value={absoluteIndex + 1} />
+                  <button aria-label={`เลื่อน ${item.name} ขึ้น`} disabled={absoluteIndex === 0} onClick={(event) => { event.stopPropagation(); moveIngredient(item.id, -1); }} type="button"><ChevronUp size={15} /></button>
+                  <button aria-label={`เลื่อน ${item.name} ลง`} disabled={absoluteIndex === ingredients.length - 1} onClick={(event) => { event.stopPropagation(); moveIngredient(item.id, 1); }} type="button"><ChevronDown size={15} /></button>
+                </span> : null}
                 <div>
                   <h3>{item.name}</h3>
-                  <p>ขั้นต่ำ {money(item.minimumStock)} {item.unit}</p>
+                  <p>{item.category || "อื่นๆ"} · ขั้นต่ำ {money(item.minimumStock)} {item.unit}</p>
                 </div>
                 <strong>{money(item.stock)} <small>{item.unit}</small></strong>
                 <span>{low ? "ใกล้หมด" : "พร้อมขาย"}</span>
-              </button>
+              </article>
             );
           })}
         </div>
+        <form className="category-quick-manager" onSubmit={addIngredientCategory}>
+          <strong>ประเภทวัตถุดิบ</strong>
+          <input value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="เพิ่มประเภทวัตถุดิบ" />
+          <button className="ghost-button" type="submit"><Plus size={16} /> เพิ่ม</button>
+          <div>{ingredientCategories.map((category) => <span key={category}>{category}<button aria-label={`ลบประเภท ${category}`} onClick={() => setCategoryDeleteTarget(category)} type="button"><Trash2 size={14} /></button></span>)}</div>
+        </form>
       </div>
       {editorOpen ? <button aria-label="ปิดหน้าจัดการวัตถุดิบ" className="editor-backdrop" onClick={closeEditor} type="button" /> : null}
       {editorOpen ? (
@@ -2708,6 +2819,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
           </div>
           {editorNotice ? <div className="inline-warning">{editorNotice}</div> : null}
           <label className={hasUnsavedChanges && normalizeIngredientForm(form).name !== normalizeIngredientForm(savedForm).name ? "is-dirty" : ""}>ชื่อ<input value={form.name || ""} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, name: event.target.value })); }} /></label>
+          <label>ประเภท<select value={form.category || ingredientCategories[0] || "อื่นๆ"} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}>{ingredientCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
           <label className={hasUnsavedChanges && normalizeIngredientForm(form).unit !== normalizeIngredientForm(savedForm).unit ? "is-dirty" : ""}>หน่วยหลัก<input value={form.unit || ""} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, unit: event.target.value })); }} /></label>
           {selected ? (
             <div className="readonly-stock-field">
@@ -2727,7 +2839,7 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
           ) : null}
           <div className="modal-actions">
             <button className="primary-button" type="submit"><Save size={18} /> บันทึก</button>
-            {selected ? <button className={`danger-button ${deleteArmed ? "is-armed" : ""}`} onClick={removeSelectedIngredient} type="button">{deleteArmed ? "ยืนยันลบ" : "ลบวัตถุดิบ"}</button> : null}
+            {selected ? <button className="danger-button" onClick={() => setDeleteArmed(true)} type="button">ลบวัตถุดิบ</button> : null}
           </div>
         </form>
         {selected ? (
@@ -2770,6 +2882,8 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredients, onAddPurc
         ) : null}
       </aside>
       ) : null}
+      {deleteArmed && selected ? <ConfirmDialog title="ลบวัตถุดิบ" message={`ต้องการลบ “${selected.name}” ใช่ไหม? สูตรและหน่วยซื้อที่เกี่ยวข้องจะถูกลบด้วย`} onCancel={() => setDeleteArmed(false)} onConfirm={removeSelectedIngredient} /> : null}
+      {categoryDeleteTarget ? <ConfirmDialog title="ลบประเภทวัตถุดิบ" message={`ต้องการลบประเภท “${categoryDeleteTarget}” ใช่ไหม? วัตถุดิบในประเภทนี้จะถูกย้ายไป “อื่นๆ”`} onCancel={() => setCategoryDeleteTarget("")} onConfirm={() => removeIngredientCategory(categoryDeleteTarget)} /> : null}
     </section>
   );
 }
@@ -2786,6 +2900,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
   const [imageUpload, setImageUpload] = useState({ progress: 0, uploading: false });
   const [editorNotice, setEditorNotice] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
+  const [reorderMode, setReorderMode] = useState(false);
   const productCategories = Array.from(new Set([...(menuCategories || []), ...products.map((product) => product.category).filter(Boolean)]));
   const visibleProducts = categoryFilter === "all" ? products : products.filter((product) => product.category === categoryFilter);
   const savedProductForm = selected || emptyProduct();
@@ -2964,6 +3079,10 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
     });
   }
 
+  function moveProductTo(productId, position) {
+    setProducts((current) => moveArrayItemToPosition(current, productId, position));
+  }
+
   return (
     <section className={`management-layout ${editorOpen ? "" : "is-single"}`}>
       <div className="work-panel">
@@ -2983,12 +3102,15 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
             <Plus size={20} />
             เพิ่มสินค้าใหม่
           </button>
+          <button className={`reorder-toggle-button ${reorderMode ? "is-active" : ""}`} onClick={() => setReorderMode((current) => !current)} type="button">
+            <SlidersHorizontal size={18} /> {reorderMode ? "เสร็จสิ้นการจัดลำดับ" : "จัดลำดับ"}
+          </button>
         </div>
         {productActionNotice ? <div className="inline-confirm">{productActionNotice}</div> : null}
         <div className="product-admin-grid">
           {visibleProducts.map((product, index) => (
             <article
-              className={`admin-product ${selectedId === product.id ? "is-active" : ""}`}
+              className={`admin-product ${selectedId === product.id ? "is-active" : ""} ${reorderMode ? "is-reordering" : ""}`}
               key={product.id}
               onClick={() => {
                 if (editorOpen && selectedId === product.id) closeEditor();
@@ -3004,7 +3126,8 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
               role="button"
               tabIndex={0}
             >
-              <span className="admin-product-order" aria-label="จัดลำดับสินค้า">
+              {reorderMode ? <span className="admin-product-order" aria-label="จัดลำดับสินค้า">
+                <ReorderPositionInput label={product.name} max={products.length} onMove={(position) => moveProductTo(product.id, position)} value={products.findIndex((item) => item.id === product.id) + 1} />
                 <button
                   aria-label={`เลื่อน ${product.name} ขึ้น`}
                   disabled={index === 0}
@@ -3029,7 +3152,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
                 >
                   <ChevronDown size={16} />
                 </button>
-              </span>
+              </span> : null}
               {product.imageDataUrl ? <img alt={product.name} className="admin-product-image" src={product.imageDataUrl} /> : null}
               <strong>{product.name}</strong>
               <span>{product.category} · หน้าร้าน {money(getChannelPrice(product, "store"))} บาท</span>
@@ -3105,10 +3228,11 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
         </div>
         <div className="modal-actions">
           <button className="primary-button" type="submit">บันทึกรายการสินค้า</button>
-          {selected ? <button className={`danger-button ${deleteArmed ? "is-armed" : ""}`} onClick={removeProduct} type="button">{deleteArmed ? "ยืนยันลบสินค้า" : "ลบสินค้า"}</button> : null}
+          {selected ? <button className="danger-button" onClick={() => setDeleteArmed(true)} type="button">ลบสินค้า</button> : null}
         </div>
       </form>
       ) : null}
+      {deleteArmed && selected ? <ConfirmDialog title="ลบสินค้า" message={`ต้องการลบ “${selected.name}” ใช่ไหม? สูตร BOM ของสินค้านี้จะถูกลบด้วย`} onCancel={() => setDeleteArmed(false)} onConfirm={removeProduct} /> : null}
     </section>
   );
 }
@@ -3237,14 +3361,13 @@ function CategoryManagementScreen({ menuCategories, products, setMenuCategories,
                 ) : (
                   <button className="ghost-button" onClick={() => startEdit(category)} type="button"><Edit3 size={16} /> แก้ไข</button>
                 )}
-                <button className={`danger-button ${deleteTarget === category ? "is-armed" : ""}`} onClick={() => removeCategory(category)} type="button">
-                  {deleteTarget === category ? "ยืนยันลบ" : "ลบ"}
-                </button>
+                <button className="danger-button" onClick={() => setDeleteTarget(category)} type="button">ลบ</button>
               </div>
             </div>
           );
         })}
       </div>
+      {deleteTarget ? <ConfirmDialog title="ลบหมวดหมู่สินค้า" message={`ต้องการลบหมวด “${deleteTarget}” ใช่ไหม? สินค้าในหมวดนี้จะถูกย้ายไปหมวดอื่น`} onCancel={() => setDeleteTarget("")} onConfirm={() => removeCategory(deleteTarget)} /> : null}
     </section>
   );
 }
@@ -3303,9 +3426,13 @@ function MenuImageUploader({ className = "", imageDataUrl, imageName, imageSize,
   );
 }
 
-function ModifierManagementScreen({ ingredients, modifierRecipes, modifiers, products, setModifierRecipes, setModifiers }) {
+function ModifierManagementScreen({ ingredients, modifierGroups, modifierRecipes, modifiers, products, setModifierGroups, setModifierRecipes, setModifiers }) {
   const [selectedId, setSelectedId] = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [groupFilter, setGroupFilter] = useState("all");
+  const [newGroupName, setNewGroupName] = useState("");
+  const [reorderMode, setReorderMode] = useState(false);
+  const [groupDeleteTarget, setGroupDeleteTarget] = useState(null);
   const [form, setForm] = useState(emptyModifier(products));
   const [recipeDraft, setRecipeDraft] = useState({});
   const [deleteArmed, setDeleteArmed] = useState(false);
@@ -3403,32 +3530,77 @@ function ModifierManagementScreen({ ingredients, modifierRecipes, modifiers, pro
     closeEditor();
   }
 
+  function moveModifier(modifierId, direction) {
+    setModifiers((current) => moveArrayItem(current, modifierId, direction));
+  }
+
+  function moveModifierTo(modifierId, position) {
+    setModifiers((current) => moveArrayItemToPosition(current, modifierId, position));
+  }
+
+  function addModifierGroup(event) {
+    event.preventDefault();
+    const label = newGroupName.trim();
+    if (!label || modifierGroups.some((group) => group.label === label)) return;
+    setModifierGroups((current) => [...current, { id: `group_${Date.now()}`, label }]);
+    setNewGroupName("");
+  }
+
+  function removeModifierGroup(groupId) {
+    if (modifierGroups.length <= 1) return;
+    const fallback = modifierGroups.find((group) => group.id !== groupId)?.id || "other";
+    setModifierGroups((current) => current.filter((group) => group.id !== groupId));
+    setModifiers((current) => current.map((modifier) => (modifier.group === groupId ? { ...modifier, group: fallback } : modifier)));
+    if (groupFilter === groupId) setGroupFilter("all");
+    setGroupDeleteTarget(null);
+  }
+
+  const visibleModifiers = groupFilter === "all" ? modifiers : modifiers.filter((modifier) => (modifier.group || "addon") === groupFilter);
+
   return (
     <section className={`management-layout ${editorOpen ? "" : "is-single"}`}>
       <div className="work-panel">
         <div className="toolbar management-toolbar">
+          <button className={groupFilter === "all" ? "is-active" : ""} onClick={() => setGroupFilter("all")} type="button">ทั้งหมด</button>
+          {modifierGroups.map((group) => <button className={groupFilter === group.id ? "is-active" : ""} key={group.id} onClick={() => setGroupFilter(group.id)} type="button">{group.label}</button>)}
           <button className="new-record-button toolbar-add-button" onClick={startNewModifier} type="button">
             <Plus size={20} />
             เพิ่มตัวเลือกเสริม
           </button>
+          <button className={`reorder-toggle-button ${reorderMode ? "is-active" : ""}`} onClick={() => setReorderMode((current) => !current)} type="button">
+            <SlidersHorizontal size={18} /> {reorderMode ? "เสร็จสิ้นการจัดลำดับ" : "จัดลำดับ"}
+          </button>
         </div>
         <div className="modifier-admin-grid">
-          {modifiers.map((modifier) => (
-            <button
-              className={`modifier-admin-card ${selectedId === modifier.id ? "is-active" : ""}`}
+          {visibleModifiers.map((modifier) => {
+            const absoluteIndex = modifiers.findIndex((item) => item.id === modifier.id);
+            return <article
+              className={`modifier-admin-card ${selectedId === modifier.id ? "is-active" : ""} ${reorderMode ? "is-reordering" : ""}`}
               key={modifier.id}
               onClick={() => {
                 if (editorOpen && selectedId === modifier.id) closeEditor();
                 else openEditorFor(modifier);
               }}
-              type="button"
+              role="button"
+              tabIndex={0}
             >
+              {reorderMode ? <span className="admin-item-order">
+                <ReorderPositionInput label={modifier.label} max={modifiers.length} onMove={(position) => moveModifierTo(modifier.id, position)} value={absoluteIndex + 1} />
+                <button aria-label={`เลื่อน ${modifier.label} ขึ้น`} disabled={absoluteIndex === 0} onClick={(event) => { event.stopPropagation(); moveModifier(modifier.id, -1); }} type="button"><ChevronUp size={15} /></button>
+                <button aria-label={`เลื่อน ${modifier.label} ลง`} disabled={absoluteIndex === modifiers.length - 1} onClick={(event) => { event.stopPropagation(); moveModifier(modifier.id, 1); }} type="button"><ChevronDown size={15} /></button>
+              </span> : null}
               <strong>{modifier.label}</strong>
               <span>{modifier.price ? `+${money(modifier.price)} บาท` : "ไม่คิดเงิน"}</span>
-              <small>{getModifierGroupLabel(modifier.group || "addon")} · ใช้กับ {modifier.productIds?.length || 0} เมนู</small>
-            </button>
-          ))}
+              <small>{getModifierGroupLabel(modifier.group || "addon", modifierGroups)} · ใช้กับ {modifier.productIds?.length || 0} เมนู</small>
+            </article>;
+          })}
         </div>
+        <form className="category-quick-manager" onSubmit={addModifierGroup}>
+          <strong>ประเภทตัวเลือกเสริม</strong>
+          <input value={newGroupName} onChange={(event) => setNewGroupName(event.target.value)} placeholder="เพิ่มประเภทตัวเลือก" />
+          <button className="ghost-button" type="submit"><Plus size={16} /> เพิ่ม</button>
+          <div>{modifierGroups.map((group) => <span key={group.id}>{group.label}<button aria-label={`ลบประเภท ${group.label}`} onClick={() => setGroupDeleteTarget(group)} type="button"><Trash2 size={14} /></button></span>)}</div>
+        </form>
       </div>
       {editorOpen ? (
         <form className="side-editor" onSubmit={saveModifier}>
@@ -3488,15 +3660,254 @@ function ModifierManagementScreen({ ingredients, modifierRecipes, modifiers, pro
           </div>
           <div className="modal-actions">
             <button className="primary-button" type="submit"><Save size={18} /> บันทึกตัวเลือก</button>
-            {selected ? <button className={`danger-button ${deleteArmed ? "is-armed" : ""}`} onClick={removeModifier} type="button">{deleteArmed ? "ยืนยันลบ" : "ลบตัวเลือก"}</button> : null}
+            {selected ? <button className="danger-button" onClick={() => setDeleteArmed(true)} type="button">ลบตัวเลือก</button> : null}
           </div>
         </form>
       ) : null}
+      {deleteArmed && selected ? <ConfirmDialog title="ลบตัวเลือกเสริม" message={`ต้องการลบ “${selected.label}” ใช่ไหม? สูตรวัตถุดิบของตัวเลือกนี้จะถูกลบด้วย`} onCancel={() => setDeleteArmed(false)} onConfirm={removeModifier} /> : null}
+      {groupDeleteTarget ? <ConfirmDialog title="ลบประเภทตัวเลือกเสริม" message={`ต้องการลบประเภท “${groupDeleteTarget.label}” ใช่ไหม? ตัวเลือกในประเภทนี้จะถูกย้ายไปประเภทอื่น`} onCancel={() => setGroupDeleteTarget(null)} onConfirm={() => removeModifierGroup(groupDeleteTarget.id)} /> : null}
     </section>
   );
 }
 
-function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onDeleteExpense, onRecord, purchaseUnits, recentExpenses, setView, view }) {
+function GeneralExpenseMasterScreen({ categories: masterCategories, items, setCategories, setItems, setSubcategories, subcategories }) {
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [form, setForm] = useState(emptyGeneralExpenseItem(
+    masterCategories[0],
+    firstExpenseSubcategory(masterCategories[0], subcategories),
+  ));
+  const [newCategory, setNewCategory] = useState("");
+  const [newSubcategory, setNewSubcategory] = useState("");
+  const [newSubcategoryCategory, setNewSubcategoryCategory] = useState(masterCategories[0] || "");
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [categoryDeleteTarget, setCategoryDeleteTarget] = useState("");
+  const [subcategoryDeleteTarget, setSubcategoryDeleteTarget] = useState(null);
+  const [reorderMode, setReorderMode] = useState(false);
+  const selected = selectedId ? items.find((item) => item.id === selectedId) : null;
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleItems = items.filter((item) => (
+    !normalizedQuery
+    || item.name.toLowerCase().includes(normalizedQuery)
+    || item.category?.toLowerCase().includes(normalizedQuery)
+    || item.subcategory?.toLowerCase().includes(normalizedQuery)
+  ));
+  const formSubcategories = subcategories.filter((subcategory) => subcategory.category === form.category);
+
+  function openEditor(item) {
+    setSelectedId(item.id);
+    setForm({
+      ...item,
+      subcategory: item.subcategory || firstExpenseSubcategory(item.category, subcategories),
+    });
+    setEditorOpen(true);
+  }
+
+  function startNew() {
+    setSelectedId("");
+    setForm(emptyGeneralExpenseItem(
+      masterCategories[0],
+      firstExpenseSubcategory(masterCategories[0], subcategories),
+    ));
+    setEditorOpen(true);
+  }
+
+  function closeEditor() {
+    setSelectedId(null);
+    setEditorOpen(false);
+  }
+
+  function saveItem(event) {
+    event.preventDefault();
+    const name = form.name.trim();
+    const unit = form.unit.trim();
+    if (!name || !form.category || !form.subcategory || !unit) return;
+    const next = {
+      ...form,
+      id: form.id || `general_${Date.now()}`,
+      name,
+      unit,
+      note: form.note?.trim() || "",
+      active: form.active !== false,
+    };
+    setItems((current) => {
+      const exists = current.some((item) => item.id === next.id);
+      return exists ? current.map((item) => (item.id === next.id ? next : item)) : [...current, next];
+    });
+    closeEditor();
+  }
+
+  function removeItem() {
+    if (!deleteTarget) return;
+    setItems((current) => current.filter((item) => item.id !== deleteTarget.id));
+    setDeleteTarget(null);
+    closeEditor();
+  }
+
+  function moveItem(itemId, direction) {
+    setItems((current) => moveArrayItem(current, itemId, direction));
+  }
+
+  function moveItemTo(itemId, position) {
+    setItems((current) => moveArrayItemToPosition(current, itemId, position));
+  }
+
+  function addCategory(event) {
+    event.preventDefault();
+    const name = newCategory.trim();
+    if (!name || masterCategories.includes(name)) return;
+    setCategories((current) => [...current, name]);
+    setNewCategory("");
+  }
+
+  function addSubcategory(event) {
+    event.preventDefault();
+    const name = newSubcategory.trim();
+    const category = newSubcategoryCategory || masterCategories[0] || "";
+    if (!name || !category || subcategories.some((item) => item.category === category && item.name === name)) return;
+    setSubcategories((current) => [...current, {
+      id: `expense_sub_${Date.now()}`,
+      category,
+      name,
+    }]);
+    setNewSubcategory("");
+  }
+
+  function removeCategory() {
+    if (!categoryDeleteTarget) return;
+    if (masterCategories.length <= 1) {
+      setCategoryDeleteTarget("");
+      return;
+    }
+    const fallback = masterCategories.find((category) => category !== categoryDeleteTarget) || "ค่าใช้จ่ายอื่นๆ";
+    const fallbackSubcategory = firstExpenseSubcategory(fallback, subcategories) || "ทั่วไป";
+    setCategories((current) => current.filter((category) => category !== categoryDeleteTarget));
+    setSubcategories((current) => current.filter((subcategory) => subcategory.category !== categoryDeleteTarget));
+    setItems((current) => current.map((item) => (
+      item.category === categoryDeleteTarget
+        ? { ...item, category: fallback, subcategory: fallbackSubcategory }
+        : item
+    )));
+    setCategoryDeleteTarget("");
+  }
+
+  function removeSubcategory() {
+    if (!subcategoryDeleteTarget) return;
+    const siblings = subcategories.filter((item) => (
+      item.category === subcategoryDeleteTarget.category
+      && item.id !== subcategoryDeleteTarget.id
+    ));
+    if (!siblings.length) {
+      setSubcategoryDeleteTarget(null);
+      return;
+    }
+    const fallback = siblings[0].name;
+    setSubcategories((current) => current.filter((item) => item.id !== subcategoryDeleteTarget.id));
+    setItems((current) => current.map((item) => (
+      item.category === subcategoryDeleteTarget.category && item.subcategory === subcategoryDeleteTarget.name
+        ? { ...item, subcategory: fallback }
+        : item
+    )));
+    setSubcategoryDeleteTarget(null);
+  }
+
+  return (
+    <section className={`management-layout ${editorOpen ? "" : "is-single"}`}>
+      <div className="work-panel">
+        <div className="toolbar management-toolbar general-expense-master-toolbar">
+          <div className="search-box"><Search size={18} /><input placeholder="ค้นหารายจ่ายทั่วไป" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
+          <button className="new-record-button toolbar-add-button" onClick={startNew} type="button"><Plus size={19} /> เพิ่มรายการทั่วไป</button>
+          <button className={`reorder-toggle-button ${reorderMode ? "is-active" : ""}`} onClick={() => setReorderMode((current) => !current)} type="button">
+            <SlidersHorizontal size={18} /> {reorderMode ? "เสร็จสิ้นการจัดลำดับ" : "จัดลำดับ"}
+          </button>
+        </div>
+        <div className="general-expense-master-grid">
+          {visibleItems.map((item) => {
+            const absoluteIndex = items.findIndex((candidate) => candidate.id === item.id);
+            return (
+              <article
+                className={`general-expense-master-card ${item.active === false ? "is-inactive" : ""} ${reorderMode ? "is-reordering" : ""}`}
+                key={item.id}
+                onClick={() => openEditor(item)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") openEditor(item);
+                }}
+                role="button"
+                tabIndex={0}
+              >
+                {reorderMode ? (
+                  <span className="admin-item-order">
+                    <ReorderPositionInput label={item.name} max={items.length} onMove={(position) => moveItemTo(item.id, position)} value={absoluteIndex + 1} />
+                    <button aria-label={`เลื่อน ${item.name} ขึ้น`} disabled={absoluteIndex === 0} onClick={(event) => { event.stopPropagation(); moveItem(item.id, -1); }} type="button"><ChevronUp size={15} /></button>
+                    <button aria-label={`เลื่อน ${item.name} ลง`} disabled={absoluteIndex === items.length - 1} onClick={(event) => { event.stopPropagation(); moveItem(item.id, 1); }} type="button"><ChevronDown size={15} /></button>
+                  </span>
+                ) : null}
+                <strong>{item.name}</strong>
+                <span>{item.category} · {item.subcategory || "ทั่วไป"}</span>
+                <small>หน่วย: {item.unit} · {item.active === false ? "ปิดใช้งาน" : "เปิดใช้งาน"}</small>
+              </article>
+            );
+          })}
+        </div>
+        <form className="category-quick-manager" onSubmit={addCategory}>
+          <strong>ประเภทหลัก</strong>
+          <input value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="เพิ่มประเภทหลัก" />
+          <button className="ghost-button" type="submit"><Plus size={16} /> เพิ่ม</button>
+          <div>{masterCategories.map((category) => <span key={category}>{category}<button aria-label={`ลบประเภท ${category}`} onClick={() => setCategoryDeleteTarget(category)} type="button"><Trash2 size={14} /></button></span>)}</div>
+        </form>
+        <form className="category-quick-manager subcategory-quick-manager" onSubmit={addSubcategory}>
+          <strong>ประเภทย่อย</strong>
+          <select aria-label="ประเภทหลักของประเภทย่อย" value={newSubcategoryCategory} onChange={(event) => setNewSubcategoryCategory(event.target.value)}>
+            {masterCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+          </select>
+          <input value={newSubcategory} onChange={(event) => setNewSubcategory(event.target.value)} placeholder="เพิ่มประเภทย่อย" />
+          <button className="ghost-button" type="submit"><Plus size={16} /> เพิ่ม</button>
+          <div>{subcategories.map((subcategory) => (
+            <span key={subcategory.id}>
+              {subcategory.category} / {subcategory.name}
+              <button aria-label={`ลบประเภทย่อย ${subcategory.name}`} onClick={() => setSubcategoryDeleteTarget(subcategory)} type="button"><Trash2 size={14} /></button>
+            </span>
+          ))}</div>
+        </form>
+      </div>
+      {editorOpen ? (
+        <form className="side-editor" onSubmit={saveItem}>
+          <div className="panel-title">
+            <ReceiptText size={20} />
+            <h3>{selected ? "แก้ไขรายจ่ายทั่วไป" : "เพิ่มรายจ่ายทั่วไป"}</h3>
+            <button className="icon-close-button" onClick={closeEditor} type="button">ปิด</button>
+          </div>
+          <label>ชื่อรายการ<input autoFocus value={form.name || ""} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} /></label>
+          <label>ประเภทหลัก<select value={form.category || masterCategories[0] || ""} onChange={(event) => {
+            const category = event.target.value;
+            setForm((current) => ({
+              ...current,
+              category,
+              subcategory: firstExpenseSubcategory(category, subcategories),
+            }));
+          }}>{masterCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+          <label>ประเภทย่อย<select value={form.subcategory || ""} onChange={(event) => setForm((current) => ({ ...current, subcategory: event.target.value }))}>
+            {!formSubcategories.some((item) => item.name === form.subcategory) && form.subcategory ? <option value={form.subcategory}>{form.subcategory}</option> : null}
+            {formSubcategories.map((subcategory) => <option key={subcategory.id} value={subcategory.name}>{subcategory.name}</option>)}
+          </select></label>
+          <label>หน่วย<input value={form.unit || ""} onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))} placeholder="เช่น ครั้ง, แพ็ค, ถัง" /></label>
+          <label>หมายเหตุ<input value={form.note || ""} onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))} /></label>
+          <label className="check-line"><input checked={form.active !== false} onChange={(event) => setForm((current) => ({ ...current, active: event.target.checked }))} type="checkbox" /> เปิดใช้งาน</label>
+          <div className="modal-actions">
+            <button className="primary-button" type="submit"><Save size={18} /> บันทึก</button>
+            {selected ? <button className="danger-button" onClick={() => setDeleteTarget(selected)} type="button">ลบรายการ</button> : null}
+          </div>
+        </form>
+      ) : null}
+      {deleteTarget ? <ConfirmDialog title="ลบรายจ่ายทั่วไป" message={`ต้องการลบ “${deleteTarget.name}” จากฐานข้อมูลใช่ไหม? ประวัติรายจ่ายเดิมจะไม่ถูกลบ`} onCancel={() => setDeleteTarget(null)} onConfirm={removeItem} /> : null}
+      {categoryDeleteTarget ? <ConfirmDialog title="ลบประเภทค่าใช้จ่าย" message={`ต้องการลบประเภท “${categoryDeleteTarget}” ใช่ไหม? รายการในประเภทนี้จะถูกย้ายไปประเภทอื่น`} onCancel={() => setCategoryDeleteTarget("")} onConfirm={removeCategory} /> : null}
+      {subcategoryDeleteTarget ? <ConfirmDialog title="ลบประเภทย่อย" message={`ต้องการลบประเภทย่อย “${subcategoryDeleteTarget.name}” ใช่ไหม? รายการในประเภทย่อยนี้จะถูกย้ายไปประเภทย่อยอื่น`} onCancel={() => setSubcategoryDeleteTarget(null)} onConfirm={removeSubcategory} /> : null}
+    </section>
+  );
+}
+
+function ExpenseScreen({ generalExpenseCategories, generalExpenseItems, generalExpenseSubcategories, ingredients, onAddIngredient, onAddPurchaseUnit, onDeleteExpense, onRecord, purchaseUnits, recentExpenses, setGeneralExpenseCategories, setGeneralExpenseItems, setGeneralExpenseSubcategories, setView, view }) {
   const [draft, setDraft] = usePersistentState("burger-pos.expenseDraft", makeEmptyExpenseDraft());
   const [leavingRowIds, setLeavingRowIds] = useState([]);
   const [ingredientModalOpen, setIngredientModalOpen] = useState(false);
@@ -3504,7 +3915,7 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onDele
   const normalizedDraft = normalizeExpenseDraft(draft);
   const expenseDate = normalizedDraft.expenseDate;
   const rows = normalizedDraft.rows;
-  const previewItems = rows.map((row) => buildExpenseItem(row, ingredients, purchaseUnits)).filter(Boolean);
+  const previewItems = rows.map((row) => buildExpenseItem(row, ingredients, purchaseUnits, generalExpenseItems)).filter(Boolean);
   const totalAmount = previewItems.reduce((sum, item) => sum + item.lineTotal, 0);
 
   function setExpenseDate(value) {
@@ -3533,6 +3944,17 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onDele
   }
 
   async function submitExpenses() {
+    const invalidRowIndex = rows.findIndex((row) => {
+      const hasInput = Boolean(row.ingredientId || row.generalExpenseItemId || row.ingredientSearch || row.generalExpenseSearch || row.name || row.quantity || row.unitPrice);
+      if (!hasInput) return false;
+      if (row.mode === "custom" && (!row.generalExpenseSearch?.trim() || !row.category || !row.subcategory || !row.generalUnit?.trim())) return true;
+      if (row.mode === "ingredient" && (!row.ingredientId || !row.purchaseUnitId || row.purchaseUnitId === "__new_unit__")) return true;
+      return Number(row.quantity || 0) <= 0 || Number(row.unitPrice || 0) <= 0;
+    });
+    if (invalidRowIndex >= 0) {
+      alert(`แถวที่ ${invalidRowIndex + 1}: กรุณากรอกรายการ ประเภท หน่วย จำนวน และราคาให้ครบ`);
+      return;
+    }
     if (!previewItems.length) {
       alert("กรุณากรอกรายการอย่างน้อย 1 รายการ");
       return;
@@ -3566,6 +3988,18 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onDele
 
   if (view === "history") {
     return <ExpenseHistoryPanel expenses={recentExpenses} onBack={() => setView("entry")} onDeleteExpense={onDeleteExpense} />;
+  }
+  if (view === "master") {
+    return (
+      <GeneralExpenseMasterScreen
+        categories={generalExpenseCategories}
+        items={generalExpenseItems}
+        setCategories={setGeneralExpenseCategories}
+        setItems={setGeneralExpenseItems}
+        setSubcategories={setGeneralExpenseSubcategories}
+        subcategories={generalExpenseSubcategories}
+      />
+    );
   }
 
   return (
@@ -3601,6 +4035,9 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onDele
           </div>
           {rows.map((row, index) => (
             <ExpenseEntryRow
+              generalExpenseCategories={generalExpenseCategories}
+              generalExpenseItems={generalExpenseItems}
+              generalExpenseSubcategories={generalExpenseSubcategories}
               ingredients={ingredients}
               isLeaving={leavingRowIds.includes(row.id)}
               key={row.id}
@@ -3651,18 +4088,53 @@ function ExpenseScreen({ ingredients, onAddIngredient, onAddPurchaseUnit, onDele
   );
 }
 
-function ExpenseEntryRow({ ingredients, isLeaving, onAddPurchaseUnit, onRemove, purchaseUnits, row, rowNumber, updateRow }) {
+function ExpenseEntryRow({ generalExpenseCategories, generalExpenseItems, generalExpenseSubcategories, ingredients, isLeaving, onAddPurchaseUnit, onRemove, purchaseUnits, row, rowNumber, updateRow }) {
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [generalSuggestionsOpen, setGeneralSuggestionsOpen] = useState(false);
   const [unitDraft, setUnitDraft] = useState({ label: "", ratio: "" });
   const selectedIngredient = ingredients.find((item) => item.id === row.ingredientId);
+  const selectedGeneralExpense = generalExpenseItems.find((item) => item.id === row.generalExpenseItemId);
   const availableUnits = purchaseUnits.filter((unit) => unit.ingredientId === row.ingredientId);
-  const selectedUnit = availableUnits.find((unit) => unit.id === row.purchaseUnitId) || availableUnits[0];
+  const selectedUnit = availableUnits.find((unit) => unit.id === row.purchaseUnitId);
   const quantity = Number(row.quantity || 0);
-  const stockQuantity = row.mode === "ingredient" ? quantity * Number(selectedUnit?.ratio || 1) : 0;
+  const stockQuantity = row.mode === "ingredient" && selectedUnit ? quantity * Number(selectedUnit.ratio || 1) : 0;
   const ingredientSearch = row.ingredientSearch ?? selectedIngredient?.name ?? "";
-  const ingredientSuggestions = ingredients
-    .filter((ingredient) => !ingredientSearch || ingredient.name.toLowerCase().includes(ingredientSearch.trim().toLowerCase()))
-    .slice(0, 6);
+  const activeGeneralExpenses = generalExpenseItems.filter((item) => item.active !== false);
+  const ingredientSuggestions = rankSearchMatches(ingredients, ingredientSearch, (item) => item.name).slice(0, 8);
+  const generalExpenseSearch = row.generalExpenseSearch ?? selectedGeneralExpense?.name ?? row.name ?? "";
+  const generalExpenseSuggestions = rankSearchMatches(activeGeneralExpenses, generalExpenseSearch, (item) => (
+    `${item.name} ${item.category || ""} ${item.subcategory || ""}`
+  )).slice(0, 8);
+  const availableGeneralSubcategories = generalExpenseSubcategories.filter((item) => item.category === row.category);
+
+  useEffect(() => {
+    if (row.mode !== "custom" || !selectedGeneralExpense) return;
+    const expectedSubcategory = selectedGeneralExpense.subcategory
+      || firstExpenseSubcategory(selectedGeneralExpense.category, generalExpenseSubcategories);
+    if (
+      row.generalExpenseSearch === selectedGeneralExpense.name
+      && row.category === selectedGeneralExpense.category
+      && row.subcategory === expectedSubcategory
+      && row.generalUnit === selectedGeneralExpense.unit
+    ) return;
+    updateRow(row.id, {
+      generalExpenseSearch: selectedGeneralExpense.name,
+      name: selectedGeneralExpense.name,
+      category: selectedGeneralExpense.category || "",
+      subcategory: expectedSubcategory,
+      generalUnit: selectedGeneralExpense.unit || "ครั้ง",
+    });
+  }, [
+    generalExpenseSubcategories,
+    row.category,
+    row.generalExpenseItemId,
+    row.generalExpenseSearch,
+    row.generalUnit,
+    row.id,
+    row.mode,
+    row.subcategory,
+    selectedGeneralExpense,
+  ]);
 
   function selectMode(mode) {
     if (mode === "ingredient") {
@@ -3673,7 +4145,14 @@ function ExpenseEntryRow({ ingredients, isLeaving, onAddPurchaseUnit, onRemove, 
       });
       return;
     }
-    updateRow(row.id, { mode: "custom" });
+    updateRow(row.id, {
+      mode: "custom",
+      generalExpenseItemId: row.generalExpenseItemId || "",
+      generalExpenseSearch: row.generalExpenseSearch || row.name || "",
+      category: row.category || generalExpenseCategories[0] || "",
+      subcategory: row.subcategory || firstExpenseSubcategory(generalExpenseCategories[0], generalExpenseSubcategories),
+      generalUnit: row.generalUnit || "ครั้ง",
+    });
   }
 
   function handlePurchaseUnitChange(value) {
@@ -3701,14 +4180,45 @@ function ExpenseEntryRow({ ingredients, isLeaving, onAddPurchaseUnit, onRemove, 
     setUnitDraft({ label: "", ratio: "" });
   }
 
-  function updateIngredientSearch(value, forceFirstMatch = false) {
+  function updateIngredientSearch(value) {
     const normalized = value.trim().toLowerCase();
     const exact = ingredients.find((ingredient) => ingredient.name.toLowerCase() === normalized);
-    const firstMatch = ingredients.find((ingredient) => ingredient.name.toLowerCase().includes(normalized));
-    const matched = exact || (forceFirstMatch ? firstMatch : null);
+    const matched = exact || null;
+    const ingredientChanged = matched && matched.id !== row.ingredientId;
     updateRow(row.id, {
       ingredientSearch: value,
-      ...(matched ? { ingredientId: matched.id, ingredientSearch: matched.name, purchaseUnitId: "" } : {}),
+      ...(!matched && value !== selectedIngredient?.name ? { ingredientId: "", purchaseUnitId: "" } : {}),
+      ...(matched ? {
+        ingredientId: matched.id,
+        ingredientSearch: matched.name,
+        ...(ingredientChanged ? { purchaseUnitId: "" } : {}),
+      } : {}),
+    });
+  }
+
+  function selectGeneralExpense(item) {
+    updateRow(row.id, {
+      generalExpenseItemId: item.id,
+      generalExpenseSearch: item.name,
+      name: item.name,
+      category: item.category || "",
+      subcategory: item.subcategory || firstExpenseSubcategory(item.category, generalExpenseSubcategories),
+      generalUnit: item.unit || "ครั้ง",
+    });
+    setGeneralSuggestionsOpen(false);
+  }
+
+  function updateGeneralExpenseSearch(value) {
+    const normalized = value.trim().toLowerCase();
+    const exact = activeGeneralExpenses.find((item) => item.name.toLowerCase() === normalized);
+    if (exact) {
+      selectGeneralExpense(exact);
+      return;
+    }
+    updateRow(row.id, {
+      generalExpenseItemId: "",
+      generalExpenseSearch: value,
+      name: value,
     });
   }
 
@@ -3739,7 +4249,7 @@ function ExpenseEntryRow({ ingredients, isLeaving, onAddPurchaseUnit, onRemove, 
             aria-label={`วัตถุดิบแถว ${rowNumber}`}
             onBlur={(event) => {
               window.setTimeout(() => setSuggestionsOpen(false), 120);
-              updateIngredientSearch(event.target.value, true);
+              updateIngredientSearch(event.target.value);
             }}
             onChange={(event) => {
               setSuggestionsOpen(true);
@@ -3773,10 +4283,35 @@ function ExpenseEntryRow({ ingredients, isLeaving, onAddPurchaseUnit, onRemove, 
           <span className="expense-field-label">รายการ</span>
           <input
             aria-label={`รายการทั่วไปแถว ${rowNumber}`}
-            onChange={(event) => updateRow(row.id, { name: event.target.value })}
-            placeholder="เช่น ถุงกระดาษ"
-            value={row.name}
+            onBlur={(event) => {
+              window.setTimeout(() => setGeneralSuggestionsOpen(false), 120);
+              updateGeneralExpenseSearch(event.target.value);
+            }}
+            onChange={(event) => {
+              setGeneralSuggestionsOpen(true);
+              updateGeneralExpenseSearch(event.target.value);
+            }}
+            onFocus={() => setGeneralSuggestionsOpen(true)}
+            placeholder="พิมพ์ค้นหารายจ่าย"
+            value={generalExpenseSearch}
           />
+          {generalSuggestionsOpen && generalExpenseSuggestions.length ? (
+            <div className="ingredient-suggestion-list general-expense-suggestion-list">
+              {generalExpenseSuggestions.map((item) => (
+                <button
+                  key={item.id}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    selectGeneralExpense(item);
+                  }}
+                  type="button"
+                >
+                  <span>{item.name}<small>{item.category} / {item.subcategory || "ทั่วไป"}</small></span>
+                  <small>{item.unit}</small>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </label>
       )}
       {row.mode === "ingredient" ? (
@@ -3788,9 +4323,10 @@ function ExpenseEntryRow({ ingredients, isLeaving, onAddPurchaseUnit, onRemove, 
             value={row.purchaseUnitId === "__new_unit__" ? "__new_unit__" : selectedUnit?.id || ""}
             onChange={(event) => handlePurchaseUnitChange(event.target.value)}
           >
-            {availableUnits.length ? availableUnits.map((unit) => (
+            <option value="">เลือกหน่วยซื้อ</option>
+            {availableUnits.map((unit) => (
               <option key={unit.id} value={unit.id}>1 {unit.label} = {money(unit.ratio)} {unit.baseUnit}</option>
-            )) : <option value="">{selectedIngredient?.unit || "-"}</option>}
+            ))}
             {selectedIngredient ? <option value="__new_unit__">+ เพิ่มหน่วยซื้อใหม่</option> : null}
           </select>
           {selectedIngredient && row.purchaseUnitId === "__new_unit__" ? (
@@ -3814,6 +4350,48 @@ function ExpenseEntryRow({ ingredients, isLeaving, onAddPurchaseUnit, onRemove, 
             </div>
           ) : null}
         </label>
+      ) : null}
+      {row.mode === "custom" ? (
+        <>
+          <label className="expense-field">
+            <span className="expense-field-label">ประเภทหลัก</span>
+            <select
+              aria-label={`ประเภทหลักแถว ${rowNumber}`}
+              onChange={(event) => {
+                const category = event.target.value;
+                updateRow(row.id, {
+                  category,
+                  subcategory: firstExpenseSubcategory(category, generalExpenseSubcategories),
+                });
+              }}
+              value={row.category || ""}
+            >
+              <option value="">เลือกประเภทหลัก</option>
+              {generalExpenseCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+            </select>
+          </label>
+          <label className="expense-field">
+            <span className="expense-field-label">ประเภทย่อย</span>
+            <select
+              aria-label={`ประเภทย่อยแถว ${rowNumber}`}
+              onChange={(event) => updateRow(row.id, { subcategory: event.target.value })}
+              value={row.subcategory || ""}
+            >
+              <option value="">เลือกประเภทย่อย</option>
+              {!availableGeneralSubcategories.some((item) => item.name === row.subcategory) && row.subcategory ? <option value={row.subcategory}>{row.subcategory}</option> : null}
+              {availableGeneralSubcategories.map((subcategory) => <option key={subcategory.id} value={subcategory.name}>{subcategory.name}</option>)}
+            </select>
+          </label>
+          <label className="expense-field">
+            <span className="expense-field-label">หน่วย</span>
+            <input
+              aria-label={`หน่วยรายจ่ายแถว ${rowNumber}`}
+              onChange={(event) => updateRow(row.id, { generalUnit: event.target.value })}
+              placeholder="หน่วย"
+              value={row.generalUnit || ""}
+            />
+          </label>
+        </>
       ) : null}
       <label className="expense-field">
         <span className="expense-field-label">จำนวน</span>
@@ -3843,18 +4421,14 @@ function ExpenseEntryRow({ ingredients, isLeaving, onAddPurchaseUnit, onRemove, 
       </label>
       {row.mode === "ingredient" ? (
         <span className="stock-preview">
-          {selectedIngredient ? `+${money(stockQuantity)} ${selectedIngredient.unit}` : "เลือกวัตถุดิบ"}
+          {selectedIngredient && selectedUnit ? `+${money(stockQuantity)} ${selectedIngredient.unit}` : selectedIngredient ? "เลือกหน่วยซื้อ" : "เลือกวัตถุดิบ"}
         </span>
       ) : (
-        <label className="expense-field">
-          <span className="expense-field-label">หมายเหตุ</span>
-          <input
-            aria-label={`หมายเหตุรายจ่ายแถว ${rowNumber}`}
-            onChange={(event) => updateRow(row.id, { note: event.target.value })}
-            placeholder="หมายเหตุ"
-            value={row.note || ""}
-          />
-        </label>
+        <span className="general-expense-preview">
+          {row.category && row.subcategory
+            ? `${row.category} / ${row.subcategory} · ไม่เพิ่มสต็อก`
+            : "ระบุประเภทหลักและย่อย"}
+        </span>
       )}
       <button aria-label={`ลบแถว ${rowNumber}`} onClick={onRemove} type="button"><Trash2 size={16} /></button>
     </div>
@@ -4592,6 +5166,62 @@ function OrderSuccessDialog({ order, onClose }) {
   );
 }
 
+function ConfirmDialog({ message, onCancel, onConfirm, title }) {
+  return (
+    <div className="modal-backdrop confirm-dialog-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onCancel();
+    }}>
+      <div aria-modal="true" className="modal-card confirm-dialog" role="alertdialog">
+        <span className="confirm-dialog-icon"><AlertTriangle size={26} /></span>
+        <div>
+          <h3>{title}</h3>
+          <p>{message}</p>
+        </div>
+        <div className="modal-actions">
+          <button className="ghost-button" onClick={onCancel} type="button">ยกเลิก</button>
+          <button className="danger-button" onClick={onConfirm} type="button"><Trash2 size={17} /> ยืนยันลบ</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReorderPositionInput({ label, max, onMove, value }) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  function commit() {
+    const position = Math.max(1, Math.min(max, Number(draft || value)));
+    setDraft(String(position));
+    onMove(position);
+  }
+
+  return (
+    <label onClick={(event) => event.stopPropagation()}>
+      <input
+        aria-label={`ลำดับ ${label}`}
+        inputMode="numeric"
+        max={max}
+        min="1"
+        onBlur={commit}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === "Enter") {
+            event.preventDefault();
+            event.currentTarget.blur();
+          }
+        }}
+        type="number"
+        value={draft}
+      />
+    </label>
+  );
+}
+
 function OrderToast({ order, onClose }) {
   return (
     <div className="order-toast">
@@ -4950,6 +5580,11 @@ function blankExpenseRow(ingredientId = "", ingredientSearch = "") {
     ingredientId,
     ingredientSearch,
     purchaseUnitId: "",
+    generalExpenseItemId: "",
+    generalExpenseSearch: "",
+    generalUnit: "ครั้ง",
+    category: "",
+    subcategory: "",
     name: "",
     note: "",
     quantity: "",
@@ -4970,27 +5605,43 @@ function normalizeExpenseDraft(draft) {
   return {
     version: 2,
     expenseDate: draft?.expenseDate || new Date().toISOString().slice(0, 10),
-    rows: draft?.rows?.length ? draft.rows : [blankExpenseRow()],
+    rows: draft?.rows?.length
+      ? draft.rows.map((row) => ({
+        ...row,
+        generalExpenseSearch: row.generalExpenseSearch ?? row.name ?? "",
+        generalUnit: row.generalUnit || "ครั้ง",
+        category: row.category || "",
+        subcategory: row.subcategory || "",
+      }))
+      : [blankExpenseRow()],
   };
 }
 
-function buildExpenseItem(row, ingredients, purchaseUnits) {
+function buildExpenseItem(row, ingredients, purchaseUnits, generalExpenseItems = []) {
   const quantity = Number(row.quantity || 0);
   const unitPrice = Number(row.unitPrice || 0);
-  if (!quantity && !unitPrice && !row.name.trim()) return null;
+  if (!quantity && !unitPrice && !row.name?.trim() && !row.generalExpenseSearch?.trim() && !row.ingredientId && !row.generalExpenseItemId) return null;
   if (row.mode === "custom") {
-    if (!row.name.trim()) return null;
+    const generalItem = generalExpenseItems.find((item) => item.id === row.generalExpenseItemId && item.active !== false);
+    const name = generalItem?.name || row.generalExpenseSearch?.trim() || row.name?.trim();
+    const category = generalItem?.category || row.category;
+    const subcategory = generalItem?.subcategory || row.subcategory;
+    const unit = generalItem?.unit || row.generalUnit?.trim();
+    if (!name || !category || !subcategory || !unit) return null;
     return {
       id: row.id,
       mode: "custom",
-      name: row.name.trim(),
+      name,
+      generalExpenseItemId: generalItem?.id || "",
+      category,
+      subcategory,
       ingredientId: null,
-      purchaseUnit: "",
+      purchaseUnit: unit,
       purchaseQuantity: quantity,
       stockQuantity: 0,
-      baseUnit: "",
+      baseUnit: unit,
       unitPrice,
-      note: row.note?.trim() || "",
+      note: generalItem?.note || row.note?.trim() || "",
       lineTotal: quantity * unitPrice,
     };
   }
@@ -4998,13 +5649,17 @@ function buildExpenseItem(row, ingredients, purchaseUnits) {
   const ingredient = ingredients.find((item) => item.id === row.ingredientId);
   if (!ingredient) return null;
   const availableUnits = purchaseUnits.filter((unit) => unit.ingredientId === row.ingredientId);
-  const selectedUnit = availableUnits.find((unit) => unit.id === row.purchaseUnitId) || availableUnits[0];
+  const selectedUnit = availableUnits.find((unit) => unit.id === row.purchaseUnitId);
+  if (!selectedUnit) return null;
   const stockQuantity = quantity * Number(selectedUnit?.ratio || 1);
   return {
     id: row.id,
     mode: "ingredient",
     name: ingredient.name,
     ingredientId: ingredient.id,
+    generalExpenseItemId: "",
+    category: "วัตถุดิบ",
+    subcategory: ingredient.category || "อื่นๆ",
     purchaseUnit: selectedUnit?.label || ingredient.unit,
     purchaseQuantity: quantity,
     stockQuantity,
@@ -5014,14 +5669,50 @@ function buildExpenseItem(row, ingredients, purchaseUnits) {
   };
 }
 
+function emptyGeneralExpenseItem(category = defaultGeneralExpenseCategories[0], subcategory = "") {
+  return {
+    id: "",
+    name: "",
+    category: category || "",
+    subcategory: subcategory || firstExpenseSubcategory(category, defaultGeneralExpenseSubcategories),
+    unit: "ครั้ง",
+    note: "",
+    active: true,
+  };
+}
+
+function firstExpenseSubcategory(category, subcategories = defaultGeneralExpenseSubcategories) {
+  return subcategories.find((subcategory) => subcategory.category === category)?.name || "";
+}
+
+function rankSearchMatches(items, query, getSearchText) {
+  const normalized = String(query || "").trim().toLowerCase();
+  if (!normalized) return items;
+  return items
+    .map((item, index) => {
+      const text = String(getSearchText(item) || "").toLowerCase();
+      const name = String(item.name || item.label || "").toLowerCase();
+      let score = 100;
+      if (name === normalized) score = 0;
+      else if (name.startsWith(normalized)) score = 1;
+      else if (name.includes(normalized)) score = 2;
+      else if (text.includes(normalized)) score = 3;
+      return { item, index, score };
+    })
+    .filter((entry) => entry.score < 100)
+    .sort((a, b) => a.score - b.score || a.index - b.index)
+    .map((entry) => entry.item);
+}
+
 function emptyIngredient() {
-  return { id: "", name: "", stock: 0, unit: "ชิ้น", minimumStock: 0, purchaseLabel: "แพ็ค", purchaseRatio: 1 };
+  return { id: "", name: "", category: defaultIngredientCategories[0], stock: 0, unit: "ชิ้น", minimumStock: 0, purchaseLabel: "แพ็ค", purchaseRatio: 1 };
 }
 
 function normalizeIngredientForm(item) {
   return {
     id: item?.id || "",
     name: (item?.name || "").trim(),
+    category: item?.category || "อื่นๆ",
     stock: Number(item?.stock || 0),
     unit: (item?.unit || "").trim(),
     minimumStock: Number(item?.minimumStock || 0),
@@ -5086,8 +5777,37 @@ function emptyModifier(products = []) {
   };
 }
 
-function getModifierGroupLabel(groupId) {
-  return modifierGroups.find((group) => group.id === groupId)?.label || "Add on";
+function getModifierGroupLabel(groupId, groups = defaultModifierGroups) {
+  return groups.find((group) => group.id === groupId)?.label || "Add on";
+}
+
+function moveArrayItem(items, itemId, direction) {
+  const index = items.findIndex((item) => item.id === itemId);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= items.length) return items;
+  const next = [...items];
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
+}
+
+function moveArrayItemToPosition(items, itemId, position) {
+  const index = items.findIndex((item) => item.id === itemId);
+  const target = Math.max(0, Math.min(items.length - 1, Number(position || 1) - 1));
+  if (index < 0 || index === target) return items;
+  const next = [...items];
+  const [item] = next.splice(index, 1);
+  next.splice(target, 0, item);
+  return next;
+}
+
+function inferIngredientCategory(name = "") {
+  const value = name.toLowerCase();
+  if (/หมู|ไก่|เนื้อ|เบคอน|patty/.test(value)) return "เนื้อสัตว์";
+  if (/ขนมปัง|bun/.test(value)) return "ขนมปัง";
+  if (/ผัก|หอม|มะเขือ|แตง/.test(value)) return "ผัก";
+  if (/ซอส|มายอง|เคช/.test(value)) return "ซอส";
+  if (/โค้ก|น้ำ|ชา|กาแฟ|drink|cola/.test(value)) return "เครื่องดื่ม";
+  return "อื่นๆ";
 }
 
 function normalizeChannelPrices(product) {

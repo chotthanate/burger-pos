@@ -2,6 +2,7 @@ export const BURGER_POS_SHEET_ID = "1-JJ9u2NjqBrQtgrBb4sUsmwdV36GP25g-rJPrwv8mpI
 
 export const SHEET_TABS = {
   sales: "Sales",
+  income: "Income",
   expenses: "Expenses",
   stockMovements: "Stock Movements",
   shiftSummary: "Shift Summary",
@@ -35,6 +36,21 @@ export const SHEET_HEADERS = {
     "refund_amount",
     "stock_restored",
   ],
+  [SHEET_TABS.income]: [
+    "income_id",
+    "income_date",
+    "closed_at",
+    "shift_id",
+    "cash_sales",
+    "transfer_sales",
+    "total_sales",
+    "gross_sales",
+    "void_amount",
+    "cash_refund_amount",
+    "transfer_refund_amount",
+    "net_sales",
+    "order_count",
+  ],
   [SHEET_TABS.expenses]: [
     "expense_id",
     "expense_date",
@@ -52,6 +68,8 @@ export const SHEET_HEADERS = {
     "subcategory",
     "note",
     "total_amount",
+    "expense_type",
+    "general_expense_item_id",
   ],
   [SHEET_TABS.stockMovements]: [
     "created_at",
@@ -207,7 +225,24 @@ export function makeResetSheetJob(mode = "transactions") {
 }
 
 export function normalizeSheetJobForSync(job) {
-  if (!job || job.type !== "EXPENSE") return job;
+  if (!job) return job;
+  if (job.type === "SHIFT_SUMMARY") {
+    const rows = Array.isArray(job.rows) ? job.rows : [];
+    const shiftRow = rows.find((row) => row?.tab === SHEET_TABS.shiftSummary && Array.isArray(row.values));
+    const hasIncomeRow = rows.some((row) => row?.tab === SHEET_TABS.income);
+    const normalizedRows = shiftRow && !hasIncomeRow
+      ? [...rows, buildIncomeRowFromShiftValues(shiftRow.values)]
+      : rows;
+    const normalizedOperations = (Array.isArray(job.operations) ? job.operations : [])
+      .filter((operation) => operation?.type !== "UPSERT_DAILY_REVENUE");
+    return {
+      ...job,
+      rows: normalizedRows,
+      operations: normalizedOperations,
+      targetTabs: Array.from(new Set(normalizedRows.map((row) => row.tab))),
+    };
+  }
+  if (job.type !== "EXPENSE") return job;
   const rows = Array.isArray(job.rows) ? job.rows : [];
   const expenseRows = rows.filter((row) => row?.tab === SHEET_TABS.expenses && Array.isArray(row.values));
   if (!expenseRows.length) return job;
@@ -243,15 +278,13 @@ export function normalizeSheetJobForSync(job) {
 
 export function makeShiftSheetJob(shift, summary) {
   const syncId = `SYNC-SHIFT-${shift.id}-${Date.now()}`;
-  const rows = [buildShiftRow(shift, summary)];
-  const operations = [buildMonthlyRevenueOperation(shift, summary)].filter(Boolean);
+  const rows = [buildShiftRow(shift, summary), buildIncomeRow(shift, summary)];
   return makeSheetJob({
     syncId,
     type: "SHIFT_SUMMARY",
     sourceId: shift.id,
     description: `${shift.id} -> Shift Summary`,
     rows,
-    operations,
   });
 }
 
@@ -322,20 +355,6 @@ function makeSheetJob({ syncId, type, sourceId, description, rows, operations = 
     targetTabs: Array.from(new Set(rows.map((row) => row.tab))),
     rows,
     operations,
-  };
-}
-
-function buildMonthlyRevenueOperation(shift, summary) {
-  const date = parseSheetDate(summary?.closedAt || shift?.closedAt || new Date().toISOString());
-  if (!date) return null;
-  return {
-    type: "UPSERT_DAILY_REVENUE",
-    monthTab: String(date.month),
-    day: date.day,
-    dateValue: date.day,
-    cashSales: Number(summary?.cashSales || 0),
-    transferSales: Number(summary?.transferSales || 0),
-    shiftId: shift?.id || "",
   };
 }
 
@@ -429,8 +448,55 @@ function buildExpenseRows(expense) {
       item?.subcategory || "ยังไม่ได้จัดหมวดย่อย",
       item?.note || "",
       Number(expense.totalAmount || 0),
+      item?.mode === "ingredient" ? "วัตถุดิบ" : "รายจ่ายทั่วไป",
+      item?.generalExpenseItemId || "",
     ],
   }));
+}
+
+function buildIncomeRow(shift, summary) {
+  const closedAt = summary.closedAt || shift.closedAt || new Date().toISOString();
+  return {
+    tab: SHEET_TABS.income,
+    values: [
+      `INC-${shift.id || Date.now()}`,
+      formatBangkokIsoDate(closedAt),
+      closedAt,
+      shift.id || "",
+      Number(summary.cashSales || 0),
+      Number(summary.transferSales || 0),
+      Number(summary.totalSales || 0),
+      Number(summary.grossSales || summary.totalSales || 0),
+      Number(summary.voidAmount || 0),
+      Number(summary.cashRefundAmount || 0),
+      Number(summary.transferRefundAmount || 0),
+      Number(summary.netSales || summary.totalSales || 0),
+      Number(summary.orderCount || 0),
+    ],
+  };
+}
+
+function buildIncomeRowFromShiftValues(values = []) {
+  const closedAt = values[2] || new Date().toISOString();
+  const shiftId = values[0] || "";
+  return {
+    tab: SHEET_TABS.income,
+    values: [
+      `INC-${shiftId || Date.now()}`,
+      formatBangkokIsoDate(closedAt),
+      closedAt,
+      shiftId,
+      Number(values[4] || 0),
+      Number(values[5] || 0),
+      Number(values[6] || 0),
+      Number(values[11] || values[6] || 0),
+      Number(values[13] || 0),
+      Number(values[14] || 0),
+      Number(values[15] || 0),
+      Number(values[16] || values[6] || 0),
+      Number(values[10] || 0),
+    ],
+  };
 }
 
 function buildStockMovementRows(movements, sourceType) {
@@ -487,6 +553,19 @@ function splitDateTime(value) {
     date: date.toLocaleDateString("th-TH"),
     time: date.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
   };
+}
+
+function formatBangkokIsoDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function parseSheetDate(value) {

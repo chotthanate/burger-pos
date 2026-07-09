@@ -3914,6 +3914,193 @@ b {
   }
 }
 
+/* Expense search, classification, and tablet layout. */
+.expense-entry-row.is-custom {
+  grid-template-columns:
+    115px
+    minmax(190px, 1.35fr)
+    minmax(120px, 0.8fr)
+    minmax(130px, 0.9fr)
+    76px
+    76px
+    96px
+    minmax(140px, 0.9fr)
+    42px;
+}
+
+.general-expense-suggestion-list button > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.general-expense-suggestion-list button > span small {
+  white-space: normal;
+}
+
+.subcategory-quick-manager {
+  grid-template-columns: auto minmax(150px, 0.6fr) minmax(180px, 1fr) auto;
+}
+
+.subcategory-quick-manager select {
+  min-height: 44px;
+  border: 1px solid var(--boy-border);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #fffefb;
+}
+
+@media (max-width: 1180px) {
+  .expense-entry-row.is-custom {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .expense-entry-row.is-custom {
+    grid-template-columns: minmax(0, 1fr) 78px 82px 40px;
+  }
+
+  .expense-entry-row.is-custom > .expense-field:nth-child(2) {
+    grid-column: 1 / -1;
+  }
+
+  .expense-entry-row.is-custom > .expense-field:nth-child(3) {
+    grid-column: 1 / span 2;
+  }
+
+  .expense-entry-row.is-custom > .expense-field:nth-child(4) {
+    grid-column: 3 / span 2;
+  }
+
+  .expense-entry-row.is-custom > .expense-field:nth-child(5) {
+    grid-column: 1;
+  }
+
+  .expense-entry-row.is-custom > .expense-field:nth-child(6) {
+    grid-column: 2;
+  }
+
+  .expense-entry-row.is-custom > .expense-field:nth-child(7) {
+    grid-column: 3;
+  }
+
+  .expense-entry-row.is-custom > .general-expense-preview {
+    grid-column: 1 / span 3;
+    min-height: 34px;
+    font-size: 11px;
+    justify-content: center;
+  }
+
+  .expense-entry-row.is-custom > button {
+    grid-column: 4;
+  }
+
+  .subcategory-quick-manager {
+    grid-template-columns: 1fr auto;
+  }
+
+  .subcategory-quick-manager > strong,
+  .subcategory-quick-manager > select {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Android tablet alignment corrections from physical-device screenshots. */
+.main-pane {
+  padding: 22px 18px 0 !important;
+}
+
+.nav-rail {
+  padding-top: env(safe-area-inset-top, 0px) !important;
+  padding-bottom: 0 !important;
+}
+
+.nav-rail .brand-block {
+  min-height: 0 !important;
+  padding: 10px 16px 14px !important;
+}
+
+.nav-rail .status-card {
+  padding: 8px 10px 4px !important;
+}
+
+.inventory-toolbar {
+  align-items: center;
+  display: grid !important;
+  grid-template-columns: minmax(220px, 1fr) repeat(6, auto);
+  flex-wrap: nowrap !important;
+}
+
+.inventory-toolbar .search-box {
+  min-width: 0;
+  width: auto !important;
+}
+
+.inventory-toolbar .toolbar-add-button,
+.inventory-toolbar .reorder-toggle-button {
+  margin-left: 0 !important;
+  white-space: nowrap;
+}
+
+.management-toolbar .reorder-toggle-button {
+  flex: 0 0 auto;
+  margin-left: 0 !important;
+  white-space: nowrap;
+}
+
+.admin-item-order {
+  left: 10px !important;
+  right: 10px !important;
+  top: 10px !important;
+  justify-content: flex-end;
+  max-width: calc(100% - 20px);
+  width: auto;
+}
+
+.admin-product-order {
+  max-width: calc(100% - 20px);
+}
+
+.admin-item-order label,
+.admin-product-order label {
+  flex: 0 1 auto;
+  white-space: nowrap;
+}
+
+.admin-item-order input,
+.admin-product-order input {
+  min-width: 42px;
+  width: 42px;
+}
+
+.admin-item-order button,
+.admin-product-order button {
+  flex: 0 0 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  width: 36px !important;
+}
+
+.inventory-card.is-reordering,
+.modifier-admin-card.is-reordering,
+.admin-product.is-reordering {
+  padding-top: 62px !important;
+}
+
+@media (max-width: 1500px) {
+  .inventory-toolbar {
+    grid-template-columns: minmax(180px, 1fr) repeat(4, auto);
+  }
+
+  .inventory-toolbar .toolbar-add-button,
+  .inventory-toolbar .reorder-toggle-button {
+    grid-column: auto;
+  }
+}
+
 /* Ultimate POS card override: this must stay last. Android WebView uses the same
    CSS bundle as the web build, and older card experiments above can otherwise
    squeeze Thai product names into the price column. */
@@ -5965,6 +6152,140 @@ body,
   flex: 0 0 auto !important;
 }
 
+/* App shell: system bars stay outside the web content and only page content scrolls. */
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+.app-grid {
+  height: 100dvh !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.main-pane {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  padding: 0 18px 0 !important;
+}
+
+.topbar {
+  flex: 0 0 auto !important;
+  position: relative !important;
+  top: auto !important;
+  margin: 0 !important;
+  padding: 14px 0 12px !important;
+  min-height: 76px !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(22, 20, 17, 0.08) !important;
+  background: #f3f5f8 !important;
+}
+
+.main-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 0 calc(12px + env(safe-area-inset-bottom, 0px));
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Management grids fill the row while a short list keeps a single-column footprint. */
+.product-admin-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  justify-content: stretch !important;
+}
+
+.modifier-admin-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.admin-product-order,
+.admin-item-order {
+  align-items: center;
+  background: rgba(255, 253, 248, 0.96);
+  border: 1px solid var(--boy-border);
+  border-radius: 7px;
+  padding: 4px;
+}
+
+.admin-product-order label,
+.admin-item-order label {
+  align-items: center;
+  color: #514b43;
+  display: flex;
+  font-size: 12px;
+  gap: 5px;
+}
+
+.admin-product-order input,
+.admin-item-order input {
+  border: 1px solid #d8cfc2;
+  border-radius: 5px;
+  height: 32px;
+  padding: 0 3px;
+  text-align: center;
+  width: 50px;
+}
+
+.category-quick-manager > div > span > button {
+  border: 1px solid rgba(180, 35, 24, 0.18);
+  border-radius: 5px;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.nav-rail .status-card {
+  align-items: start !important;
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 4px !important;
+  padding: 8px 10px calc(4px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.nav-rail .status-card button {
+  align-content: start;
+  display: grid !important;
+  gap: 2px !important;
+  justify-items: center;
+  line-height: 1.15;
+  min-height: 0 !important;
+  padding: 2px !important;
+  text-align: center;
+  width: auto !important;
+}
+
+.nav-rail .status-card button svg {
+  height: 15px;
+  width: 15px;
+}
+
+@media (max-width: 900px) {
+  .product-admin-grid,
+  .modifier-admin-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .main-pane {
+    padding-inline: 10px !important;
+  }
+
+  .product-admin-grid,
+  .modifier-admin-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
 /* Absolute final drawer layer guard. Keep this at the end of the file so the
    invisible scrim never sits above the menu buttons. */
 .app-grid .nav-scrim {
@@ -7189,7 +7510,7 @@ body,
   height: auto !important;
   min-height: 100dvh !important;
   overflow-y: visible !important;
-  padding-top: calc(10px + env(safe-area-inset-top, 0px)) !important;
+  padding-top: calc(22px + env(safe-area-inset-top, 0px)) !important;
 }
 
 .topbar {
@@ -7198,6 +7519,134 @@ body,
   z-index: 30 !important;
   background: #f3f5f8 !important;
   margin-bottom: 18px !important;
+  border-top: 1px solid rgba(22, 20, 17, 0.08) !important;
+}
+
+/* Stable management cards: one or two records keep their normal width. */
+.product-admin-grid {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 260px)) !important;
+  justify-content: start;
+}
+
+.inventory-card,
+.modifier-admin-card {
+  position: relative;
+}
+
+.admin-item-order {
+  display: flex;
+  gap: 4px;
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  z-index: 2;
+}
+
+.admin-item-order button {
+  align-items: center;
+  background: #fffdf8;
+  border: 1px solid #d8cfc2;
+  border-radius: 6px;
+  color: #171412;
+  display: inline-flex;
+  height: 32px;
+  justify-content: center;
+  padding: 0;
+  width: 32px;
+}
+
+.admin-item-order button:disabled {
+  opacity: 0.35;
+}
+
+.category-quick-manager {
+  align-items: center;
+  border-top: 1px solid var(--boy-border);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(180px, 1fr) auto;
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.category-quick-manager > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  grid-column: 1 / -1;
+}
+
+.category-quick-manager > div > span {
+  align-items: center;
+  background: #fffaf0;
+  border: 1px solid var(--boy-border);
+  border-radius: 6px;
+  display: inline-flex;
+  gap: 7px;
+  padding: 7px 9px;
+}
+
+.category-quick-manager > div button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #9f221f;
+  display: inline-flex;
+  padding: 0;
+}
+
+.confirm-dialog-backdrop {
+  z-index: 1200 !important;
+}
+
+.confirm-dialog {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: auto 1fr;
+  max-width: 460px;
+  padding: 22px;
+}
+
+.confirm-dialog-icon {
+  align-items: center;
+  background: #fff0ee;
+  border-radius: 50%;
+  color: #b42318;
+  display: inline-flex;
+  height: 48px;
+  justify-content: center;
+  width: 48px;
+}
+
+.confirm-dialog h3 {
+  color: #171412;
+  margin: 0 0 5px;
+}
+
+.confirm-dialog p {
+  color: #625b54;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.confirm-dialog .modal-actions {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
+.danger-button {
+  color: #fff !important;
+}
+
+@media (max-width: 640px) {
+  .category-quick-manager {
+    grid-template-columns: 1fr auto;
+  }
+
+  .category-quick-manager > strong {
+    grid-column: 1 / -1;
+  }
 }
 
 .nav-scrim {
@@ -7317,4 +7766,311 @@ body,
 
 .nav-rail .status-card {
   flex: 0 0 auto !important;
+}
+
+/* Final shell ownership: header stays fixed; only .main-scroll moves. */
+html,
+body,
+#root {
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+.app-grid {
+  height: 100dvh !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.main-pane {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  padding: 0 18px !important;
+}
+
+.topbar {
+  flex: 0 0 auto !important;
+  position: relative !important;
+  top: auto !important;
+  min-height: 76px !important;
+  margin: 0 !important;
+  padding: 14px 0 12px !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(22, 20, 17, 0.08) !important;
+  background: #f3f5f8 !important;
+}
+
+.main-scroll {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  padding: 18px 0 calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.product-admin-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  justify-content: stretch !important;
+}
+
+.modifier-admin-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+.nav-rail .status-card {
+  align-items: start !important;
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 4px !important;
+  padding: 8px 10px calc(4px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.nav-rail .status-card button {
+  display: grid !important;
+  gap: 2px !important;
+  justify-items: center !important;
+  line-height: 1.15 !important;
+  min-height: 0 !important;
+  padding: 2px !important;
+  text-align: center !important;
+  width: auto !important;
+}
+
+@media (max-width: 900px) {
+  .product-admin-grid,
+  .modifier-admin-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .main-pane {
+    padding-inline: 10px !important;
+  }
+
+  .product-admin-grid,
+  .modifier-admin-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Physical Android tablet alignment. */
+.main-pane {
+  padding: 22px 18px 0 !important;
+}
+
+.nav-rail {
+  padding-top: env(safe-area-inset-top, 0px) !important;
+  padding-bottom: 0 !important;
+}
+
+.nav-rail .brand-block {
+  min-height: 0 !important;
+  padding: 10px 16px 14px !important;
+}
+
+.nav-rail .status-card {
+  padding: 8px 10px 4px !important;
+}
+
+.inventory-toolbar {
+  align-items: center;
+  display: grid !important;
+  grid-template-columns: minmax(220px, 1fr) repeat(6, auto);
+  flex-wrap: nowrap !important;
+}
+
+.inventory-toolbar .search-box {
+  min-width: 0;
+  width: auto !important;
+}
+
+.inventory-toolbar .toolbar-add-button,
+.inventory-toolbar .reorder-toggle-button,
+.management-toolbar .reorder-toggle-button {
+  flex: 0 0 auto;
+  margin-left: 0 !important;
+  white-space: nowrap;
+}
+
+.admin-item-order {
+  left: 10px !important;
+  right: 10px !important;
+  top: 10px !important;
+  justify-content: flex-end;
+  max-width: calc(100% - 20px);
+  width: auto;
+}
+
+.admin-product-order {
+  max-width: calc(100% - 20px);
+}
+
+.admin-item-order label,
+.admin-product-order label {
+  flex: 0 1 auto;
+  white-space: nowrap;
+}
+
+.admin-item-order input,
+.admin-product-order input {
+  min-width: 42px;
+  width: 42px;
+}
+
+.admin-item-order button,
+.admin-product-order button {
+  flex: 0 0 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  width: 36px !important;
+}
+
+.inventory-card.is-reordering,
+.modifier-admin-card.is-reordering,
+.admin-product.is-reordering {
+  padding-top: 62px !important;
+}
+
+@media (max-width: 1500px) {
+  .inventory-toolbar {
+    grid-template-columns: minmax(180px, 1fr) repeat(4, auto);
+  }
+}
+
+/* Keep the inventory actions on the original single toolbar row. */
+.inventory-toolbar {
+  align-items: center;
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  gap: 10px;
+}
+
+.inventory-toolbar .search-box {
+  flex: 1 1 220px;
+  min-width: 160px;
+}
+
+.inventory-toolbar > button,
+.inventory-toolbar > select {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.admin-item-order label,
+.admin-product-order label {
+  gap: 0;
+}
+
+/* General expense master and non-stock expense preview. */
+.general-expense-preview {
+  min-height: 42px;
+  border: 1px solid var(--boy-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: #fffefb;
+  display: flex;
+  align-items: center;
+  color: var(--boy-muted);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.general-expense-master-toolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.general-expense-master-toolbar .search-box {
+  flex: 1 1 260px;
+  min-width: 180px;
+  width: auto;
+}
+
+.general-expense-master-toolbar .toolbar-add-button,
+.general-expense-master-toolbar .reorder-toggle-button {
+  flex: 0 0 auto;
+  margin-left: 0;
+  white-space: nowrap;
+}
+
+.general-expense-master-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.general-expense-master-card {
+  min-width: 0;
+  min-height: 138px;
+  border: 1px solid var(--boy-border);
+  border-radius: 8px;
+  padding: 18px;
+  background: #fffefb;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.general-expense-master-card:hover,
+.general-expense-master-card:focus-visible {
+  border-color: var(--boy-red);
+  outline: none;
+}
+
+.general-expense-master-card strong {
+  color: var(--boy-ink);
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.general-expense-master-card span,
+.general-expense-master-card small {
+  color: var(--boy-muted);
+}
+
+.general-expense-master-card.is-inactive {
+  opacity: 0.58;
+}
+
+.general-expense-master-card.is-reordering {
+  padding-top: 62px;
+}
+
+@media (max-width: 900px) {
+  .general-expense-master-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .general-expense-master-toolbar .search-box {
+    flex-basis: 100%;
+  }
+
+  .general-expense-master-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .general-expense-master-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .general-expense-preview {
+    min-height: 34px;
+    padding: 4px 8px;
+    font-size: 11px;
+  }
 }

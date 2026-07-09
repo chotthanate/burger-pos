@@ -1,6 +1,19 @@
 const SHEET_ACTION_APPEND = "appendSheetSyncJob";
 const LINE_ACTION_SEND = "sendLineMessage";
 const DEFAULT_SHEET_ID = "1-JJ9u2NjqBrQtgrBb4sUsmwdV36GP25g-rJPrwv8mpI";
+const DATA_SHEET_HEADERS = {
+  "Income": [
+    "income_id", "income_date", "closed_at", "shift_id", "cash_sales",
+    "transfer_sales", "total_sales", "gross_sales", "void_amount",
+    "cash_refund_amount", "transfer_refund_amount", "net_sales", "order_count",
+  ],
+  "Expenses": [
+    "expense_id", "expense_date", "created_at", "ingredient_id", "item_name",
+    "ingredient_name", "purchase_unit", "base_unit", "quantity", "unit_price",
+    "line_total", "stock_quantity", "category", "subcategory", "note",
+    "total_amount", "expense_type", "general_expense_item_id",
+  ],
+};
 
 function authorize() {
   return SpreadsheetApp.openById(DEFAULT_SHEET_ID).getName();
@@ -19,17 +32,67 @@ function doPost(e) {
 
 function appendSheetSyncJob_(payload) {
   const spreadsheet = SpreadsheetApp.openById(payload.sheetId);
-  const rows = payload.job && payload.job.rows ? payload.job.rows : [];
+  const rows = normalizeSheetRows_(payload.job || {});
   const operations = normalizeSheetOperations_(payload.job || {}, payload.job && payload.job.operations ? payload.job.operations : []);
   rows.forEach((row) => {
-    const sheet = row.tab === "Audit Log"
-      ? getOrCreateAuditSheet_(spreadsheet)
-      : spreadsheet.getSheetByName(row.tab);
-    if (!sheet) throw new Error("Missing sheet tab: " + row.tab);
-    sheet.appendRow(row.values || []);
+    const sheet = getOrCreateDataSheet_(spreadsheet, row.tab);
+    sheet.appendRow(normalizeRowValuesForSheet_(row));
   });
   const operationResults = runSheetOperations_(spreadsheet, operations);
   return { ok: true, appendedRows: rows.length, operations: operationResults };
+}
+
+function normalizeRowValuesForSheet_(row) {
+  const values = row && row.values ? row.values.slice() : [];
+  if (row && row.tab === "Income" && /^\d{4}-\d{2}-\d{2}$/.test(String(values[1] || ""))) {
+    const parts = String(values[1]).split("-").map(Number);
+    values[1] = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+  }
+  return values;
+}
+
+function normalizeSheetRows_(job) {
+  const rows = job && job.rows ? job.rows.slice() : [];
+  if (!job || job.type !== "SHIFT_SUMMARY") return rows;
+  const hasIncomeRow = rows.some(function(row) {
+    return row && row.tab === "Income";
+  });
+  if (hasIncomeRow) return rows;
+  const shiftRow = rows.find(function(row) {
+    return row && row.tab === "Shift Summary" && row.values;
+  });
+  if (!shiftRow) return rows;
+  rows.push(buildIncomeRowFromShiftValues_(shiftRow.values || []));
+  return rows;
+}
+
+function buildIncomeRowFromShiftValues_(values) {
+  const closedAt = values[2] || new Date().toISOString();
+  const shiftId = values[0] || "";
+  return {
+    tab: "Income",
+    values: [
+      "INC-" + (shiftId || new Date().getTime()),
+      formatSheetDate_(closedAt),
+      closedAt,
+      shiftId,
+      Number(values[4] || 0),
+      Number(values[5] || 0),
+      Number(values[6] || 0),
+      Number(values[11] || values[6] || 0),
+      Number(values[13] || 0),
+      Number(values[14] || 0),
+      Number(values[15] || 0),
+      Number(values[16] || values[6] || 0),
+      Number(values[10] || 0),
+    ],
+  };
+}
+
+function formatSheetDate_(value) {
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return String(value || "");
+  return Utilities.formatDate(date, "Asia/Bangkok", "yyyy-MM-dd");
 }
 
 function runSheetOperations_(spreadsheet, operations) {
@@ -71,6 +134,11 @@ function runSheetOperations_(spreadsheet, operations) {
 
 function normalizeSheetOperations_(job, operations) {
   const currentOperations = operations || [];
+  if (job && job.type === "SHIFT_SUMMARY") {
+    return currentOperations.filter(function(operation) {
+      return !operation || operation.type !== "UPSERT_DAILY_REVENUE";
+    });
+  }
   if (!job || job.type !== "EXPENSE") return currentOperations;
   const rows = job.rows || [];
   const expenseRows = rows.filter(function(row) {
@@ -229,7 +297,7 @@ function deleteRawExpense_(spreadsheet, operation) {
 }
 
 function resetBurgerPosSheet_(spreadsheet, operation) {
-  ["Sales", "Expenses", "Stock Movements", "Shift Summary"].forEach(function(tabName) {
+  ["Sales", "Income", "Expenses", "Stock Movements", "Shift Summary"].forEach(function(tabName) {
     clearDataRows_(spreadsheet.getSheetByName(tabName));
   });
   clearDataRows_(getOrCreateAuditSheet_(spreadsheet));
@@ -253,6 +321,22 @@ function clearDataRows_(sheet) {
 function getRequiredSheet_(spreadsheet, tabName) {
   const sheet = spreadsheet.getSheetByName(String(tabName || ""));
   if (!sheet) throw new Error("Missing sheet tab: " + tabName);
+  return sheet;
+}
+
+function getOrCreateDataSheet_(spreadsheet, tabName) {
+  if (tabName === "Audit Log") return getOrCreateAuditSheet_(spreadsheet);
+  const headers = DATA_SHEET_HEADERS[tabName];
+  let sheet = spreadsheet.getSheetByName(tabName);
+  if (!sheet && headers) sheet = spreadsheet.insertSheet(tabName);
+  if (!sheet) throw new Error("Missing sheet tab: " + tabName);
+  if (headers) {
+    if (sheet.getMaxColumns() < headers.length) {
+      sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
+    }
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+  }
   return sheet;
 }
 
