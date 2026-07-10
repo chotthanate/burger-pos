@@ -1802,7 +1802,7 @@ function PosScreen({
   const [shiftPanelOpen, setShiftPanelOpen] = useState(false);
   const [closedShiftSummary, setClosedShiftSummary] = useState(null);
   const [productSearch, setProductSearch] = useState("");
-  const handledCloseShiftTokenRef = useRef(0);
+  const handledCloseShiftTokenRef = useRef(closeShiftToken);
   const productCategories = Array.from(new Set([...(menuCategories || categories), ...products.map((product) => product.category)]));
   const normalizedProductSearch = productSearch.trim().toLocaleLowerCase("th-TH");
   const visibleProducts = products.filter((product) => {
