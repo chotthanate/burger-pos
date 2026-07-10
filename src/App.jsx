@@ -60,7 +60,7 @@ import { makePrinterTestJob, printThaiCodePageTest, sendPrintJob, testPrintBridg
 import { getAndroidBluetoothPrinters, isNativeThaiPrinterAvailable, printAndroidBluetoothThaiPrototype, printAndroidThaiPrototype } from "./lib/nativeThaiPrinter.js";
 import { makeShiftSummaryLineJob, makeStockEditLineJob, sendLineNotificationJob } from "./lib/lineNotifications.js";
 import { BURGER_POS_SHEET_ID, SHEET_HEADERS, makeExpenseDeleteSheetJob, makeExpenseSheetJob, makeOrderSheetJob, makeOrderVoidSheetJob, makeResetSheetJob, makeShiftSheetJob, makeStockMovementSheetJob } from "./lib/sheetExport.js";
-import { useSupabaseAppState } from "./lib/supabaseAppState.js";
+import { useSheetBackedAppState, useSupabaseAppState } from "./lib/supabaseAppState.js";
 import { SUPABASE_STORE_ID } from "./lib/supabaseClient.js";
 import { usePersistentState } from "./lib/storage.js";
 
@@ -393,7 +393,7 @@ export default function App() {
 
   const catalog = useMemo(() => ({ recipes, modifierRecipes }), [recipes, modifierRecipes]);
   const printOptions = resolvedSettings.defaultPrintOptions || defaultSettings.defaultPrintOptions;
-  const supabaseState = useSupabaseAppState({
+  const appStateSources = useMemo(() => ({
     menuCategories: [menuCategories, setMenuCategories],
     ingredients: [ingredients, setIngredients],
     ingredientCategories: [ingredientCategories, setIngredientCategories],
@@ -410,7 +410,32 @@ export default function App() {
     expenses: [expenses, setExpenses],
     shifts: [shifts, setShifts],
     stockMovements: [stockMovements, setStockMovements],
-  }, { storeId: resolvedSettings.supabaseStoreId || SUPABASE_STORE_ID });
+  }), [
+    expenses,
+    generalExpenseCategories,
+    generalExpenseItems,
+    generalExpenseSubcategories,
+    ingredientCategories,
+    ingredients,
+    menuCategories,
+    modifierGroups,
+    modifierRecipes,
+    modifiers,
+    orders,
+    products,
+    purchaseUnits,
+    recipes,
+    shifts,
+    stockMovements,
+  ]);
+  const supabaseState = useSupabaseAppState(appStateSources, { storeId: resolvedSettings.supabaseStoreId || SUPABASE_STORE_ID });
+  const sheetBackedState = useSheetBackedAppState(appStateSources, {
+    enabled: !supabaseState.connected,
+    sheetId: resolvedSettings.sheetId,
+    webAppUrl: resolvedSettings.sheetWebAppUrl,
+    storeId: resolvedSettings.supabaseStoreId || SUPABASE_STORE_ID,
+  });
+  const remoteState = supabaseState.connected ? supabaseState : (sheetBackedState.connected ? sheetBackedState : supabaseState);
   const activeProducts = useMemo(() => products.filter((product) => isProductActiveForChannel(product, salesChannel)), [products, salesChannel]);
   const lowStock = useMemo(
     () => ingredients.filter((item) => Number(item.stock) <= Number(item.minimumStock)),
@@ -998,7 +1023,7 @@ export default function App() {
     queueLists,
     queueStats,
     settings: resolvedSettings,
-    supabaseState,
+    supabaseState: remoteState,
   });
 
   return (
@@ -1053,7 +1078,7 @@ export default function App() {
             onOpenInventory={() => navigateMain("inventory")}
             onOpenNotifications={() => navigateMain("notifications")}
             queueStats={queueStats}
-            supabaseState={supabaseState}
+              supabaseState={remoteState}
           />
         </aside>
 
@@ -1330,7 +1355,7 @@ function MobileSubnav({ activeTab, expenseView, navigateMain, navigateSub }) {
 }
 
 function StatusPanel({ lowStock, notificationCount, onOpenInventory, onOpenNotifications, queueStats, supabaseState }) {
-  const supabaseLabel = supabaseState?.connected ? "Supabase พร้อมใช้" : "Supabase ไม่สำเร็จ";
+  const supabaseLabel = supabaseState?.connected ? "ซิงก์ข้อมูลกลางพร้อมใช้" : "ซิงก์ข้อมูลกลางไม่สำเร็จ";
   return (
     <section className="status-card">
       <button className={supabaseState?.connected ? "" : "text-muted"} onClick={onOpenNotifications} title={supabaseState?.lastError || ""} type="button"><Wifi size={18} /> {supabaseLabel}</button>
@@ -5282,8 +5307,8 @@ function buildNotificationItems({ lowStock, queueLists, queueStats, settings, su
     items.push({
       id: "supabase-not-ready",
       severity: supabaseState?.mode === "error" ? "danger" : "warning",
-      title: supabaseState?.mode === "local" ? "Supabase ยังไม่ได้ตั้งค่า" : "Supabase เชื่อมต่อไม่สำเร็จ",
-      detail: supabaseState?.lastError || "เครื่องนี้จะใช้ข้อมูลในเครื่องก่อน ถ้าต้องการให้เว็บและแอพเห็นข้อมูลเดียวกัน ต้องตั้งค่า VITE_SUPABASE_URL และ VITE_SUPABASE_ANON_KEY แล้ว build ใหม่",
+      title: supabaseState?.mode === "local" ? "ยังไม่ได้ตั้งค่าซิงก์ข้อมูลกลาง" : "ซิงก์ข้อมูลกลางไม่สำเร็จ",
+      detail: supabaseState?.lastError || "เครื่องนี้จะใช้ข้อมูลในเครื่องก่อน ถ้าต้องการให้เว็บและแอพเห็นข้อมูลเดียวกัน ต้องเชื่อมต่อ Supabase หรือ Google Sheet App State ให้สำเร็จ",
       action: "settings",
     });
   }

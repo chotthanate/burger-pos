@@ -1,6 +1,10 @@
 const SHEET_ACTION_APPEND = "appendSheetSyncJob";
+const APP_STATE_ACTION_GET = "getAppState";
+const APP_STATE_ACTION_UPSERT = "upsertAppState";
 const LINE_ACTION_SEND = "sendLineMessage";
 const DEFAULT_SHEET_ID = "1-JJ9u2NjqBrQtgrBb4sUsmwdV36GP25g-rJPrwv8mpI";
+const APP_STATE_TAB = "App State";
+const APP_STATE_HEADERS = ["store_id", "key", "payload_json", "updated_at", "source"];
 const DATA_SHEET_HEADERS = {
   "Income": [
     "income_id", "income_date", "closed_at", "shift_id", "cash_sales",
@@ -24,6 +28,12 @@ function doPost(e) {
   if (payload.action === SHEET_ACTION_APPEND) {
     return json_(appendSheetSyncJob_(payload));
   }
+  if (payload.action === APP_STATE_ACTION_GET) {
+    return json_(getAppState_(payload));
+  }
+  if (payload.action === APP_STATE_ACTION_UPSERT) {
+    return json_(upsertAppState_(payload));
+  }
   if (payload.action === LINE_ACTION_SEND) {
     return json_(sendLineMessage_(payload));
   }
@@ -40,6 +50,59 @@ function appendSheetSyncJob_(payload) {
   });
   const operationResults = runSheetOperations_(spreadsheet, operations);
   return { ok: true, appendedRows: rows.length, operations: operationResults };
+}
+
+function getAppState_(payload) {
+  const spreadsheet = SpreadsheetApp.openById(payload.sheetId || DEFAULT_SHEET_ID);
+  const sheet = getOrCreateAppStateSheet_(spreadsheet);
+  const storeId = String(payload.storeId || "boy-burger-main");
+  const keys = Array.isArray(payload.keys) ? payload.keys.map(String) : [];
+  const keySet = keys.length ? keyMap_(keys) : null;
+  const state = {};
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { ok: true, state: {} };
+
+  const values = sheet.getRange(2, 1, lastRow - 1, APP_STATE_HEADERS.length).getValues();
+  values.forEach(function(row) {
+    const rowStoreId = String(row[0] || "");
+    const key = String(row[1] || "");
+    if (rowStoreId !== storeId || !key) return;
+    if (keySet && !keySet[key]) return;
+    try {
+      state[key] = JSON.parse(String(row[2] || "null"));
+    } catch (error) {
+      state[key] = null;
+    }
+  });
+  return { ok: true, state: state };
+}
+
+function upsertAppState_(payload) {
+  const spreadsheet = SpreadsheetApp.openById(payload.sheetId || DEFAULT_SHEET_ID);
+  const sheet = getOrCreateAppStateSheet_(spreadsheet);
+  const storeId = String(payload.storeId || "boy-burger-main");
+  const rows = Array.isArray(payload.rows) ? payload.rows : [];
+  if (!rows.length) return { ok: true, updatedRows: 0 };
+
+  const existing = buildAppStateIndex_(sheet);
+  const now = new Date().toISOString();
+  let updatedRows = 0;
+  rows.forEach(function(row) {
+    const key = String(row && row.key || "");
+    if (!key) return;
+    const payloadJson = JSON.stringify(row.payload == null ? null : row.payload);
+    const updatedAt = row.updatedAt || now;
+    const values = [storeId, key, payloadJson, updatedAt, "pos-app"];
+    const indexKey = storeId + "\u0000" + key;
+    const existingRow = existing[indexKey];
+    if (existingRow) {
+      sheet.getRange(existingRow, 1, 1, APP_STATE_HEADERS.length).setValues([values]);
+    } else {
+      sheet.appendRow(values);
+    }
+    updatedRows += 1;
+  });
+  return { ok: true, updatedRows: updatedRows };
 }
 
 function normalizeRowValuesForSheet_(row) {
@@ -338,6 +401,40 @@ function getOrCreateDataSheet_(spreadsheet, tabName) {
     sheet.setFrozenRows(1);
   }
   return sheet;
+}
+
+function getOrCreateAppStateSheet_(spreadsheet) {
+  let sheet = spreadsheet.getSheetByName(APP_STATE_TAB);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(APP_STATE_TAB);
+  }
+  if (sheet.getMaxColumns() < APP_STATE_HEADERS.length) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), APP_STATE_HEADERS.length - sheet.getMaxColumns());
+  }
+  sheet.getRange(1, 1, 1, APP_STATE_HEADERS.length).setValues([APP_STATE_HEADERS]);
+  sheet.setFrozenRows(1);
+  return sheet;
+}
+
+function buildAppStateIndex_(sheet) {
+  const index = {};
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return index;
+  const values = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  values.forEach(function(row, offset) {
+    const storeId = String(row[0] || "");
+    const key = String(row[1] || "");
+    if (storeId && key) index[storeId + "\u0000" + key] = offset + 2;
+  });
+  return index;
+}
+
+function keyMap_(keys) {
+  const map = {};
+  keys.forEach(function(key) {
+    map[String(key)] = true;
+  });
+  return map;
 }
 
 function getOrCreateAuditSheet_(spreadsheet) {
