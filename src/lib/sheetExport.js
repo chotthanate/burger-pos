@@ -2,124 +2,133 @@ export const BURGER_POS_SHEET_ID = "1-JJ9u2NjqBrQtgrBb4sUsmwdV36GP25g-rJPrwv8mpI
 
 export const SHEET_TABS = {
   sales: "Sales",
-  income: "Income",
-  expenses: "Expenses",
+  income: "รายรับ",
+  expenses: "รายจ่าย",
   stockMovements: "Stock Movements",
   shiftSummary: "Shift Summary",
   auditLog: "Audit Log",
 };
 
+const LEGACY_SHEET_TABS = {
+  income: "Income",
+  expenses: "Expenses",
+};
+
 export const SHEET_HEADERS = {
   [SHEET_TABS.sales]: [
-    "order_id",
-    "order_no",
-    "created_at",
-    "date",
-    "time",
-    "sales_channel",
-    "payment_method",
-    "total_amount",
-    "cash_received",
-    "change_due",
-    "shift_id",
-    "product_id",
-    "product_name",
-    "quantity",
-    "unit_price",
-    "line_total",
-    "modifiers",
-    "item_note",
-    "order_status",
-    "voided_at",
-    "void_reason",
-    "refund_method",
-    "refund_amount",
-    "stock_restored",
+    "รหัสออร์เดอร์",
+    "เลขออร์เดอร์",
+    "เวลาบันทึก",
+    "วันที่",
+    "เวลา",
+    "ช่องทางขาย",
+    "วิธีชำระเงิน",
+    "ยอดรวม",
+    "เงินที่รับ",
+    "เงินทอน",
+    "รหัสกะ",
+    "รหัสสินค้า",
+    "ชื่อสินค้า",
+    "จำนวน",
+    "ราคาต่อหน่วย",
+    "ยอดรายการ",
+    "ตัวเลือกเสริม",
+    "หมายเหตุรายการ",
+    "สถานะออร์เดอร์",
+    "เวลายกเลิก",
+    "เหตุผลยกเลิก",
+    "วิธีคืนเงิน",
+    "ยอดคืนเงิน",
+    "คืนสต็อกแล้ว",
   ],
   [SHEET_TABS.income]: [
-    "income_id",
-    "income_date",
-    "closed_at",
-    "shift_id",
-    "cash_sales",
-    "transfer_sales",
-    "total_sales",
-    "gross_sales",
-    "void_amount",
-    "cash_refund_amount",
-    "transfer_refund_amount",
-    "net_sales",
-    "order_count",
+    "รหัสรายรับ",
+    "วันที่",
+    "เวลาปิดกะ",
+    "รหัสกะ",
+    "ยอดขายรวม",
+    "เงินสด",
+    "เงินโอน",
+    "ไทยช่วยไทย",
+    "ยอดก่อนยกเลิก",
+    "ยอดยกเลิก",
+    "คืนเงินสด",
+    "คืนเงินโอน",
+    "จำนวนออร์เดอร์",
+    "จำนวนเบอร์เกอร์",
+    "จำนวน BBQ",
   ],
   [SHEET_TABS.expenses]: [
-    "expense_id",
-    "expense_date",
-    "created_at",
-    "ingredient_id",
-    "item_name",
-    "ingredient_name",
-    "purchase_unit",
-    "base_unit",
-    "quantity",
-    "unit_price",
-    "line_total",
-    "stock_quantity",
-    "category",
-    "subcategory",
-    "note",
-    "total_amount",
-    "expense_type",
-    "general_expense_item_id",
+    "รหัสรายจ่าย",
+    "วันที่",
+    "วันเวลาบันทึก",
+    "รหัสวัตถุดิบ",
+    "ชื่อรายการ",
+    "ชื่อวัตถุดิบ",
+    "หน่วยซื้อ",
+    "หน่วยสต็อก",
+    "จำนวนซื้อ",
+    "ราคาต่อหน่วย",
+    "ยอดรายการ",
+    "จำนวนเข้าสต็อก",
+    "ประเภทหลัก",
+    "ประเภทย่อย",
+    "หมายเหตุ",
+    "ยอดรวม",
+    "ประเภทรายจ่าย",
+    "รหัสรายการฐานข้อมูล",
   ],
   [SHEET_TABS.stockMovements]: [
-    "created_at",
-    "date",
-    "time",
-    "type",
-    "ingredient_id",
-    "ingredient_name",
-    "quantity_before",
-    "quantity_delta",
-    "quantity_after",
-    "unit",
-    "source_type",
-    "source_id",
-    "reason",
+    "เวลาบันทึก",
+    "วันที่",
+    "เวลา",
+    "ประเภทความเคลื่อนไหว",
+    "รหัสวัตถุดิบ",
+    "ชื่อวัตถุดิบ",
+    "จำนวนก่อนหน้า",
+    "จำนวนเปลี่ยนแปลง",
+    "จำนวนหลังปรับ",
+    "หน่วย",
+    "แหล่งที่มา",
+    "รหัสอ้างอิง",
+    "เหตุผล",
   ],
   [SHEET_TABS.shiftSummary]: [
-    "shift_id",
-    "opened_at",
-    "closed_at",
-    "opening_cash",
-    "cash_sales",
-    "transfer_sales",
-    "total_sales",
-    "expected_cash",
-    "closing_cash",
-    "cash_difference",
-    "order_count",
-    "gross_sales",
-    "void_order_count",
-    "void_amount",
-    "cash_refund_amount",
-    "transfer_refund_amount",
-    "net_sales",
+    "รหัสกะ",
+    "เวลาเปิดกะ",
+    "เวลาปิดกะ",
+    "เงินเริ่มต้น",
+    "เงินสด",
+    "เงินโอน",
+    "ยอดขายรวม",
+    "เงินที่ควรมี",
+    "เงินที่นับได้",
+    "ส่วนต่างเงินสด",
+    "จำนวนออร์เดอร์",
+    "ยอดก่อนยกเลิก",
+    "จำนวนออร์เดอร์ยกเลิก",
+    "ยอดยกเลิก",
+    "คืนเงินสด",
+    "คืนเงินโอน",
+    "ไทยช่วยไทย",
+    "จำนวนเบอร์เกอร์",
+    "จำนวน BBQ",
   ],
   [SHEET_TABS.auditLog]: [
-    "created_at",
-    "date",
-    "time",
-    "event_type",
-    "source_type",
-    "source_id",
-    "item_id",
-    "item_name",
-    "before_value",
-    "change_value",
-    "after_value",
-    "amount",
-    "reason",
-    "raw_json",
+    "เวลาบันทึก",
+    "วันที่",
+    "เวลา",
+    "ประเภทเหตุการณ์",
+    "แหล่งที่มา",
+    "รหัสอ้างอิง",
+    "รหัสรายการ",
+    "ชื่อรายการ",
+    "ค่าก่อนหน้า",
+    "ค่าที่เปลี่ยน",
+    "ค่าหลังปรับ",
+    "ยอดเงิน",
+    "เหตุผล",
+    "ข้อมูลดิบ JSON",
   ],
 };
 
@@ -170,14 +179,12 @@ export function makeExpenseSheetJob(expense, movements = []) {
     }),
   ];
   const exportRows = rows.filter((row) => row.tab !== SHEET_TABS.auditLog);
-  const operations = buildMonthlyExpenseOperations(expense);
   return makeSheetJob({
     syncId,
     type: "EXPENSE",
     sourceId: expense.id,
-    description: `${expense.id} -> Expenses + Stock Movements`,
+    description: `${expense.id} -> รายจ่าย + Stock Movements`,
     rows: exportRows,
-    operations,
   });
 }
 
@@ -185,7 +192,6 @@ export function makeExpenseDeleteSheetJob(expense, movements = []) {
   const syncId = `SYNC-EXPENSE-DELETE-${expense.id}-${Date.now()}`;
   const operations = [
     { type: "DELETE_RAW_EXPENSE", expenseId: expense.id },
-    ...buildMonthlyExpenseDeleteOperations(expense),
   ];
   const rows = [
     ...buildStockMovementRows(movements, "EXPENSE_DELETE"),
@@ -227,12 +233,12 @@ export function makeResetSheetJob(mode = "transactions") {
 export function normalizeSheetJobForSync(job) {
   if (!job) return job;
   if (job.type === "SHIFT_SUMMARY") {
-    const rows = Array.isArray(job.rows) ? job.rows : [];
+    const rows = (Array.isArray(job.rows) ? job.rows : []).map(normalizeSheetRowTab);
     const shiftRow = rows.find((row) => row?.tab === SHEET_TABS.shiftSummary && Array.isArray(row.values));
-    const hasIncomeRow = rows.some((row) => row?.tab === SHEET_TABS.income);
-    const normalizedRows = shiftRow && !hasIncomeRow
-      ? [...rows, buildIncomeRowFromShiftValues(shiftRow.values)]
-      : rows;
+    const rowsWithoutIncome = rows.filter((row) => !isIncomeTab(row?.tab));
+    const normalizedRows = shiftRow
+      ? [...rowsWithoutIncome, buildIncomeRowFromShiftValues(shiftRow.values)]
+      : rowsWithoutIncome;
     const normalizedOperations = (Array.isArray(job.operations) ? job.operations : [])
       .filter((operation) => operation?.type !== "UPSERT_DAILY_REVENUE");
     return {
@@ -242,38 +248,10 @@ export function normalizeSheetJobForSync(job) {
       targetTabs: Array.from(new Set(normalizedRows.map((row) => row.tab))),
     };
   }
-  if (job.type !== "EXPENSE") return job;
-  const rows = Array.isArray(job.rows) ? job.rows : [];
-  const expenseRows = rows.filter((row) => row?.tab === SHEET_TABS.expenses && Array.isArray(row.values));
-  if (!expenseRows.length) return job;
-
-  const rebuiltExpenseOperations = expenseRows.map((row, index) => {
-    const values = row.values || [];
-    const parsedDate = parseSheetDate(values[1] || values[2] || new Date().toISOString());
-    if (!parsedDate) return null;
-    const expenseId = values[0] || job.sourceId || `EXP-${index + 1}`;
-    const itemId = `${expenseId}-${index + 1}`;
-    return {
-      type: "APPEND_MONTHLY_EXPENSE",
-      monthTab: String(parsedDate.month),
-      expenseId,
-      itemId,
-      values: [
-        parsedDate.display,
-        values[4] || values[5] || "",
-        values[6] || values[7] || "",
-        Number(values[8] || 0),
-        Number(values[9] || 0),
-        Number(values[10] || 0),
-      ],
-      meta: [expenseId, itemId],
-    };
-  }).filter(Boolean);
-
-  if (!rebuiltExpenseOperations.length) return job;
-  const otherOperations = (Array.isArray(job.operations) ? job.operations : [])
-    .filter((operation) => operation?.type !== "APPEND_MONTHLY_EXPENSE");
-  return { ...job, operations: [...otherOperations, ...rebuiltExpenseOperations] };
+  return stripRetiredMonthlyExpenseOperations({
+    ...job,
+    rows: Array.isArray(job.rows) ? job.rows.map(normalizeSheetRowTab) : job.rows,
+  });
 }
 
 export function makeShiftSheetJob(shift, summary) {
@@ -320,7 +298,7 @@ function buildAuditRow(entry) {
   return {
     tab: SHEET_TABS.auditLog,
     values: [
-      entry.createdAt || new Date().toISOString(),
+      formatBangkokDateTime(entry.createdAt),
       parts.date,
       parts.time,
       entry.eventType || "",
@@ -358,38 +336,21 @@ function makeSheetJob({ syncId, type, sourceId, description, rows, operations = 
   };
 }
 
-function buildMonthlyExpenseOperations(expense) {
-  const date = parseSheetDate(expense.expenseDate || expense.createdAt);
-  if (!date) return [];
-  return (expense.items || []).map((item, index) => {
-    const itemId = `${expense.id}-${index + 1}`;
-    return {
-      type: "APPEND_MONTHLY_EXPENSE",
-      monthTab: String(date.month),
-      expenseId: expense.id,
-      itemId,
-      values: [
-        date.display,
-        item?.name || "",
-        item?.purchaseUnit || item?.baseUnit || "",
-        Number(item?.purchaseQuantity || 0),
-        Number(item?.unitPrice || 0),
-        Number(item?.lineTotal || 0),
-      ],
-      meta: [expense.id, itemId],
-    };
-  });
+function stripRetiredMonthlyExpenseOperations(job) {
+  const operations = (Array.isArray(job.operations) ? job.operations : [])
+    .filter((operation) => operation?.type !== "APPEND_MONTHLY_EXPENSE" && operation?.type !== "DELETE_MONTHLY_EXPENSE");
+  return operations.length === (job.operations || []).length ? job : { ...job, operations };
 }
 
-function buildMonthlyExpenseDeleteOperations(expense) {
-  const date = parseSheetDate(expense.expenseDate || expense.createdAt);
-  if (!date) return [];
-  return (expense.items || []).map((item, index) => ({
-    type: "DELETE_MONTHLY_EXPENSE",
-    monthTab: String(date.month),
-    expenseId: expense.id,
-    itemId: `${expense.id}-${index + 1}`,
-  }));
+function normalizeSheetRowTab(row) {
+  if (!row || !row.tab) return row;
+  if (row.tab === LEGACY_SHEET_TABS.income) return { ...row, tab: SHEET_TABS.income };
+  if (row.tab === LEGACY_SHEET_TABS.expenses) return { ...row, tab: SHEET_TABS.expenses };
+  return row;
+}
+
+function isIncomeTab(tabName) {
+  return tabName === SHEET_TABS.income || tabName === LEGACY_SHEET_TABS.income;
 }
 
 function buildSalesRows(order, options = {}) {
@@ -401,7 +362,7 @@ function buildSalesRows(order, options = {}) {
     values: [
       order.id,
       order.orderNo || "",
-      order.createdAt || "",
+      formatBangkokDateTime(order.createdAt),
       orderDate.date,
       orderDate.time,
       order.salesChannel || "store",
@@ -418,7 +379,7 @@ function buildSalesRows(order, options = {}) {
       (item?.modifiers || []).join(", "),
       item?.note || "",
       order.paymentStatus || "",
-      order.voidedAt || "",
+      formatBangkokDateTime(order.voidedAt),
       order.voidReason || "",
       order.voidRefundMethod || "",
       order.voidRefundAmount ?? "",
@@ -433,8 +394,8 @@ function buildExpenseRows(expense) {
     tab: SHEET_TABS.expenses,
     values: [
       expense.id,
-      expense.expenseDate || splitDateTime(expense.createdAt).date,
-      expense.createdAt || "",
+      formatBangkokDate(expense.expenseDate || expense.createdAt),
+      formatBangkokDateTime(expense.createdAt),
       item?.ingredientId || "",
       item?.name || "",
       item?.ingredientId ? item.name : "",
@@ -460,18 +421,20 @@ function buildIncomeRow(shift, summary) {
     tab: SHEET_TABS.income,
     values: [
       `INC-${shift.id || Date.now()}`,
-      formatBangkokIsoDate(closedAt),
-      closedAt,
+      formatBangkokDate(closedAt),
+      formatBangkokDateTime(closedAt),
       shift.id || "",
+      Number(summary.totalSales || 0),
       Number(summary.cashSales || 0),
       Number(summary.transferSales || 0),
-      Number(summary.totalSales || 0),
+      Number(summary.thaiChuayThaiSales || 0),
       Number(summary.grossSales || summary.totalSales || 0),
       Number(summary.voidAmount || 0),
       Number(summary.cashRefundAmount || 0),
       Number(summary.transferRefundAmount || 0),
-      Number(summary.netSales || summary.totalSales || 0),
       Number(summary.orderCount || 0),
+      Number(summary.burgerQuantity || 0),
+      Number(summary.bbqQuantity || 0),
     ],
   };
 }
@@ -479,22 +442,28 @@ function buildIncomeRow(shift, summary) {
 function buildIncomeRowFromShiftValues(values = []) {
   const closedAt = values[2] || new Date().toISOString();
   const shiftId = values[0] || "";
+  const hasLegacyNetSalesColumn = values.length > 19;
+  const thaiChuayThaiIndex = hasLegacyNetSalesColumn ? 17 : 16;
+  const burgerQuantityIndex = hasLegacyNetSalesColumn ? 18 : 17;
+  const bbqQuantityIndex = hasLegacyNetSalesColumn ? 19 : 18;
   return {
     tab: SHEET_TABS.income,
     values: [
       `INC-${shiftId || Date.now()}`,
-      formatBangkokIsoDate(closedAt),
-      closedAt,
+      formatBangkokDate(closedAt),
+      formatBangkokDateTime(closedAt),
       shiftId,
+      Number(values[6] || 0),
       Number(values[4] || 0),
       Number(values[5] || 0),
-      Number(values[6] || 0),
+      Number(values[thaiChuayThaiIndex] || 0),
       Number(values[11] || values[6] || 0),
       Number(values[13] || 0),
       Number(values[14] || 0),
       Number(values[15] || 0),
-      Number(values[16] || values[6] || 0),
       Number(values[10] || 0),
+      Number(values[burgerQuantityIndex] || 0),
+      Number(values[bbqQuantityIndex] || 0),
     ],
   };
 }
@@ -503,7 +472,7 @@ function buildStockMovementRows(movements, sourceType) {
   return movements.map((movement) => ({
     tab: SHEET_TABS.stockMovements,
     values: [
-      movement.createdAt || "",
+      formatBangkokDateTime(movement.createdAt),
       splitDateTime(movement.createdAt).date,
       splitDateTime(movement.createdAt).time,
       movement.type || "",
@@ -525,8 +494,8 @@ function buildShiftRow(shift, summary) {
     tab: SHEET_TABS.shiftSummary,
     values: [
       shift.id,
-      summary.openedAt || shift.openedAt || "",
-      summary.closedAt || shift.closedAt || "",
+      formatBangkokDateTime(summary.openedAt || shift.openedAt),
+      formatBangkokDateTime(summary.closedAt || shift.closedAt),
       Number(shift.openingCash || 0),
       Number(summary.cashSales || 0),
       Number(summary.transferSales || 0),
@@ -540,7 +509,9 @@ function buildShiftRow(shift, summary) {
       Number(summary.voidAmount || 0),
       Number(summary.cashRefundAmount || 0),
       Number(summary.transferRefundAmount || 0),
-      Number(summary.netSales || summary.totalSales || 0),
+      Number(summary.thaiChuayThaiSales || 0),
+      Number(summary.burgerQuantity || 0),
+      Number(summary.bbqQuantity || 0),
     ],
   };
 }
@@ -550,22 +521,43 @@ function splitDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return { date: "", time: "" };
   return {
-    date: date.toLocaleDateString("th-TH"),
-    time: date.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+    date: formatBangkokDate(value),
+    time: formatBangkokTime(value),
   };
 }
 
-function formatBangkokIsoDate(value) {
+function getBangkokDateParts(value, options = {}) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
+  if (Number.isNaN(date.getTime())) return null;
   const parts = new Intl.DateTimeFormat("en", {
     timeZone: "Asia/Bangkok",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    ...(options.time ? { hour: "2-digit", minute: "2-digit", hour12: false } : {}),
   }).formatToParts(date);
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
+  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
+}
+
+function formatBangkokDate(value) {
+  if (!value) return "";
+  const values = getBangkokDateParts(value);
+  if (!values) return String(value || "");
+  return `${values.day}/${values.month}/${values.year}`;
+}
+
+function formatBangkokTime(value) {
+  if (!value) return "";
+  const values = getBangkokDateParts(value, { time: true });
+  if (!values) return "";
+  return `${values.hour}:${values.minute}`;
+}
+
+function formatBangkokDateTime(value) {
+  if (!value) return "";
+  const values = getBangkokDateParts(value, { time: true });
+  if (!values) return String(value || "");
+  return `${values.day}/${values.month}/${values.year} ${values.hour}:${values.minute}`;
 }
 
 function parseSheetDate(value) {

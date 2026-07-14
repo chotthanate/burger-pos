@@ -12,13 +12,16 @@ export function getProductRequirements(productId, modifierIds = [], catalog = {}
   const activeRecipes = catalog.recipes || recipes;
   const activeModifierRecipes = catalog.modifierRecipes || modifierRecipes;
   const required = new Map();
+  const modifierCounts = countIds(modifierIds);
   activeRecipes
     .filter((recipe) => recipe.productId === productId)
     .forEach((recipe) => addRequired(required, recipe.ingredientId, recipe.quantity));
 
   activeModifierRecipes
-    .filter((recipe) => modifierIds.includes(recipe.modifierId))
-    .forEach((recipe) => addRequired(required, recipe.ingredientId, recipe.quantity));
+    .forEach((recipe) => {
+      const modifierCount = Number(modifierCounts.get(recipe.modifierId) || 0);
+      if (modifierCount) addRequired(required, recipe.ingredientId, recipe.quantity * modifierCount);
+    });
 
   return Array.from(required.entries())
     .map(([ingredientId, quantity]) => ({ ingredientId, quantity: Math.max(0, quantity) }))
@@ -68,12 +71,13 @@ export function canSellProduct(productId, ingredients, modifierIds = [], catalog
   return getMissingIngredients(getProductRequirements(productId, modifierIds, catalog), ingredients).length === 0;
 }
 
-export function applyStockMovement(ingredients, requirements, direction) {
+export function applyStockMovement(ingredients, requirements, direction, { allowNegative = false } = {}) {
   const delta = direction === "out" ? -1 : 1;
   return ingredients.map((ingredient) => {
     const required = requirements.find((line) => line.ingredientId === ingredient.id);
     if (!required) return ingredient;
-    return { ...ingredient, stock: Math.max(0, Number(ingredient.stock) + required.quantity * delta) };
+    const nextStock = Number(ingredient.stock) + required.quantity * delta;
+    return { ...ingredient, stock: allowNegative ? nextStock : Math.max(0, nextStock) };
   });
 }
 
@@ -94,13 +98,31 @@ export function makeOrderPayload({ cart, orderNo, paymentMethod, cashReceived, t
     items: cart.map((item) => ({
       productId: item.product.id,
       name: item.product.name,
+      category: item.product.category || "",
       quantity: item.quantity,
       unitPrice: item.unitPrice,
       modifierIds: item.modifierIds,
-      modifiers: item.modifiers.map((modifier) => modifier.label),
+      modifiers: summarizeModifiers(item.modifiers),
       note: item.note || "",
     })),
   };
+}
+
+function countIds(ids = []) {
+  return ids.reduce((counts, id) => {
+    counts.set(id, Number(counts.get(id) || 0) + 1);
+    return counts;
+  }, new Map());
+}
+
+function summarizeModifiers(modifiers = []) {
+  const summary = new Map();
+  modifiers.forEach((modifier) => {
+    const key = modifier.id || modifier.label;
+    const current = summary.get(key) || { label: modifier.label || key, count: 0 };
+    summary.set(key, { ...current, count: current.count + 1 });
+  });
+  return Array.from(summary.values()).map((item) => (item.count > 1 ? `${item.label} x${item.count}` : item.label));
 }
 
 function addRequired(map, ingredientId, quantity) {

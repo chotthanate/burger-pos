@@ -4,18 +4,40 @@ const APP_STATE_ACTION_UPSERT = "upsertAppState";
 const LINE_ACTION_SEND = "sendLineMessage";
 const DEFAULT_SHEET_ID = "1-JJ9u2NjqBrQtgrBb4sUsmwdV36GP25g-rJPrwv8mpI";
 const APP_STATE_TAB = "App State";
-const APP_STATE_HEADERS = ["store_id", "key", "payload_json", "updated_at", "source"];
+const APP_STATE_HEADERS = ["รหัสร้าน", "คีย์ข้อมูล", "ข้อมูล JSON", "เวลาอัปเดต", "แหล่งที่มา"];
+const DATA_TAB_ALIASES = {
+  "Income": "รายรับ",
+  "Expenses": "รายจ่าย",
+};
 const DATA_SHEET_HEADERS = {
-  "Income": [
-    "income_id", "income_date", "closed_at", "shift_id", "cash_sales",
-    "transfer_sales", "total_sales", "gross_sales", "void_amount",
-    "cash_refund_amount", "transfer_refund_amount", "net_sales", "order_count",
+  "Sales": [
+    "รหัสออร์เดอร์", "เลขออร์เดอร์", "เวลาบันทึก", "วันที่", "เวลา",
+    "ช่องทางขาย", "วิธีชำระเงิน", "ยอดรวม", "เงินที่รับ", "เงินทอน",
+    "รหัสกะ", "รหัสสินค้า", "ชื่อสินค้า", "จำนวน", "ราคาต่อหน่วย",
+    "ยอดรายการ", "ตัวเลือกเสริม", "หมายเหตุรายการ", "สถานะออร์เดอร์",
+    "เวลายกเลิก", "เหตุผลยกเลิก", "วิธีคืนเงิน", "ยอดคืนเงิน", "คืนสต็อกแล้ว",
   ],
-  "Expenses": [
-    "expense_id", "expense_date", "created_at", "ingredient_id", "item_name",
-    "ingredient_name", "purchase_unit", "base_unit", "quantity", "unit_price",
-    "line_total", "stock_quantity", "category", "subcategory", "note",
-    "total_amount", "expense_type", "general_expense_item_id",
+  "รายรับ": [
+    "รหัสรายรับ", "วันที่", "เวลาปิดกะ", "รหัสกะ", "ยอดขายรวม",
+    "เงินสด", "เงินโอน", "ไทยช่วยไทย", "ยอดก่อนยกเลิก", "ยอดยกเลิก",
+    "คืนเงินสด", "คืนเงินโอน", "จำนวนออร์เดอร์", "จำนวนเบอร์เกอร์", "จำนวน BBQ",
+  ],
+  "รายจ่าย": [
+    "รหัสรายจ่าย", "วันที่", "วันเวลาบันทึก", "รหัสวัตถุดิบ", "ชื่อรายการ",
+    "ชื่อวัตถุดิบ", "หน่วยซื้อ", "หน่วยสต็อก", "จำนวนซื้อ", "ราคาต่อหน่วย",
+    "ยอดรายการ", "จำนวนเข้าสต็อก", "ประเภทหลัก", "ประเภทย่อย", "หมายเหตุ",
+    "ยอดรวม", "ประเภทรายจ่าย", "รหัสรายการฐานข้อมูล",
+  ],
+  "Stock Movements": [
+    "เวลาบันทึก", "วันที่", "เวลา", "ประเภทความเคลื่อนไหว", "รหัสวัตถุดิบ",
+    "ชื่อวัตถุดิบ", "จำนวนก่อนหน้า", "จำนวนเปลี่ยนแปลง", "จำนวนหลังปรับ",
+    "หน่วย", "แหล่งที่มา", "รหัสอ้างอิง", "เหตุผล",
+  ],
+  "Shift Summary": [
+    "รหัสกะ", "เวลาเปิดกะ", "เวลาปิดกะ", "เงินเริ่มต้น", "เงินสด",
+    "เงินโอน", "ยอดขายรวม", "เงินที่ควรมี", "เงินที่นับได้", "ส่วนต่างเงินสด",
+    "จำนวนออร์เดอร์", "ยอดก่อนยกเลิก", "จำนวนออร์เดอร์ยกเลิก", "ยอดยกเลิก",
+    "คืนเงินสด", "คืนเงินโอน", "ไทยช่วยไทย", "จำนวนเบอร์เกอร์", "จำนวน BBQ",
   ],
 };
 
@@ -42,8 +64,10 @@ function doPost(e) {
 
 function appendSheetSyncJob_(payload) {
   const spreadsheet = SpreadsheetApp.openById(payload.sheetId);
-  const rows = normalizeSheetRows_(payload.job || {});
-  const operations = normalizeSheetOperations_(payload.job || {}, payload.job && payload.job.operations ? payload.job.operations : []);
+  const job = payload.job || {};
+  const rows = normalizeSheetRows_(job);
+  const operations = normalizeSheetOperations_(job, job && job.operations ? job.operations : []);
+  prepareRawRowsForAppend_(spreadsheet, job, rows);
   rows.forEach((row) => {
     const sheet = getOrCreateDataSheet_(spreadsheet, row.tab);
     sheet.appendRow(normalizeRowValuesForSheet_(row));
@@ -107,177 +131,145 @@ function upsertAppState_(payload) {
 
 function normalizeRowValuesForSheet_(row) {
   const values = row && row.values ? row.values.slice() : [];
-  if (row && row.tab === "Income" && /^\d{4}-\d{2}-\d{2}$/.test(String(values[1] || ""))) {
-    const parts = String(values[1]).split("-").map(Number);
-    values[1] = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+  const tabName = canonicalDataTabName_(row && row.tab);
+  if (tabName === "รายรับ") {
+    values[1] = formatSheetDate_(values[1]);
+    values[2] = formatSheetDateTime_(values[2]);
+  }
+  if (tabName === "รายจ่าย") {
+    values[1] = formatSheetDate_(values[1]);
+    values[2] = formatSheetDateTime_(values[2]);
+  }
+  if (tabName === "Sales") {
+    values[2] = formatSheetDateTime_(values[2]);
+    values[19] = formatSheetDateTime_(values[19]);
+  }
+  if (tabName === "Stock Movements") {
+    values[0] = formatSheetDateTime_(values[0]);
+  }
+  if (tabName === "Shift Summary") {
+    values[1] = formatSheetDateTime_(values[1]);
+    values[2] = formatSheetDateTime_(values[2]);
+  }
+  if (tabName === "Audit Log") {
+    values[0] = formatSheetDateTime_(values[0]);
   }
   return values;
+}
+
+function prepareRawRowsForAppend_(spreadsheet, job, rows) {
+  if (!job || job.type !== "EXPENSE") return;
+  const expenseIds = {};
+  if (job.sourceId) expenseIds[String(job.sourceId)] = true;
+  rows.forEach(function(row) {
+    if (row && canonicalDataTabName_(row.tab) === "รายจ่าย" && row.values && row.values[0]) {
+      expenseIds[String(row.values[0])] = true;
+    }
+  });
+  const ids = Object.keys(expenseIds);
+  if (!ids.length) return;
+  ids.forEach(function(expenseId) {
+    deleteRawExpense_(spreadsheet, { expenseId: expenseId });
+  });
+  deleteStockMovementRowsBySourceIds_(spreadsheet, ids);
 }
 
 function normalizeSheetRows_(job) {
   const rows = job && job.rows ? job.rows.slice() : [];
   if (!job || job.type !== "SHIFT_SUMMARY") return rows;
-  const hasIncomeRow = rows.some(function(row) {
-    return row && row.tab === "Income";
-  });
-  if (hasIncomeRow) return rows;
   const shiftRow = rows.find(function(row) {
     return row && row.tab === "Shift Summary" && row.values;
   });
-  if (!shiftRow) return rows;
-  rows.push(buildIncomeRowFromShiftValues_(shiftRow.values || []));
-  return rows;
+  const rowsWithoutIncome = rows.filter(function(row) {
+    return !row || canonicalDataTabName_(row.tab) !== "รายรับ";
+  });
+  if (!shiftRow) return rowsWithoutIncome;
+  rowsWithoutIncome.push(buildIncomeRowFromShiftValues_(shiftRow.values || []));
+  return rowsWithoutIncome;
 }
 
 function buildIncomeRowFromShiftValues_(values) {
   const closedAt = values[2] || new Date().toISOString();
   const shiftId = values[0] || "";
+  const hasLegacyNetSalesColumn = values.length > 19;
+  const thaiChuayThaiIndex = hasLegacyNetSalesColumn ? 17 : 16;
+  const burgerQuantityIndex = hasLegacyNetSalesColumn ? 18 : 17;
+  const bbqQuantityIndex = hasLegacyNetSalesColumn ? 19 : 18;
   return {
-    tab: "Income",
+    tab: "รายรับ",
     values: [
       "INC-" + (shiftId || new Date().getTime()),
       formatSheetDate_(closedAt),
       closedAt,
       shiftId,
+      Number(values[6] || 0),
       Number(values[4] || 0),
       Number(values[5] || 0),
-      Number(values[6] || 0),
+      Number(values[thaiChuayThaiIndex] || 0),
       Number(values[11] || values[6] || 0),
       Number(values[13] || 0),
       Number(values[14] || 0),
       Number(values[15] || 0),
-      Number(values[16] || values[6] || 0),
       Number(values[10] || 0),
+      Number(values[burgerQuantityIndex] || 0),
+      Number(values[bbqQuantityIndex] || 0),
     ],
   };
 }
 
 function formatSheetDate_(value) {
+  if (!value) return "";
+  const text = String(value || "").trim();
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(text)) return text;
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}/.test(text)) return text.split(/\s+/)[0];
   const date = new Date(value);
   if (isNaN(date.getTime())) return String(value || "");
-  return Utilities.formatDate(date, "Asia/Bangkok", "yyyy-MM-dd");
+  return Utilities.formatDate(date, "Asia/Bangkok", "dd/MM/yyyy");
+}
+
+function formatSheetDateTime_(value) {
+  if (!value) return "";
+  const text = String(value || "").trim();
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}/.test(text)) return text;
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return String(value || "");
+  return Utilities.formatDate(date, "Asia/Bangkok", "dd/MM/yyyy HH:mm");
 }
 
 function runSheetOperations_(spreadsheet, operations) {
   const results = [];
-  const monthlyExpenseGroups = {};
-
   (operations || []).forEach(function(operation) {
-    if (operation && operation.type === "APPEND_MONTHLY_EXPENSE") {
-      const monthTab = String(operation.monthTab || "");
-      if (!monthlyExpenseGroups[monthTab]) monthlyExpenseGroups[monthTab] = [];
-      monthlyExpenseGroups[monthTab].push(operation);
+    if (isRetiredMonthlyExpenseOperation_(operation)) {
+      results.push({
+        ok: true,
+        type: operation.type,
+        skipped: true,
+        reason: "monthly expense tabs retired; use รายจ่าย table",
+      });
       return;
     }
     results.push(runSheetOperation_(spreadsheet, operation));
   });
-
-  Object.keys(monthlyExpenseGroups).forEach(function(monthTab) {
-    const group = monthlyExpenseGroups[monthTab];
-    const sheet = getRequiredSheet_(spreadsheet, monthTab);
-    const row = findFirstEmptyExpenseRow_(sheet);
-    const values = group.map(function(operation) {
-      return buildMonthlyExpenseValues_(operation);
-    });
-    sheet.getRange(row, 12, values.length, 8).setValues(values);
-    group.forEach(function(operation, index) {
-      results.push({
-        ok: true,
-        type: "APPEND_MONTHLY_EXPENSE",
-        tab: monthTab,
-        row: row + index,
-        expenseId: operation.expenseId || "",
-        itemId: operation.itemId || "",
-      });
-    });
-  });
-
   return results;
 }
 
 function normalizeSheetOperations_(job, operations) {
-  const currentOperations = operations || [];
+  const currentOperations = (operations || []).filter(function(operation) {
+    return !isRetiredMonthlyExpenseOperation_(operation);
+  });
   if (job && job.type === "SHIFT_SUMMARY") {
     return currentOperations.filter(function(operation) {
       return !operation || operation.type !== "UPSERT_DAILY_REVENUE";
     });
   }
-  if (!job || job.type !== "EXPENSE") return currentOperations;
-  const rows = job.rows || [];
-  const expenseRows = rows.filter(function(row) {
-    return row && row.tab === "Expenses" && row.values;
-  });
-  if (!expenseRows.length) return currentOperations;
-
-  const otherOperations = currentOperations.filter(function(operation) {
-    return !operation || operation.type !== "APPEND_MONTHLY_EXPENSE";
-  });
-  const rebuiltOperations = expenseRows.map(function(row, index) {
-    return buildMonthlyExpenseOperationFromRow_(row, index, job);
-  }).filter(function(operation) {
-    return !!operation;
-  });
-  return otherOperations.concat(rebuiltOperations);
+  return currentOperations;
 }
 
-function buildMonthlyExpenseOperationFromRow_(row, index, job) {
-  const values = row.values || [];
-  const parsedDate = parseMonthlyExpenseDate_(values[1], values[2]);
-  if (!parsedDate) return null;
-  const expenseId = values[0] || job.sourceId || ("EXP-" + (index + 1));
-  const itemId = expenseId + "-" + (index + 1);
-  return {
-    type: "APPEND_MONTHLY_EXPENSE",
-    monthTab: String(parsedDate.month),
-    expenseId: expenseId,
-    itemId: itemId,
-    values: [
-      parsedDate.display,
-      values[4] || values[5] || "",
-      values[6] || values[7] || "",
-      Number(values[8] || 0),
-      Number(values[9] || 0),
-      Number(values[10] || 0),
-    ],
-    meta: [expenseId, itemId],
-  };
-}
-
-function parseMonthlyExpenseDate_(value, fallbackValue) {
-  const source = value || fallbackValue || new Date();
-  if (Object.prototype.toString.call(source) === "[object Date]" && !isNaN(source.getTime())) {
-    return buildMonthlyExpenseDate_(source.getDate(), source.getMonth() + 1, source.getFullYear());
-  }
-  const text = String(source || "").trim();
-  let match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (match) {
-    return buildMonthlyExpenseDate_(Number(match[3]), Number(match[2]), Number(match[1]));
-  }
-  match = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (match) {
-    let year = Number(match[3]);
-    if (year > 2400) year -= 543;
-    return buildMonthlyExpenseDate_(Number(match[1]), Number(match[2]), year);
-  }
-  const parsed = new Date(source);
-  if (!isNaN(parsed.getTime())) {
-    return buildMonthlyExpenseDate_(parsed.getDate(), parsed.getMonth() + 1, parsed.getFullYear());
-  }
-  return null;
-}
-
-function buildMonthlyExpenseDate_(day, month, year) {
-  if (!day || !month || !year) return null;
-  const displayYear = year < 2400 ? year + 543 : year;
-  return {
-    day: day,
-    month: month,
-    display: pad2_(day) + "/" + pad2_(month) + "/" + displayYear,
-  };
-}
-
-function pad2_(value) {
-  return String(value).padStart(2, "0");
+function isRetiredMonthlyExpenseOperation_(operation) {
+  return operation && (
+    operation.type === "APPEND_MONTHLY_EXPENSE"
+    || operation.type === "DELETE_MONTHLY_EXPENSE"
+  );
 }
 
 function runSheetOperation_(spreadsheet, operation) {
@@ -285,11 +277,13 @@ function runSheetOperation_(spreadsheet, operation) {
   if (operation.type === "UPSERT_DAILY_REVENUE") {
     return upsertDailyRevenue_(spreadsheet, operation);
   }
-  if (operation.type === "APPEND_MONTHLY_EXPENSE") {
-    return appendMonthlyExpense_(spreadsheet, operation);
-  }
-  if (operation.type === "DELETE_MONTHLY_EXPENSE") {
-    return deleteMonthlyExpense_(spreadsheet, operation);
+  if (isRetiredMonthlyExpenseOperation_(operation)) {
+    return {
+      ok: true,
+      type: operation.type,
+      skipped: true,
+      reason: "monthly expense tabs retired; use รายจ่าย table",
+    };
   }
   if (operation.type === "DELETE_RAW_EXPENSE") {
     return deleteRawExpense_(spreadsheet, operation);
@@ -313,55 +307,40 @@ function upsertDailyRevenue_(spreadsheet, operation) {
   return { ok: true, type: operation.type, tab: operation.monthTab, row: row };
 }
 
-function appendMonthlyExpense_(spreadsheet, operation) {
-  const sheet = getRequiredSheet_(spreadsheet, operation.monthTab);
-  const row = findFirstEmptyExpenseRow_(sheet);
-  sheet.getRange(row, 12, 1, 8).setValues([buildMonthlyExpenseValues_(operation)]);
-  return { ok: true, type: operation.type, tab: operation.monthTab, row: row };
-}
-
-function buildMonthlyExpenseValues_(operation) {
-  const values = operation.values || [];
-  const meta = operation.meta || [operation.expenseId || "", operation.itemId || ""];
-  return [
-    values[0] || "",
-    values[1] || "",
-    values[2] || "",
-    Number(values[3] || 0),
-    Number(values[4] || 0),
-    Number(values[5] || 0),
-    meta[0] || "",
-    meta[1] || "",
-  ];
-}
-
-function deleteMonthlyExpense_(spreadsheet, operation) {
-  const sheet = getRequiredSheet_(spreadsheet, operation.monthTab);
-  const target = findExpenseMetaRow_(sheet, operation.expenseId, operation.itemId);
-  if (!target) return { ok: true, type: operation.type, deleted: false };
-  shiftExpenseBlockUp_(sheet, target);
-  return { ok: true, type: operation.type, deleted: true, row: target };
-}
-
 function deleteRawExpense_(spreadsheet, operation) {
-  const sheet = spreadsheet.getSheetByName("Expenses");
+  const sheet = getExistingDataSheet_(spreadsheet, "รายจ่าย");
   if (!sheet || !operation.expenseId) return { ok: true, type: operation.type, deletedRows: 0 };
+  const deletedRows = deleteRowsByColumnValues_(sheet, 1, [operation.expenseId]);
+  return { ok: true, type: operation.type, deletedRows: deletedRows };
+}
+
+function deleteStockMovementRowsBySourceIds_(spreadsheet, sourceIds) {
+  const sheet = spreadsheet.getSheetByName("Stock Movements");
+  if (!sheet || !sourceIds || !sourceIds.length) return 0;
+  return deleteRowsByColumnValues_(sheet, 12, sourceIds);
+}
+
+function deleteRowsByColumnValues_(sheet, column, targetValues) {
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return { ok: true, type: operation.type, deletedRows: 0 };
-  const values = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  if (lastRow < 2) return 0;
+  const targets = {};
+  targetValues.forEach(function(value) {
+    targets[String(value || "")] = true;
+  });
+  const values = sheet.getRange(2, column, lastRow - 1, 1).getValues();
   let deletedRows = 0;
   for (let index = values.length - 1; index >= 0; index -= 1) {
-    if (values[index][0] === operation.expenseId) {
+    if (targets[String(values[index][0] || "")]) {
       sheet.deleteRow(index + 2);
       deletedRows += 1;
     }
   }
-  return { ok: true, type: operation.type, deletedRows: deletedRows };
+  return deletedRows;
 }
 
 function resetBurgerPosSheet_(spreadsheet, operation) {
-  ["Sales", "Income", "Expenses", "Stock Movements", "Shift Summary"].forEach(function(tabName) {
-    clearDataRows_(spreadsheet.getSheetByName(tabName));
+  ["Sales", "รายรับ", "รายจ่าย", "Stock Movements", "Shift Summary"].forEach(function(tabName) {
+    clearDataRows_(getExistingDataSheet_(spreadsheet, tabName));
   });
   clearDataRows_(getOrCreateAuditSheet_(spreadsheet));
   for (let month = 1; month <= 12; month += 1) {
@@ -382,17 +361,21 @@ function clearDataRows_(sheet) {
 }
 
 function getRequiredSheet_(spreadsheet, tabName) {
-  const sheet = spreadsheet.getSheetByName(String(tabName || ""));
+  const sheet = getExistingDataSheet_(spreadsheet, tabName);
   if (!sheet) throw new Error("Missing sheet tab: " + tabName);
   return sheet;
 }
 
 function getOrCreateDataSheet_(spreadsheet, tabName) {
-  if (tabName === "Audit Log") return getOrCreateAuditSheet_(spreadsheet);
-  const headers = DATA_SHEET_HEADERS[tabName];
-  let sheet = spreadsheet.getSheetByName(tabName);
-  if (!sheet && headers) sheet = spreadsheet.insertSheet(tabName);
-  if (!sheet) throw new Error("Missing sheet tab: " + tabName);
+  const canonicalTabName = canonicalDataTabName_(tabName);
+  if (canonicalTabName === "Audit Log") return getOrCreateAuditSheet_(spreadsheet);
+  const headers = DATA_SHEET_HEADERS[canonicalTabName];
+  let sheet = getExistingDataSheet_(spreadsheet, canonicalTabName);
+  if (!sheet && headers) sheet = spreadsheet.insertSheet(canonicalTabName);
+  if (!sheet) throw new Error("Missing sheet tab: " + canonicalTabName);
+  if (sheet.getName() !== canonicalTabName && !spreadsheet.getSheetByName(canonicalTabName)) {
+    sheet.setName(canonicalTabName);
+  }
   if (headers) {
     if (sheet.getMaxColumns() < headers.length) {
       sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
@@ -401,6 +384,16 @@ function getOrCreateDataSheet_(spreadsheet, tabName) {
     sheet.setFrozenRows(1);
   }
   return sheet;
+}
+
+function canonicalDataTabName_(tabName) {
+  const name = String(tabName || "");
+  return DATA_TAB_ALIASES[name] || name;
+}
+
+function getExistingDataSheet_(spreadsheet, tabName) {
+  const canonicalTabName = canonicalDataTabName_(tabName);
+  return spreadsheet.getSheetByName(canonicalTabName) || spreadsheet.getSheetByName(String(tabName || ""));
 }
 
 function getOrCreateAppStateSheet_(spreadsheet) {
@@ -445,20 +438,20 @@ function getOrCreateAuditSheet_(spreadsheet) {
   }
   if (sheet.getLastRow() === 0) {
     sheet.appendRow([
-      "created_at",
-      "date",
-      "time",
-      "event_type",
-      "source_type",
-      "source_id",
-      "item_id",
-      "item_name",
-      "before_value",
-      "change_value",
-      "after_value",
-      "amount",
-      "reason",
-      "raw_json",
+      "เวลาบันทึก",
+      "วันที่",
+      "เวลา",
+      "ประเภทเหตุการณ์",
+      "แหล่งที่มา",
+      "รหัสอ้างอิง",
+      "รหัสรายการ",
+      "ชื่อรายการ",
+      "ค่าก่อนหน้า",
+      "ค่าที่เปลี่ยน",
+      "ค่าหลังปรับ",
+      "ยอดเงิน",
+      "เหตุผล",
+      "ข้อมูลดิบ JSON",
     ]);
     sheet.setFrozenRows(1);
   }

@@ -8,7 +8,8 @@ export function buildPrintText(job, settings = {}) {
   const type = job?.type || "KITCHEN";
   const order = job?.order || {};
   if (type === "SHIFT_SUMMARY") return buildShiftSummaryText(job);
-  return type === "RECEIPT" ? buildReceiptText(order, settings) : buildKitchenText(order, settings);
+  const text = type === "RECEIPT" ? buildReceiptText(order, settings) : buildKitchenText(order, settings);
+  return shouldOpenCashDrawer(job, settings) ? `${text}${cashDrawerKickText(settings)}` : text;
 }
 
 export async function sendPrintJob(job, settings = {}) {
@@ -27,7 +28,7 @@ export async function sendPrintJob(job, settings = {}) {
   });
 
   if (method === "RAWBT_INTENT") {
-    launchRawBtText(buildRawBtTextPrintText(job));
+    launchRawBtText(buildRawBtTextPrintText(job, settings));
     return true;
   }
 
@@ -100,6 +101,7 @@ export function makePrinterTestJob() {
       id: `ORD-${Date.now()}`,
       orderNo: "#TEST",
       createdAt: new Date().toISOString(),
+      isTest: true,
       paymentMethod: "CASH",
       totalAmount: 1,
       cashReceived: 1,
@@ -123,13 +125,14 @@ function buildKitchenText(order, settings = {}) {
     "\x1b!\x10ใบออร์เดอร์\x1b!\x00",
     getOrderDisplayNo(order),
     formatDate(order.createdAt),
+    order.isTest ? "TEST MODE - NOT SAVED" : "",
     order.paymentStatus === "VOIDED" ? "ยกเลิกแล้ว" : "",
     "------------------------------",
     "\x1ba\x00",
     ...buildItemLines(order, { includePrice: false }),
     "------------------------------",
     "ส่งเข้าครัว",
-    "\n\n\n\x1dV\x00",
+    "\n\n\n\n\x1d\x56\x42\x03",
   ].filter(Boolean);
   return lines.join("\n");
 }
@@ -141,24 +144,38 @@ function buildReceiptText(order, settings = {}) {
     "\x1b!\x10ใบเสร็จรับเงิน\x1b!\x00",
     getOrderDisplayNo(order),
     formatDate(order.createdAt),
+    order.isTest ? "TEST MODE - NOT SAVED" : "",
     order.paymentStatus === "VOIDED" ? "ยกเลิกแล้ว" : "",
     "------------------------------",
     "\x1ba\x00",
     ...buildItemLines(order, { includePrice: true }),
     "------------------------------",
     alignLine("รวม", `${money(order.totalAmount)} บาท`),
-    order.paymentMethod === "CASH" ? alignLine("รับเงิน", `${money(order.cashReceived)} บาท`) : "ชำระด้วยเงินโอน",
+    order.paymentMethod === "CASH" ? alignLine("รับเงิน", `${money(order.cashReceived)} บาท`) : `ชำระด้วย${paymentMethodLabel(order.paymentMethod)}`,
     order.paymentMethod === "CASH" ? alignLine("เงินทอน", `${money(order.changeDue)} บาท`) : "",
-    "\n\n\n\x1dV\x00",
+    "\n\n\n\n\x1d\x56\x42\x03",
   ].filter(Boolean);
   return lines.join("\n");
 }
 
-function buildRawBtTextPrintText(job) {
+function buildRawBtTextPrintText(job, settings = {}) {
   const type = job?.type || "KITCHEN";
   const order = job?.order || {};
   if (type === "SHIFT_SUMMARY") return buildRawBtShiftSummaryText(job);
-  return type === "RECEIPT" ? buildRawBtReceiptText(order) : buildRawBtKitchenText(order);
+  const text = type === "RECEIPT" ? buildRawBtReceiptText(order) : buildRawBtKitchenText(order);
+  return shouldOpenCashDrawer(job, settings) ? `${text}${cashDrawerKickText(settings)}` : text;
+}
+
+function shouldOpenCashDrawer(job = {}, settings = {}) {
+  return settings.cashDrawerEnabled !== false
+    && job?.openCashDrawer === true
+    && job?.order?.paymentMethod === "CASH"
+    && job?.type !== "SHIFT_SUMMARY";
+}
+
+function cashDrawerKickText(settings = {}) {
+  const pin = String(settings.cashDrawerPin || "0") === "1" ? "\x01" : "\x00";
+  return `\x1bp${pin}\x19\xfa`;
 }
 
 function buildShiftSummaryText(job = {}) {
@@ -167,25 +184,25 @@ function buildShiftSummaryText(job = {}) {
   return [
     "\x1b@",
     "\x1ba\x01",
-    "\x1b!\x10ใบสรุปปิดกะ\x1b!\x00",
-    formatDate(summary.closedAt || shift.closedAt || Date.now()),
+    "\x1b!\x00ใบสรุปปิดกะ",
     "------------------------------",
     "\x1ba\x00",
-    alignLine("ยอดขายก่อนยกเลิก", `${money(summary.grossSales || summary.totalSales || 0)} บาท`),
-    alignLine("ยอดขายสุทธิ", `${money(summary.netSales || summary.totalSales || 0)} บาท`),
-    alignLine("เงินสดขาย", `${money(summary.cashSales || 0)} บาท`),
+    alignLine("เปิดกะ", formatDate(summary.openedAt || shift.openedAt || Date.now())),
+    alignLine("ปิดกะ", formatDate(summary.closedAt || shift.closedAt || Date.now())),
+    alignLine("ออร์เดอร์ทั้งหมด", `${summary.orderCount || 0}`),
+    alignLine("เบอร์เกอร์", `${money(summary.burgerQuantity || 0)} ชิ้น`),
+    alignLine("BBQ", `${money(summary.bbqQuantity || 0)} ชิ้น`),
+    "------------------------------",
+    alignLine("ยอดขายรวม", `${money(summary.netSales || summary.totalSales || 0)} บาท`),
+    alignLine("เงินสด", `${money(summary.cashSales || 0)} บาท`),
     alignLine("เงินโอน", `${money(summary.transferSales || 0)} บาท`),
-    alignLine("ออร์เดอร์", `${summary.orderCount || 0}`),
-    alignLine("ยกเลิก", `${summary.voidOrderCount || 0}`),
-    alignLine("ยอดยกเลิก", `${money(summary.voidAmount || 0)} บาท`),
-    alignLine("คืนเงินสด", `${money(summary.cashRefundAmount || 0)} บาท`),
-    alignLine("คืนเงินโอน", `${money(summary.transferRefundAmount || 0)} บาท`),
+    alignLine("ไทยช่วยไทย", `${money(summary.thaiChuayThaiSales || 0)} บาท`),
     "------------------------------",
     alignLine("เงินสดเริ่มต้น", `${money(summary.openingCash ?? shift.openingCash ?? 0)} บาท`),
     alignLine("เงินสดที่ควรมี", `${money(summary.expectedCash || 0)} บาท`),
     alignLine("เงินสดที่นับได้", `${money(summary.closingCash ?? shift.closingCash ?? 0)} บาท`),
     alignLine("ส่วนต่างเงินสด", `${money(summary.cashDifference || 0)} บาท`),
-    "\n\n\n\x1dV\x00",
+    "\n\n\n\n\x1d\x56\x42\x03",
   ].join("\n");
 }
 
@@ -195,25 +212,25 @@ function buildRawBtShiftSummaryText(job = {}) {
   return [
     "\x1b@",
     "\x1ba\x01",
-    "\x1b!\x30BOY BURGER\x1b!\x00",
+    "\x1b!\x00BOY BURGER",
     "SHIFT SUMMARY",
-    formatDate(summary.closedAt || shift.closedAt || Date.now()),
     "------------------------------",
-    alignLine("GROSS SALES", `${money(summary.grossSales || summary.totalSales || 0)} THB`),
-    alignLine("NET SALES", `${money(summary.netSales || summary.totalSales || 0)} THB`),
-    alignLine("CASH SALES", `${money(summary.cashSales || 0)} THB`),
-    alignLine("TRANSFER", `${money(summary.transferSales || 0)} THB`),
+    alignLine("OPEN", formatDate(summary.openedAt || shift.openedAt || Date.now())),
+    alignLine("CLOSE", formatDate(summary.closedAt || shift.closedAt || Date.now())),
     alignLine("ORDERS", `${summary.orderCount || 0}`),
-    alignLine("VOID ORDERS", `${summary.voidOrderCount || 0}`),
-    alignLine("VOID AMOUNT", `${money(summary.voidAmount || 0)} THB`),
-    alignLine("CASH REFUND", `${money(summary.cashRefundAmount || 0)} THB`),
-    alignLine("TRANSFER REFUND", `${money(summary.transferRefundAmount || 0)} THB`),
+    alignLine("BURGER", `${money(summary.burgerQuantity || 0)} PCS`),
+    alignLine("BBQ", `${money(summary.bbqQuantity || 0)} PCS`),
+    "------------------------------",
+    alignLine("TOTAL SALES", `${money(summary.netSales || summary.totalSales || 0)} THB`),
+    alignLine("CASH", `${money(summary.cashSales || 0)} THB`),
+    alignLine("TRANSFER", `${money(summary.transferSales || 0)} THB`),
+    alignLine("THAI CHUAY THAI", `${money(summary.thaiChuayThaiSales || 0)} THB`),
     "------------------------------",
     alignLine("OPEN CASH", `${money(summary.openingCash ?? shift.openingCash ?? 0)} THB`),
     alignLine("EXPECTED CASH", `${money(summary.expectedCash || 0)} THB`),
     alignLine("COUNTED CASH", `${money(summary.closingCash ?? shift.closingCash ?? 0)} THB`),
     alignLine("CASH DIFF", `${money(summary.cashDifference || 0)} THB`),
-    "\n\n\n\x1dV\x00",
+    "\n\n\n\n\x1d\x56\x42\x03",
   ].join("\n");
 }
 
@@ -225,12 +242,13 @@ function buildRawBtKitchenText(order) {
     "ORDER",
     getOrderDisplayNo(order),
     formatDate(order.createdAt),
+    order.isTest ? "TEST MODE - NOT SAVED" : "",
     order.paymentStatus === "VOIDED" ? "VOIDED" : "",
     "------------------------------",
     ...buildRawBtItemLines(order, { includePrice: false }),
     "------------------------------",
     "SEND TO KITCHEN",
-    "\n\n\n\x1dV\x00",
+    "\n\n\n\n\x1d\x56\x42\x03",
   ].filter(Boolean).join("\n");
 }
 
@@ -242,14 +260,15 @@ function buildRawBtReceiptText(order) {
     "RECEIPT",
     getOrderDisplayNo(order),
     formatDate(order.createdAt),
+    order.isTest ? "TEST MODE - NOT SAVED" : "",
     order.paymentStatus === "VOIDED" ? "VOIDED" : "",
     "------------------------------",
     ...buildRawBtItemLines(order, { includePrice: true }),
     "------------------------------",
     alignLine("TOTAL", `${money(order.totalAmount)} THB`),
-    order.paymentMethod === "CASH" ? alignLine("CASH", `${money(order.cashReceived)} THB`) : "PAID BY TRANSFER",
+    order.paymentMethod === "CASH" ? alignLine("CASH", `${money(order.cashReceived)} THB`) : `PAID BY ${paymentMethodLabelEn(order.paymentMethod)}`,
     order.paymentMethod === "CASH" ? alignLine("CHANGE", `${money(order.changeDue)} THB`) : "",
-    "\n\n\n\x1dV\x00",
+    "\n\n\n\n\x1d\x56\x42\x03",
   ].filter(Boolean).join("\n");
 }
 
@@ -399,8 +418,8 @@ function buildBitmapEscPosBytes(text, settings = {}) {
   return [
     0x1b, 0x40,
     ...raster,
-    0x0a, 0x0a, 0x0a,
-    0x1d, 0x56, 0x00,
+    0x0a, 0x0a, 0x0a, 0x0a,
+    0x1d, 0x56, 0x42, 0x03,
   ];
 }
 
@@ -479,7 +498,8 @@ function isDarkPixel(image, width, x, y) {
 }
 
 function buildPrinterPrefix(settings = {}) {
-  const codePage = Number(settings.thaiCodePage || 42);
+  const selectedCodePage = Number(settings.thaiCodePage || 20);
+  const codePage = selectedCodePage === 42 ? 20 : selectedCodePage;
   return [
     "\x1b@",
     `\x1bt${String.fromCharCode(codePage)}`,
@@ -487,7 +507,7 @@ function buildPrinterPrefix(settings = {}) {
 }
 
 function buildThaiCodePageTestText() {
-  const pages = [20, 21, 26, 42, 47];
+  const pages = [15, 16, 20, 21, 22, 23, 24, 25, 26, 255];
   const lines = ["\x1b@", "\x1ba\x01", "ทดสอบภาษาไทย", "Thai code page test", "------------------------------"];
   for (const page of pages) {
     lines.push(`\x1bt${String.fromCharCode(page)}`);
@@ -495,7 +515,7 @@ function buildThaiCodePageTestText() {
     lines.push(`PAGE ${page}: ราคา 123 บาท เงินทอน 7 บาท`);
     lines.push("------------------------------");
   }
-  lines.push("\n\n\n\x1dV\x00");
+  lines.push("\n\n\n\n\x1d\x56\x42\x03");
   return lines.join("\n");
 }
 
@@ -621,6 +641,18 @@ function formatBridgeError(error) {
 function appendQuery(url, key, value) {
   const separator = url.includes("?") ? "&" : "?";
   return `${url}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+}
+
+function paymentMethodLabel(method) {
+  if (method === "THAI_CHUAY_THAI") return "ไทยช่วยไทย";
+  if (method === "CASH") return "เงินสด";
+  return "เงินโอน";
+}
+
+function paymentMethodLabelEn(method) {
+  if (method === "THAI_CHUAY_THAI") return "THAI CHUAY THAI";
+  if (method === "CASH") return "CASH";
+  return "TRANSFER";
 }
 
 function formatDate(value) {

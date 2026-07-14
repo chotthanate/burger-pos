@@ -12,14 +12,59 @@ function serialize(value) {
   }
 }
 
-function buildKeyContext(stateSources) {
-  const keySignature = Object.keys(stateSources).sort().join("|");
-  const keys = keySignature.split("|").filter(Boolean);
-  const payloadSignature = keys.map((key) => `${key}:${serialize(stateSources[key]?.[0])}`).join("\n");
-  return { keySignature, keys, payloadSignature };
+function mergeStateValue(key, incoming, current) {
+  if (key !== "purchaseUnits" || !Array.isArray(incoming) || !Array.isArray(current)) {
+    return incoming;
+  }
+  return mergeRecordsById(current, incoming);
 }
 
-export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID } = {}) {
+function mergeRecordsById(localItems, remoteItems) {
+  const merged = new Map();
+  for (const item of remoteItems) {
+    if (item?.id) merged.set(item.id, item);
+  }
+  for (const item of localItems) {
+    if (!item?.id) continue;
+    const existing = merged.get(item.id);
+    if (!existing || getUpdatedAtTime(item) >= getUpdatedAtTime(existing)) {
+      merged.set(item.id, item);
+    }
+  }
+  return Array.from(merged.values());
+}
+
+function getUpdatedAtTime(item) {
+  const value = Date.parse(item?.updatedAt || item?.createdAt || "");
+  return Number.isFinite(value) ? value : 0;
+}
+
+function hasLocalStateValue(value) {
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === "object") return Object.keys(value).length > 0;
+  return value !== null && value !== undefined && value !== "";
+}
+
+function getCompletenessScore(value) {
+  if (!Array.isArray(value)) return hasLocalStateValue(value) ? 1 : 0;
+  const ids = value
+    .map((item) => {
+      if (item && typeof item === "object") return item.id || item.key || item.name || item.label;
+      return String(item ?? "");
+    })
+    .filter(Boolean);
+  return ids.length ? new Set(ids).size : value.length;
+}
+
+function shouldKeepLocalValue(localValue, remoteValue) {
+  if (!hasLocalStateValue(localValue)) return false;
+  if (Array.isArray(localValue) && Array.isArray(remoteValue)) {
+    return getCompletenessScore(localValue) > getCompletenessScore(remoteValue);
+  }
+  return true;
+}
+
+export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID, preferLocalOnHydrate = false } = {}) {
   const sourceRef = useRef(stateSources);
   const lastSerializedRef = useRef({});
   const applyingRemoteRef = useRef(false);
@@ -82,7 +127,12 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID 
         const entry = sourceRef.current[row.key];
         if (!entry) continue;
         lastSerializedRef.current[row.key] = serialize(row.payload);
-        entry[1](row.payload);
+        if (preferLocalOnHydrate && shouldKeepLocalValue(entry[0], row.payload)) {
+          continue;
+        }
+        const nextValue = mergeStateValue(row.key, row.payload, entry[0]);
+        lastSerializedRef.current[row.key] = serialize(nextValue);
+        entry[1](nextValue);
       }
       queueMicrotask(() => {
         applyingRemoteRef.current = false;
@@ -116,9 +166,16 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID 
           if (!row?.key || !sourceRef.current[row.key]) return;
           const nextSerialized = serialize(row.payload);
           if (lastSerializedRef.current[row.key] === nextSerialized) return;
+          const entry = sourceRef.current[row.key];
+          if (preferLocalOnHydrate && shouldKeepLocalValue(entry[0], row.payload)) {
+            lastSerializedRef.current[row.key] = nextSerialized;
+            setHydrationTick((tick) => tick + 1);
+            return;
+          }
           applyingRemoteRef.current = true;
-          lastSerializedRef.current[row.key] = nextSerialized;
-          sourceRef.current[row.key][1](row.payload);
+          const nextValue = mergeStateValue(row.key, row.payload, entry[0]);
+          lastSerializedRef.current[row.key] = serialize(nextValue);
+          entry[1](nextValue);
           queueMicrotask(() => {
             applyingRemoteRef.current = false;
           });
@@ -147,7 +204,7 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID 
       cancelled = true;
       void supabase.removeChannel(channel);
     };
-  }, [keySignature, keys, storeId]);
+  }, [keySignature, keys, preferLocalOnHydrate, storeId]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !hydratedRef.current || applyingRemoteRef.current) return undefined;
@@ -221,9 +278,17 @@ export function useSheetBackedAppState(stateSources, {
 
   sourceRef.current = stateSources;
 
-  const { keySignature, keys, payloadSignature } = useMemo(
-    () => buildKeyContext(stateSources),
+  const keySignature = useMemo(
+    () => Object.keys(stateSources).sort().join("|"),
     [stateSources],
+  );
+  const keys = useMemo(
+    () => keySignature.split("|").filter(Boolean),
+    [keySignature],
+  );
+  const payloadSignature = useMemo(
+    () => keys.map((key) => `${key}:${serialize(stateSources[key]?.[0])}`).join("\n"),
+    [keySignature, keys, stateSources],
   );
 
   useEffect(() => {
@@ -265,8 +330,9 @@ export function useSheetBackedAppState(stateSources, {
           if (!Object.prototype.hasOwnProperty.call(rows, key)) continue;
           const entry = sourceRef.current[key];
           if (!entry) continue;
-          lastSerializedRef.current[key] = serialize(rows[key]);
-          entry[1](rows[key]);
+          const nextValue = mergeStateValue(key, rows[key], entry[0]);
+          lastSerializedRef.current[key] = serialize(nextValue);
+          entry[1](nextValue);
         }
         queueMicrotask(() => {
           applyingRemoteRef.current = false;
