@@ -1,10 +1,57 @@
-outputs/
-tools/
+# Dependencies, builds, coverage, and temporary output
 node_modules/
 dist/
 .vite/
+coverage/
+output/
+outputs/
+tmp/
+temp/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# This project uses npm/package-lock.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+yarn.lock
+
+# OS and editor files
 .DS_Store
 Thumbs.db
-.env
-.env.local
-.env.*.local
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local environment files (examples are safe templates)
+.env*
+!.env.example
+!.env.*.example
+
+# Credentials, private keys, and machine-specific authentication
+.npmrc
+.yarnrc.yml
+.clasprc.json
+credentials*.json
+*service-account*.json
+service-account*.json
+google-services.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+secrets/
+
+# Local Android/Gradle state
+android/local.properties
+android/.gradle/
+android/app/build/
+
+# Local helper-tool output
+tools/
