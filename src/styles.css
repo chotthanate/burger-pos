@@ -5,8 +5,8 @@
 @font-face {
   font-family: "FC Iconic";
   src:
-    url("../fonts/FC-Iconic-Regular.ttf") format("truetype"),
-    url("../fonts/FC-Iconic-Regular.otf") format("opentype");
+    url("/fonts/FC-Iconic-Regular.ttf") format("truetype"),
+    url("/fonts/FC-Iconic-Regular.otf") format("opentype");
   font-style: normal;
   font-weight: 400 599;
   font-display: swap;
@@ -16,8 +16,8 @@
 @font-face {
   font-family: "FC Iconic";
   src:
-    url("../fonts/FC-Iconic-Bold.ttf") format("truetype"),
-    url("../fonts/FC-Iconic-Bold.otf") format("opentype");
+    url("/fonts/FC-Iconic-Bold.ttf") format("truetype"),
+    url("/fonts/FC-Iconic-Bold.otf") format("opentype");
   font-style: normal;
   font-weight: 600 800;
   font-display: swap;
@@ -27,8 +27,8 @@
 @font-face {
   font-family: "FC Iconic";
   src:
-    url("../fonts/FC-Iconic-Italic.ttf") format("truetype"),
-    url("../fonts/FC-Iconic-Italic.otf") format("opentype");
+    url("/fonts/FC-Iconic-Italic.ttf") format("truetype"),
+    url("/fonts/FC-Iconic-Italic.otf") format("opentype");
   font-style: italic;
   font-weight: 400 599;
   font-display: swap;
@@ -38,8 +38,8 @@
 @font-face {
   font-family: "FC Iconic";
   src:
-    url("../fonts/FC-Iconic-Bold-Italic.ttf") format("truetype"),
-    url("../fonts/FC-Iconic-Bold-Italic.otf") format("opentype");
+    url("/fonts/FC-Iconic-Bold-Italic.ttf") format("truetype"),
+    url("/fonts/FC-Iconic-Bold-Italic.otf") format("opentype");
   font-style: italic;
   font-weight: 600 800;
   font-display: swap;
@@ -2650,7 +2650,7 @@ button {
   height: 62px;
   border-radius: 10px;
   background:
-    url("../boy-burger-logo.png") center / 58px auto no-repeat,
+    url("/boy-burger-logo.png") center / 58px auto no-repeat,
     #2b2b2b;
   display: block;
 }

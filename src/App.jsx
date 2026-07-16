@@ -848,6 +848,7 @@ export default function App() {
       ...order,
       paymentStatus: "VOIDED",
       voidedAt,
+      updatedAt: voidedAt,
       voidReason: voidPayload.reason || "ยกเลิกออร์เดอร์",
       voidRefundMethod: voidPayload.refundMethod || "NONE",
       voidRefundAmount: refundAmount,

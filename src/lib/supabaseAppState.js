@@ -3,6 +3,7 @@ import { SUPABASE_STORE_ID, isSupabaseConfigured, supabase } from "./supabaseCli
 
 const SUPABASE_SYNC_DEBOUNCE_MS = 750;
 const SHEET_SYNC_DEBOUNCE_MS = 1500;
+const REMOTE_REFRESH_INTERVAL_MS = 15000;
 
 function serialize(value) {
   try {
@@ -13,10 +14,16 @@ function serialize(value) {
 }
 
 function mergeStateValue(key, incoming, current) {
-  if (key !== "purchaseUnits" || !Array.isArray(incoming) || !Array.isArray(current)) {
+  if (!Array.isArray(incoming) || !Array.isArray(current)) {
     return incoming;
   }
-  return mergeRecordsById(current, incoming);
+  if (key === "purchaseUnits") return mergeRecordsById(current, incoming);
+  if (key === "orders") {
+    return mergeRecordsById(current, incoming)
+      .sort((left, right) => getUpdatedAtTime(right) - getUpdatedAtTime(left))
+      .slice(0, 200);
+  }
+  return incoming;
 }
 
 function mergeRecordsById(localItems, remoteItems) {
@@ -35,8 +42,23 @@ function mergeRecordsById(localItems, remoteItems) {
 }
 
 function getUpdatedAtTime(item) {
-  const value = Date.parse(item?.updatedAt || item?.createdAt || "");
+  const value = Date.parse(
+    item?.updatedAt
+    || item?.voidedAt
+    || item?.closedAt
+    || item?.createdAt
+    || item?.openedAt
+    || "",
+  );
   return Number.isFinite(value) ? value : 0;
+}
+
+function rememberRemoteValue(lastSerializedRef, key, remoteValue, nextValue) {
+  const remoteSerialized = serialize(remoteValue);
+  const nextSerialized = serialize(nextValue);
+  lastSerializedRef.current[key] = nextSerialized === remoteSerialized
+    ? nextSerialized
+    : remoteSerialized;
 }
 
 function hasLocalStateValue(value) {
@@ -131,7 +153,7 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID,
           continue;
         }
         const nextValue = mergeStateValue(row.key, row.payload, entry[0]);
-        lastSerializedRef.current[row.key] = serialize(nextValue);
+        rememberRemoteValue(lastSerializedRef, row.key, row.payload, nextValue);
         entry[1](nextValue);
       }
       queueMicrotask(() => {
@@ -174,7 +196,7 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID,
           }
           applyingRemoteRef.current = true;
           const nextValue = mergeStateValue(row.key, row.payload, entry[0]);
-          lastSerializedRef.current[row.key] = serialize(nextValue);
+          rememberRemoteValue(lastSerializedRef, row.key, row.payload, nextValue);
           entry[1](nextValue);
           queueMicrotask(() => {
             applyingRemoteRef.current = false;
@@ -205,6 +227,60 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID,
       void supabase.removeChannel(channel);
     };
   }, [keySignature, keys, preferLocalOnHydrate, storeId]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return undefined;
+
+    let cancelled = false;
+
+    async function refreshRemoteState() {
+      if (document.visibilityState === "hidden") return;
+      const { data, error } = await supabase
+        .from("pos_app_state")
+        .select("key,payload,updated_at")
+        .eq("store_id", storeId)
+        .in("key", keys);
+
+      if (cancelled || error) return;
+      applyingRemoteRef.current = true;
+      for (const row of data || []) {
+        const entry = sourceRef.current[row.key];
+        if (!entry) continue;
+        const nextValue = mergeStateValue(row.key, row.payload, entry[0]);
+        if (serialize(entry[0]) === serialize(nextValue)) {
+          rememberRemoteValue(lastSerializedRef, row.key, row.payload, nextValue);
+          continue;
+        }
+        rememberRemoteValue(lastSerializedRef, row.key, row.payload, nextValue);
+        entry[1](nextValue);
+      }
+      queueMicrotask(() => {
+        applyingRemoteRef.current = false;
+      });
+      setHydrationTick((tick) => tick + 1);
+      setStatus({
+        mode: "supabase",
+        connected: true,
+        label: "ข้อมูลกลางเป็นปัจจุบัน",
+        lastError: "",
+        syncedAt: new Date().toISOString(),
+      });
+    }
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshRemoteState();
+    };
+    const timer = window.setInterval(() => void refreshRemoteState(), REMOTE_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [keySignature, keys, storeId]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !hydratedRef.current || applyingRemoteRef.current) return undefined;
@@ -331,7 +407,7 @@ export function useSheetBackedAppState(stateSources, {
           const entry = sourceRef.current[key];
           if (!entry) continue;
           const nextValue = mergeStateValue(key, rows[key], entry[0]);
-          lastSerializedRef.current[key] = serialize(nextValue);
+          rememberRemoteValue(lastSerializedRef, key, rows[key], nextValue);
           entry[1](nextValue);
         }
         queueMicrotask(() => {
@@ -365,6 +441,74 @@ export function useSheetBackedAppState(stateSources, {
 
     return () => {
       cancelled = true;
+    };
+  }, [enabled, keySignature, keys, sheetId, storeId, webAppUrl]);
+
+  useEffect(() => {
+    if (!enabled || !sheetId || !webAppUrl) return undefined;
+
+    let cancelled = false;
+
+    async function refreshRemoteState() {
+      if (document.visibilityState === "hidden") return;
+      try {
+        const result = await postAppState(webAppUrl, {
+          action: "getAppState",
+          sheetId,
+          storeId,
+          keys,
+        });
+        if (cancelled) return;
+
+        const rows = result?.state || {};
+        applyingRemoteRef.current = true;
+        for (const key of keys) {
+          if (!Object.prototype.hasOwnProperty.call(rows, key)) continue;
+          const entry = sourceRef.current[key];
+          if (!entry) continue;
+          const nextValue = mergeStateValue(key, rows[key], entry[0]);
+          if (serialize(entry[0]) === serialize(nextValue)) {
+            rememberRemoteValue(lastSerializedRef, key, rows[key], nextValue);
+            continue;
+          }
+          rememberRemoteValue(lastSerializedRef, key, rows[key], nextValue);
+          entry[1](nextValue);
+        }
+        queueMicrotask(() => {
+          applyingRemoteRef.current = false;
+        });
+        setHydrationTick((tick) => tick + 1);
+        setStatus({
+          mode: "sheet",
+          connected: true,
+          label: "Google Sheet เป็นปัจจุบัน",
+          lastError: "",
+          syncedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        if (cancelled) return;
+        setStatus({
+          mode: "error",
+          connected: false,
+          label: "Google Sheet ไม่สำเร็จ",
+          lastError: error instanceof Error ? error.message : String(error),
+          syncedAt: "",
+        });
+      }
+    }
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshRemoteState();
+    };
+    const timer = window.setInterval(() => void refreshRemoteState(), REMOTE_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [enabled, keySignature, keys, sheetId, storeId, webAppUrl]);
 
