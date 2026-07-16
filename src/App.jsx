@@ -43,7 +43,7 @@ import {
   recipes as seedRecipes,
   seedIngredients,
 } from "./data/seedData.js";
-import { addLocalJob, clearAllLocalJobs, listLocalJobs, updateLocalJob } from "./lib/localQueues.js";
+import { addLocalJob, clearAllLocalJobs, clearLocalJobs, listLocalJobs, updateLocalJob } from "./lib/localQueues.js";
 import { sendSheetSyncJob } from "./lib/googleSheetSync.js";
 import { getOrderDisplayNo, makeNextOrderNo } from "./lib/orderFormat.js";
 import {
@@ -57,7 +57,7 @@ import {
   money,
 } from "./lib/posLogic.js";
 import { makePrinterTestJob, printThaiCodePageTest, sendPrintJob, testPrintBridge } from "./lib/printBridge.js";
-import { getAndroidBluetoothPrinters, isNativeThaiPrinterAvailable, printAndroidBluetoothThaiPrototype, printAndroidThaiPrototype } from "./lib/nativeThaiPrinter.js";
+import { getAndroidBluetoothPrinters, isNativeThaiPrinterAvailable, openAndroidCashDrawer, printAndroidBluetoothThaiCodePageSweep, printAndroidBluetoothThaiPrototype, printAndroidThaiPrototype } from "./lib/nativeThaiPrinter.js";
 import { makeShiftSummaryLineJob, makeStockEditLineJob, sendLineNotificationJob } from "./lib/lineNotifications.js";
 import { BURGER_POS_SHEET_ID, SHEET_HEADERS, makeExpenseDeleteSheetJob, makeExpenseSheetJob, makeOrderSheetJob, makeOrderVoidSheetJob, makeResetSheetJob, makeShiftSheetJob, makeStockMovementSheetJob } from "./lib/sheetExport.js";
 import { useSheetBackedAppState, useSupabaseAppState } from "./lib/supabaseAppState.js";
@@ -67,11 +67,11 @@ import { usePersistentState } from "./lib/storage.js";
 const navItems = [
   { id: "pos", label: "ขาย", icon: Store, children: [{ id: "sales-history", label: "ประวัติขาย", tab: "pos", view: "history" }] },
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
-  { id: "notifications", label: "แจ้งเตือน", icon: Bell },
   { id: "menu", label: "รายการสินค้า", icon: Utensils, children: [{ id: "categories", label: "หมวดหมู่", tab: "categories" }, { id: "modifiers", label: "จัดการตัวเลือกเสริม", tab: "modifiers" }] },
   { id: "inventory", label: "วัตถุดิบ", icon: Package },
-  { id: "expense", label: "รายจ่าย", icon: ReceiptText, children: [{ id: "expense-history", label: "ประวัติรายจ่าย", tab: "expense", view: "history" }, { id: "expense-master", label: "ฐานข้อมูลรายจ่ายทั่วไป", tab: "expense", view: "master" }] },
+  { id: "expense", label: "รายจ่าย", icon: ReceiptText, children: [{ id: "expense-history", label: "ประวัติรายจ่าย", tab: "expense", view: "history" }, { id: "expense-master", label: "ฐานข้อมูลรายจ่าย", tab: "expense", view: "master" }] },
   { id: "settings", label: "ตั้งค่า", icon: Settings },
+  { id: "notifications", label: "แจ้งเตือน", icon: Bell },
 ];
 
 const salesChannels = [
@@ -88,8 +88,14 @@ const defaultModifierGroups = [
   { id: "other", label: "อื่นๆ" },
 ];
 const defaultIngredientCategories = ["เนื้อสัตว์", "ขนมปัง", "ผัก", "ซอส", "เครื่องดื่ม", "อื่นๆ"];
-const defaultGeneralExpenseCategories = ["บรรจุภัณฑ์", "ค่าสาธารณูปโภค", "ค่าซ่อมบำรุง", "ค่าเดินทาง", "ค่าใช้จ่ายอื่นๆ"];
+const defaultIngredientExpenseCategory = "วัตถุดิบ";
+const defaultIngredientExpenseSubcategory = "วัตถุดิบทั่วไป";
+const defaultGeneralExpenseCategories = [defaultIngredientExpenseCategory, "บรรจุภัณฑ์", "ค่าสาธารณูปโภค", "ค่าซ่อมบำรุง", "ค่าเดินทาง", "ค่าใช้จ่ายอื่นๆ"];
 const defaultGeneralExpenseSubcategories = [
+  { id: "expense_sub_ingredient_general", category: defaultIngredientExpenseCategory, name: defaultIngredientExpenseSubcategory },
+  { id: "expense_sub_ingredient_meat", category: defaultIngredientExpenseCategory, name: "เนื้อสัตว์" },
+  { id: "expense_sub_ingredient_bread", category: defaultIngredientExpenseCategory, name: "ขนมปัง" },
+  { id: "expense_sub_ingredient_sauce", category: defaultIngredientExpenseCategory, name: "ซอส" },
   { id: "expense_sub_packaging", category: "บรรจุภัณฑ์", name: "ถุงและบรรจุภัณฑ์" },
   { id: "expense_sub_gas", category: "ค่าสาธารณูปโภค", name: "แก๊สหุงต้ม" },
   { id: "expense_sub_utility", category: "ค่าสาธารณูปโภค", name: "ค่าน้ำและค่าไฟ" },
@@ -110,6 +116,7 @@ const legacyWebAppUrls = new Set([
   "https://script.google.com/macros/s/AKfycbxsbToqWo3n-J41-ak5QM0XFPZq51_Afdaxs-7qnKWRjshDgpPPIawbGdpEDpTaO8CcXQ/exec",
   "https://script.google.com/macros/s/AKfycbyaHJT2m9MJNvlTQ2bf1g4SibFbh8iaadKugMV-C6B3fVDPSIUz_ZKHW-7thIJuiKXgJg/exec",
 ]);
+const SHEET_SYNC_BATCH_SIZE = 50;
 
 const defaultSettings = {
   printerModel: "POS-8390",
@@ -120,11 +127,17 @@ const defaultSettings = {
   bluetoothPrinterAddress: "",
   bluetoothPrintTimeoutMs: 20000,
   bluetoothPrintChunkSize: 320,
-  bluetoothPrintChunkDelayMs: 20,
-  bluetoothPrintFinalDelayMs: 2000,
+  bluetoothPrintChunkDelayMs: 2,
+  bluetoothPrintFinalDelayMs: 2200,
   paperSize: "80mm",
   bridgeMethod: "RAWBT_INTENT",
-  thaiCodePage: "42",
+  thaiCodePage: "20",
+  nativeThaiRenderMode: "BITMAP",
+  cashDrawerEnabled: true,
+  cashDrawerPin: "0",
+  allowNegativeStockSales: false,
+  testModeEnabled: false,
+  printingPaused: false,
   buzzerEnabled: true,
   defaultPrintOptions: { kitchen: true, receipt: false, shiftSummary: true },
   sheetId: BURGER_POS_SHEET_ID,
@@ -143,6 +156,16 @@ const defaultSettings = {
 };
 
 const legacySheetIds = new Set(["18dF1U5pjfd4_y9KziNptiL6Mf_PjFAsxv-5CA4HgpAc"]);
+
+function makeTestOrderNo(date = new Date()) {
+  const stamp = date.toLocaleTimeString("th-TH", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).replace(/\D/g, "");
+  return `TEST-${stamp || Date.now()}`;
+}
 
 function usePrefersReducedMotion() {
   const [prefersReduced, setPrefersReduced] = useState(() => {
@@ -376,11 +399,13 @@ export default function App() {
       ...(settings.defaultPrintOptions || {}),
     },
   }), [settings]);
+  const isTestMode = resolvedSettings.testModeEnabled === true;
   const [cart, setCart] = useState([]);
   const [posView, setPosView] = useState("sale");
   const [salesChannel, setSalesChannel] = useState("store");
   const [expenseView, setExpenseView] = useState("entry");
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [editingCartKey, setEditingCartKey] = useState("");
   const [modifierIds, setModifierIds] = useState([]);
   const [modifierNote, setModifierNote] = useState("");
   const [modifierQuantity, setModifierQuantity] = useState(1);
@@ -428,7 +453,13 @@ export default function App() {
     shifts,
     stockMovements,
   ]);
-  const supabaseState = useSupabaseAppState(appStateSources, { storeId: resolvedSettings.supabaseStoreId || SUPABASE_STORE_ID });
+  const preferLocalSupabaseHydrate = isNativeThaiPrinterAvailable() && Boolean(
+    orders.length || expenses.length || shifts.length || stockMovements.length,
+  );
+  const supabaseState = useSupabaseAppState(appStateSources, {
+    storeId: resolvedSettings.supabaseStoreId || SUPABASE_STORE_ID,
+    preferLocalOnHydrate: preferLocalSupabaseHydrate,
+  });
   const sheetBackedState = useSheetBackedAppState(appStateSources, {
     enabled: !supabaseState.connected,
     sheetId: resolvedSettings.sheetId,
@@ -449,10 +480,39 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (ingredients.every((item) => item.category)) return;
-    setIngredients((current) => current.map((item) => (
-      item.category ? item : { ...item, category: inferIngredientCategory(item.name) }
+    if (generalExpenseCategories.includes(defaultIngredientExpenseCategory)) return;
+    setGeneralExpenseCategories((current) => current.includes(defaultIngredientExpenseCategory)
+      ? current
+      : [defaultIngredientExpenseCategory, ...current]);
+  }, [generalExpenseCategories, setGeneralExpenseCategories]);
+
+  useEffect(() => {
+    const names = [defaultIngredientExpenseSubcategory, ...ingredientCategories].filter(Boolean);
+    const missing = names.filter((name) => !generalExpenseSubcategories.some((item) => (
+      item.category === defaultIngredientExpenseCategory && item.name === name
     )));
+    if (!missing.length) return;
+    setGeneralExpenseSubcategories((current) => [
+      ...current,
+      ...missing.map((name, index) => ({
+        id: makeExpenseSubcategoryId(defaultIngredientExpenseCategory, name, index),
+        category: defaultIngredientExpenseCategory,
+        name,
+      })),
+    ]);
+  }, [generalExpenseSubcategories, ingredientCategories, setGeneralExpenseSubcategories]);
+
+  useEffect(() => {
+    if (ingredients.every((item) => item.category && item.expenseCategory && item.expenseSubcategory)) return;
+    setIngredients((current) => current.map((item) => {
+      const displayCategory = item.category || inferIngredientCategory(item.name);
+      return {
+        ...item,
+        category: displayCategory,
+        expenseCategory: item.expenseCategory || defaultIngredientExpenseCategory,
+        expenseSubcategory: item.expenseSubcategory || displayCategory || defaultIngredientExpenseSubcategory,
+      };
+    }));
   }, [ingredients, setIngredients]);
 
   useEffect(() => {
@@ -472,13 +532,19 @@ export default function App() {
 
   useEffect(() => {
     if (
-      legacyWebAppUrls.has(settings.sheetWebAppUrl)
+      !settings.sheetWebAppUrl
+      || !settings.lineWebAppUrl
+      || legacyWebAppUrls.has(settings.sheetWebAppUrl)
       || legacyWebAppUrls.has(settings.lineWebAppUrl)
     ) {
       setSettings((current) => ({
         ...current,
-        sheetWebAppUrl: legacyWebAppUrls.has(current.sheetWebAppUrl) ? DEFAULT_WEB_APP_URL : current.sheetWebAppUrl,
-        lineWebAppUrl: legacyWebAppUrls.has(current.lineWebAppUrl) ? DEFAULT_WEB_APP_URL : current.lineWebAppUrl,
+        sheetWebAppUrl: !current.sheetWebAppUrl || legacyWebAppUrls.has(current.sheetWebAppUrl)
+          ? DEFAULT_WEB_APP_URL
+          : current.sheetWebAppUrl,
+        lineWebAppUrl: !current.lineWebAppUrl || legacyWebAppUrls.has(current.lineWebAppUrl)
+          ? DEFAULT_WEB_APP_URL
+          : current.lineWebAppUrl,
       }));
     }
   }, [setSettings, settings.lineWebAppUrl, settings.sheetWebAppUrl]);
@@ -499,6 +565,10 @@ export default function App() {
   }
 
   async function flushPrintQueue() {
+    if (resolvedSettings.printingPaused) {
+      await refreshQueues();
+      return;
+    }
     const jobs = await listLocalJobs("printJobs").catch(() => []);
     const pendingJobs = jobs.filter((job) => job.status !== "PRINTED").slice(0, 10);
     for (const job of pendingJobs) {
@@ -517,9 +587,15 @@ export default function App() {
     await refreshQueues();
   }
 
+  async function clearPrintQueue() {
+    await clearLocalJobs("printJobs");
+    await refreshQueues();
+  }
+
   async function flushSheetQueue() {
+    if (isTestMode) return;
     const jobs = await listLocalJobs("sheetSyncJobs").catch(() => []);
-    const pendingJobs = jobs.filter((job) => job.status !== "SYNCED").slice(0, 20);
+    const pendingJobs = jobs.filter((job) => job.status !== "SYNCED").slice(0, SHEET_SYNC_BATCH_SIZE);
     for (const job of pendingJobs) {
       try {
         await sendSheetSyncJob(job, resolvedSettings);
@@ -537,6 +613,7 @@ export default function App() {
   }
 
   async function flushLineQueue() {
+    if (isTestMode) return;
     const jobs = await listLocalJobs("lineNotifyJobs").catch(() => []);
     const pendingJobs = jobs.filter((job) => job.status !== "SENT").slice(0, 20);
     for (const job of pendingJobs) {
@@ -569,22 +646,46 @@ export default function App() {
   }
 
   function openProduct(product) {
-    if (!canSellProduct(product.id, ingredients, [], catalog)) return;
+    const hasEnoughStock = canSellProduct(product.id, ingredients, [], catalog);
+    if (!isTestMode && !hasEnoughStock && resolvedSettings.allowNegativeStockSales !== true) return;
     const productModifiers = modifiers.filter((modifier) => modifier.productIds.includes(product.id));
     if (!productModifiers.length) {
       addToCart(product, []);
       return;
     }
+    setEditingCartKey("");
     setSelectedProduct(product);
     setModifierIds([]);
     setModifierNote("");
     setModifierQuantity(1);
   }
 
+  function closeModifierModal() {
+    setSelectedProduct(null);
+    setEditingCartKey("");
+    setModifierIds([]);
+    setModifierNote("");
+    setModifierQuantity(1);
+  }
+
+  function openCartItemEditor(item) {
+    if (!item?.product) return;
+    preserveScrollPosition();
+    setEditingCartKey(item.key);
+    setSelectedProduct(item.product);
+    setModifierIds([...(item.modifierIds || [])]);
+    setModifierNote(item.note || "");
+    setModifierQuantity(Math.max(1, Number.parseInt(item.quantity, 10) || 1));
+  }
+
   function toggleModifierSelection(modifierId) {
     const modifier = modifiers.find((item) => item.id === modifierId);
     const group = modifier?.group || "addon";
+    const allowsQuantity = modifierAllowsQuantity(modifier);
     setModifierIds((current) => {
+      if (allowsQuantity) {
+        return [...current, modifierId];
+      }
       if (current.includes(modifierId)) {
         return current.filter((item) => item !== modifierId);
       }
@@ -596,12 +697,20 @@ export default function App() {
     });
   }
 
+  function decrementModifierSelection(modifierId) {
+    setModifierIds((current) => {
+      const index = current.lastIndexOf(modifierId);
+      if (index < 0) return current;
+      return [...current.slice(0, index), ...current.slice(index + 1)];
+    });
+  }
+
   function addToCart(product, selectedModifierIds, note = "", quantity = 1) {
     preserveScrollPosition();
     const safeQuantity = Math.max(1, Number.parseInt(quantity, 10) || 1);
-    const selectedModifiers = modifiers.filter((modifier) => selectedModifierIds.includes(modifier.id));
-    const unitPrice = getChannelPrice(product, salesChannel) + selectedModifiers.reduce((sum, modifier) => sum + Number(modifier.price || 0), 0);
     const normalizedModifierIds = [...selectedModifierIds].sort();
+    const selectedModifiers = buildSelectedModifiers(normalizedModifierIds, modifiers);
+    const unitPrice = getChannelPrice(product, salesChannel) + selectedModifiers.reduce((sum, modifier) => sum + Number(modifier.price || 0), 0);
     const normalizedNote = note.trim();
     setCart((current) => {
       const existing = current.find((item) =>
@@ -626,9 +735,26 @@ export default function App() {
         },
       ];
     });
-    setSelectedProduct(null);
-    setModifierNote("");
-    setModifierQuantity(1);
+    closeModifierModal();
+  }
+
+  function updateCartItem(key, product, selectedModifierIds, note = "", quantity = 1) {
+    preserveScrollPosition();
+    const safeQuantity = Math.max(1, Number.parseInt(quantity, 10) || 1);
+    const normalizedModifierIds = [...selectedModifierIds].sort();
+    const selectedModifiers = buildSelectedModifiers(normalizedModifierIds, modifiers);
+    const unitPrice = getChannelPrice(product, salesChannel) + selectedModifiers.reduce((sum, modifier) => sum + Number(modifier.price || 0), 0);
+    const normalizedNote = note.trim();
+    setCart((current) => current.map((item) => (item.key === key ? {
+      ...item,
+      product,
+      quantity: safeQuantity,
+      unitPrice,
+      modifierIds: normalizedModifierIds,
+      modifiers: selectedModifiers,
+      note: normalizedNote,
+    } : item)));
+    closeModifierModal();
   }
 
   function changeQuantity(key, delta) {
@@ -648,36 +774,48 @@ export default function App() {
   }
 
   async function completeOrder(payment) {
-    if (!openShift) {
+    if (!openShift && !isTestMode) {
       alert("กรุณาเปิดกะก่อนเริ่มขาย");
       return;
     }
     const requirements = getCartRequirements(cart, catalog);
     const missing = getMissingIngredients(requirements, ingredients);
-    if (missing.length) {
+    const allowNegativeStock = resolvedSettings.allowNegativeStockSales === true;
+    if (missing.length && !allowNegativeStock && !isTestMode) {
       alert(`วัตถุดิบไม่พอ: ${missing.map((item) => item.name).join(", ")}`);
       return;
     }
     const order = {
-      ...makeOrderPayload({ cart, orderNo: makeNextOrderNo(orders), total, ...payment }),
+      ...makeOrderPayload({
+        cart,
+        orderNo: isTestMode ? makeTestOrderNo() : makeNextOrderNo(orders),
+        total,
+        ...payment,
+      }),
+      isTest: isTestMode,
       salesChannel,
-      shiftId: openShift.id,
-      note: "",
+      shiftId: openShift?.id || "TEST-SHIFT",
+      note: isTestMode ? "TEST MODE - not saved" : "",
       printOptions,
     };
-    const movements = makeSaleMovements(requirements, ingredients, order.id);
+    const movements = isTestMode ? [] : makeSaleMovements(requirements, ingredients, order.id);
 
-    setIngredients((current) => applyStockMovement(current, requirements, "out"));
-    setOrders((current) => [order, ...current].slice(0, 200));
-    setStockMovements((current) => [...movements, ...current].slice(0, 500));
+    if (!isTestMode) {
+      setIngredients((current) => applyStockMovement(current, requirements, "out", { allowNegative: allowNegativeStock }));
+      setOrders((current) => [order, ...current].slice(0, 200));
+      setStockMovements((current) => [...movements, ...current].slice(0, 500));
+    }
     setLastOrder(order);
     setCart([]);
     setPaymentOpen(false);
 
     try {
-      if (printOptions.kitchen) await addLocalJob("printJobs", { type: "KITCHEN", order });
-      if (printOptions.receipt) await addLocalJob("printJobs", { type: "RECEIPT", order });
-      await addLocalJob("sheetSyncJobs", makeOrderSheetJob(order, movements));
+      const shouldOpenCashDrawer = resolvedSettings.cashDrawerEnabled !== false && order.paymentMethod === "CASH";
+      const openDrawerWithKitchen = shouldOpenCashDrawer && printOptions.kitchen && !printOptions.receipt;
+      const openDrawerWithReceipt = shouldOpenCashDrawer && printOptions.receipt;
+      if (printOptions.kitchen) await addLocalJob("printJobs", { type: "KITCHEN", order, openCashDrawer: openDrawerWithKitchen, isTest: isTestMode });
+      if (printOptions.receipt) await addLocalJob("printJobs", { type: "RECEIPT", order, openCashDrawer: openDrawerWithReceipt, isTest: isTestMode });
+      if (!isTestMode) await addLocalJob("sheetSyncJobs", makeOrderSheetJob(order, movements));
     } catch (error) {
       console.error("Failed to queue order follow-up jobs", error);
     }
@@ -699,6 +837,10 @@ export default function App() {
 
   async function voidOrder(order, voidPayload) {
     if (!order || order.paymentStatus === "VOIDED") return false;
+    if (isTestMode) {
+      alert("โหมดทดสอบ: ไม่ยกเลิกออเดอร์จริง");
+      return false;
+    }
     const voidedAt = new Date().toISOString();
     const refundAmount = Math.max(0, Number(voidPayload.refundAmount || 0));
     const stockRestored = Boolean(voidPayload.stockRestored);
@@ -706,6 +848,7 @@ export default function App() {
       ...order,
       paymentStatus: "VOIDED",
       voidedAt,
+      updatedAt: voidedAt,
       voidReason: voidPayload.reason || "ยกเลิกออร์เดอร์",
       voidRefundMethod: voidPayload.refundMethod || "NONE",
       voidRefundAmount: refundAmount,
@@ -729,6 +872,10 @@ export default function App() {
   }
 
   function openNewShift(openingCash) {
+    if (isTestMode) {
+      alert("โหมดทดสอบ: ไม่เปิดกะจริง หน้าขายทดสอบใช้งานได้โดยไม่ต้องเปิดกะ");
+      return false;
+    }
     const shift = {
       id: `SHIFT-${Date.now()}`,
       openedAt: new Date().toISOString(),
@@ -743,6 +890,10 @@ export default function App() {
 
   async function closeCurrentShift(closingCash) {
     if (!openShift) return false;
+    if (isTestMode) {
+      alert("โหมดทดสอบ: ไม่ปิดกะจริง");
+      return false;
+    }
     if (closingCash === "" || closingCash === null || closingCash === undefined) {
       alert("กรุณาใส่เงินสดตอนปิดกะ");
       return false;
@@ -781,7 +932,19 @@ export default function App() {
     return { summary };
   }
 
+  async function openCashDrawerNow() {
+    try {
+      await openAndroidCashDrawer(resolvedSettings);
+      return true;
+    } catch (error) {
+      console.error("Failed to open cash drawer", error);
+      alert(`เปิดลิ้นชักไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  }
+
   function queueStockMovementAudit(movement, { notifyLine = true } = {}) {
+    if (isTestMode) return;
     void addLocalJob("sheetSyncJobs", makeStockMovementSheetJob(movement, movement.sourceType || movement.type))
       .then(() => {
         if (resolvedSettings.sheetWebAppUrl) void flushSheetQueue();
@@ -799,6 +962,9 @@ export default function App() {
   }
 
   async function recordExpense(expense) {
+    if (isTestMode) {
+      return { testMode: true };
+    }
     const additionsByIngredient = expense.items.reduce((map, item) => {
       if (!item.ingredientId) return map;
       map.set(item.ingredientId, Number(map.get(item.ingredientId) || 0) + Number(item.stockQuantity || 0));
@@ -837,9 +1003,14 @@ export default function App() {
     await addLocalJob("sheetSyncJobs", makeExpenseSheetJob(expense, movements));
     if (resolvedSettings.sheetWebAppUrl) void flushSheetQueue();
     await refreshQueues();
+    return { testMode: false };
   }
 
   async function deleteExpense(expenseId) {
+    if (isTestMode) {
+      alert("โหมดทดสอบ: ไม่ลบรายจ่ายจริง");
+      return false;
+    }
     const expense = expenses.find((item) => item.id === expenseId);
     if (!expense) return false;
     const movements = (expense.items || [])
@@ -929,6 +1100,10 @@ export default function App() {
   }
 
   function adjustStock({ ingredientId, quantityDelta, reason }) {
+    if (isTestMode) {
+      alert("โหมดทดสอบ: ไม่ปรับสต็อกจริง");
+      return;
+    }
     const ingredient = ingredients.find((item) => item.id === ingredientId);
     if (!ingredient || !quantityDelta) return;
     const quantityBefore = Number(ingredient.stock || 0);
@@ -955,6 +1130,10 @@ export default function App() {
   }
 
   async function resetOperationalData({ includeMasterData = false } = {}) {
+    if (isTestMode) {
+      alert("ปิดโหมดทดสอบก่อนล้างข้อมูลจริง");
+      return;
+    }
     const resetMode = includeMasterData ? "all" : "transactions";
     if (resolvedSettings.sheetWebAppUrl) {
       await sendSheetSyncJob(makeResetSheetJob(resetMode), resolvedSettings);
@@ -1090,11 +1269,19 @@ export default function App() {
             onOpenNav={() => setIsNavOpen(true)}
             onOpenInventory={() => navigateMain("inventory")}
             onRequestCloseShift={() => setCloseShiftToken((token) => token + 1)}
+            onRequestOpenCashDrawer={openCashDrawerNow}
             openShift={openShift}
             posView={posView}
             salesChannel={salesChannel}
             setSalesChannel={setSalesChannel}
           />
+          {isTestMode ? (
+              <div className="test-mode-banner" data-testid="test-mode-banner" role="status">
+              <AlertTriangle size={20} />
+              <strong>โหมดทดสอบ</strong>
+              <span>พิมพ์และเปิดลิ้นชักได้ แต่ไม่บันทึกออเดอร์ ไม่ตัดสต็อก และไม่ส่งข้อมูลจริงเข้า Google Sheet/LINE</span>
+            </div>
+          ) : null}
           <div className="main-scroll">
           <MobileSubnav activeTab={activeTab} expenseView={expenseView} navigateMain={navigateMain} navigateSub={navigateSub} />
           {activeTab === "notifications" ? (
@@ -1113,10 +1300,12 @@ export default function App() {
               catalog={catalog}
               changeQuantity={changeQuantity}
               ingredients={ingredients}
+              allowNegativeStockSales={resolvedSettings.allowNegativeStockSales === true}
               menuCategories={menuCategories}
               onCategory={setActiveCategory}
               onCheckout={() => setPaymentOpen(true)}
               onCloseShift={closeCurrentShift}
+              onEditCartItem={openCartItemEditor}
               onOpenShift={openNewShift}
               onProduct={openProduct}
               onReprintOrder={queueHistoricalPrint}
@@ -1129,6 +1318,7 @@ export default function App() {
               salesChannel={salesChannel}
               setPosView={setPosView}
               shifts={shifts}
+              testMode={isTestMode}
               total={total}
             />
           ) : null}
@@ -1145,6 +1335,8 @@ export default function App() {
             <InventoryScreen
               adjustStock={adjustStock}
               deleteIngredient={deleteIngredient}
+              expenseCategories={generalExpenseCategories}
+              expenseSubcategories={generalExpenseSubcategories}
               ingredientCategories={ingredientCategories}
               ingredients={ingredients}
               onAddPurchaseUnit={setPurchaseUnits}
@@ -1201,12 +1393,14 @@ export default function App() {
               setGeneralExpenseCategories={setGeneralExpenseCategories}
               setGeneralExpenseItems={setGeneralExpenseItems}
               setGeneralExpenseSubcategories={setGeneralExpenseSubcategories}
+              setIngredients={setIngredients}
               setView={setExpenseView}
               view={expenseView}
             />
           ) : null}
           {activeTab === "settings" ? (
             <SettingsScreen
+              clearPrintQueue={clearPrintQueue}
               flushLineQueue={flushLineQueue}
               flushPrintQueue={flushPrintQueue}
               flushSheetQueue={flushSheetQueue}
@@ -1224,18 +1418,23 @@ export default function App() {
 
       {selectedProduct ? (
         <ModifierModal
+          allowMissingStock={resolvedSettings.allowNegativeStockSales === true || isTestMode}
           ingredients={ingredients}
           modifierGroups={modifierGroups}
           modifierIds={modifierIds}
           modifierRecipes={modifierRecipes}
           modifiers={modifiers}
-          onClose={() => {
-            setSelectedProduct(null);
-            setModifierNote("");
-            setModifierQuantity(1);
-          }}
+          confirmLabel={editingCartKey ? "บันทึกการแก้ไข" : "เพิ่มลงตะกร้า"}
+          onClose={closeModifierModal}
           note={modifierNote}
-          onConfirm={() => addToCart(selectedProduct, modifierIds, modifierNote, modifierQuantity)}
+          onConfirm={() => {
+            if (editingCartKey) {
+              updateCartItem(editingCartKey, selectedProduct, modifierIds, modifierNote, modifierQuantity);
+            } else {
+              addToCart(selectedProduct, modifierIds, modifierNote, modifierQuantity);
+            }
+          }}
+          onDecrement={(id) => decrementModifierSelection(id)}
           onNoteChange={setModifierNote}
           onQuantityChange={setModifierQuantity}
           onToggle={(id) => toggleModifierSelection(id)}
@@ -1253,7 +1452,7 @@ export default function App() {
   );
 }
 
-function Header({ activeTab, expenseView, lowStock, onOpenInventory, onOpenNav, onRequestCloseShift, openShift, posView, salesChannel, setSalesChannel }) {
+function Header({ activeTab, expenseView, lowStock, onOpenInventory, onOpenNav, onRequestCloseShift, onRequestOpenCashDrawer, openShift, posView, salesChannel, setSalesChannel }) {
   const [topMenuOpen, setTopMenuOpen] = useState(false);
   const title = {
     pos: posView === "history" ? "ประวัติการขาย" : "ขายหน้าร้าน",
@@ -1263,7 +1462,7 @@ function Header({ activeTab, expenseView, lowStock, onOpenInventory, onOpenNav, 
     categories: "หมวดหมู่สินค้า",
     modifiers: "จัดการตัวเลือกเสริม",
     notifications: "แจ้งเตือนระบบ",
-    expense: expenseView === "history" ? "ประวัติรายจ่าย" : expenseView === "master" ? "ฐานข้อมูลรายจ่ายทั่วไป" : "บันทึกรายจ่าย",
+    expense: expenseView === "history" ? "ประวัติรายจ่าย" : expenseView === "master" ? "ฐานข้อมูลรายจ่าย" : "บันทึกรายจ่าย",
     settings: "ตั้งค่าระบบ",
   }[activeTab];
   const channelLabel = getSalesChannelLabel(salesChannel);
@@ -1304,6 +1503,15 @@ function Header({ activeTab, expenseView, lowStock, onOpenInventory, onOpenNav, 
               <button
                 onClick={() => {
                   setTopMenuOpen(false);
+                  void onRequestOpenCashDrawer();
+                }}
+                type="button"
+              >
+                <Banknote size={18} /> เปิดลิ้นชัก
+              </button>
+              <button
+                onClick={() => {
+                  setTopMenuOpen(false);
                   onRequestCloseShift();
                 }}
                 type="button"
@@ -1328,7 +1536,7 @@ function MobileSubnav({ activeTab, expenseView, navigateMain, navigateSub }) {
   const expenseChildren = [
     { id: "expense-entry-main", label: "บันทึกรายจ่าย", tab: "expense", view: "entry" },
     { id: "expense-history-main", label: "ประวัติรายจ่าย", tab: "expense", view: "history" },
-    { id: "expense-master-main", label: "ฐานข้อมูลทั่วไป", tab: "expense", view: "master" },
+    { id: "expense-master-main", label: "ฐานข้อมูลรายจ่าย", tab: "expense", view: "master" },
   ];
   const items = activeTab === "menu" || activeTab === "categories" || activeTab === "modifiers" ? menuChildren : activeTab === "expense" ? expenseChildren : [];
   if (!items.length) return null;
@@ -1471,9 +1679,11 @@ function DashboardScreen({ expenses, ingredients, orders, products, shifts }) {
   const animatedAverageOrder = useAnimatedNumber(data.averageOrder, { prefersReducedMotion });
   const animatedCashSales = useAnimatedNumber(data.cashSales, { prefersReducedMotion });
   const animatedTransferSales = useAnimatedNumber(data.transferSales, { prefersReducedMotion });
+  const animatedThaiChuayThaiSales = useAnimatedNumber(data.thaiChuayThaiSales, { prefersReducedMotion });
   const animatedOrderCount = useAnimatedNumber(data.orderCount, { duration: 520, prefersReducedMotion });
   const animatedCashOrders = useAnimatedNumber(data.cashOrders, { duration: 520, prefersReducedMotion });
   const animatedTransferOrders = useAnimatedNumber(data.transferOrders, { duration: 520, prefersReducedMotion });
+  const animatedThaiChuayThaiOrders = useAnimatedNumber(data.thaiChuayThaiOrders, { duration: 520, prefersReducedMotion });
   const animatedCashPercent = useAnimatedNumber(data.cashPercent, { duration: 620, prefersReducedMotion });
   const animatedExpenseTotal = useAnimatedNumber(data.expenseTotal, { prefersReducedMotion });
   const animatedExpenseCount = useAnimatedNumber(data.expenseCount, { duration: 520, prefersReducedMotion });
@@ -1500,6 +1710,11 @@ function DashboardScreen({ expenses, ingredients, orders, products, shifts }) {
           <span>เงินโอน</span>
           <strong>{money(animatedTransferSales)} บาท</strong>
           <small>{animatedTransferOrders} ออร์เดอร์</small>
+        </article>
+        <article className="metric-card" style={{ "--motion-index": 4 }}>
+          <span>ไทยช่วยไทย</span>
+          <strong>{money(animatedThaiChuayThaiSales)} บาท</strong>
+          <small>{animatedThaiChuayThaiOrders} ออร์เดอร์</small>
         </article>
       </div>
 
@@ -1528,15 +1743,16 @@ function DashboardScreen({ expenses, ingredients, orders, products, shifts }) {
             <WalletCards size={22} />
             <div>
               <h3>ช่องทางชำระเงิน</h3>
-              <p>เงินสดเทียบกับเงินโอน</p>
+              <p>เงินสด เงินโอน และไทยช่วยไทย</p>
             </div>
           </div>
-          <div className="payment-donut" style={{ "--cash": `${animatedCashPercent}%` }}>
+          <div className="payment-donut" style={{ "--cash": `${animatedCashPercent}%`, "--transfer": `${data.transferPercent}%` }}>
             <span>{animatedCashPercent}%</span>
           </div>
           <div className="legend-list">
             <span><i className="legend-cash" /> เงินสด {money(animatedCashSales)} บาท</span>
             <span><i className="legend-transfer" /> เงินโอน {money(animatedTransferSales)} บาท</span>
+            <span><i className="legend-thai-chuay-thai" /> ไทยช่วยไทย {money(animatedThaiChuayThaiSales)} บาท</span>
           </div>
         </article>
 
@@ -1597,20 +1813,36 @@ function DashboardScreen({ expenses, ingredients, orders, products, shifts }) {
 }
 
 function DashboardScreenV2({ expenses, ingredients, orders, products, shifts }) {
-  const [period, setPeriod] = useState("today");
+  const todayInput = toDateInputValue(new Date());
+  const currentMonthInput = toMonthInputValue(new Date());
+  const [dateMode, setDateMode] = useState("today");
+  const [selectedDate, setSelectedDate] = useState(todayInput);
+  const [rangeStart, setRangeStart] = useState(todayInput);
+  const [rangeEnd, setRangeEnd] = useState(todayInput);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthInput);
   const [comparePreviousMonth, setComparePreviousMonth] = useState(true);
-  const data = useMemo(
-    () => buildDashboardData(orders, expenses, ingredients, products, shifts, { period, comparePreviousMonth }),
-    [orders, expenses, ingredients, products, shifts, period, comparePreviousMonth],
+  const periodSelection = useMemo(
+    () => ({ mode: dateMode, selectedDate, rangeStart, rangeEnd, selectedMonth }),
+    [dateMode, selectedDate, rangeStart, rangeEnd, selectedMonth],
   );
+  const data = useMemo(
+    () => buildDashboardData(orders, expenses, ingredients, products, shifts, { period: periodSelection, comparePreviousMonth }),
+    [orders, expenses, ingredients, products, shifts, periodSelection, comparePreviousMonth],
+  );
+  const updateSelectedDate = (event) => setSelectedDate(event.currentTarget.value || todayInput);
+  const updateRangeStart = (event) => setRangeStart(event.currentTarget.value || todayInput);
+  const updateRangeEnd = (event) => setRangeEnd(event.currentTarget.value || rangeStart || todayInput);
+  const updateSelectedMonth = (event) => setSelectedMonth(event.currentTarget.value || currentMonthInput);
   const prefersReducedMotion = usePrefersReducedMotion();
   const animatedTotalSales = useAnimatedNumber(data.totalSales, { prefersReducedMotion });
   const animatedAverageOrder = useAnimatedNumber(data.averageOrder, { prefersReducedMotion });
   const animatedCashSales = useAnimatedNumber(data.cashSales, { prefersReducedMotion });
   const animatedTransferSales = useAnimatedNumber(data.transferSales, { prefersReducedMotion });
+  const animatedThaiChuayThaiSales = useAnimatedNumber(data.thaiChuayThaiSales, { prefersReducedMotion });
   const animatedOrderCount = useAnimatedNumber(data.orderCount, { duration: 520, prefersReducedMotion });
   const animatedCashOrders = useAnimatedNumber(data.cashOrders, { duration: 520, prefersReducedMotion });
   const animatedTransferOrders = useAnimatedNumber(data.transferOrders, { duration: 520, prefersReducedMotion });
+  const animatedThaiChuayThaiOrders = useAnimatedNumber(data.thaiChuayThaiOrders, { duration: 520, prefersReducedMotion });
   const animatedCashPercent = useAnimatedNumber(data.cashPercent, { duration: 620, prefersReducedMotion });
 
   return (
@@ -1627,8 +1859,34 @@ function DashboardScreenV2({ expenses, ingredients, orders, products, shifts }) 
             ["month", "เดือนนี้"],
             ["all", "ทั้งหมด"],
           ].map(([id, label]) => (
-            <button className={period === id ? "is-active" : ""} key={id} onClick={() => setPeriod(id)} type="button">{label}</button>
+            <button className={dateMode === id ? "is-active" : ""} data-dashboard-filter={id} key={id} onClick={() => setDateMode(id)} type="button">{label}</button>
           ))}
+          <button className={dateMode === "day" ? "is-active" : ""} data-dashboard-filter="day" onClick={() => setDateMode("day")} type="button">เลือกวัน</button>
+          <button className={dateMode === "range" ? "is-active" : ""} data-dashboard-filter="range" onClick={() => setDateMode("range")} type="button">ช่วงวันที่</button>
+          {dateMode === "day" ? (
+            <label className="dashboard-date-control">
+              วันที่
+              <input data-dashboard-input="day" value={selectedDate} onChange={updateSelectedDate} onInput={updateSelectedDate} type="date" />
+            </label>
+          ) : null}
+          {dateMode === "range" ? (
+            <div className="dashboard-date-range">
+              <label className="dashboard-date-control">
+                จาก
+                <input data-dashboard-input="range-start" value={rangeStart} onChange={updateRangeStart} onInput={updateRangeStart} type="date" />
+              </label>
+              <label className="dashboard-date-control">
+                ถึง
+                <input data-dashboard-input="range-end" value={rangeEnd} onChange={updateRangeEnd} onInput={updateRangeEnd} type="date" />
+              </label>
+            </div>
+          ) : null}
+          {dateMode === "month" ? (
+            <label className="dashboard-date-control">
+              เดือน
+              <input data-dashboard-input="month" value={selectedMonth} onChange={updateSelectedMonth} onInput={updateSelectedMonth} type="month" />
+            </label>
+          ) : null}
           <label className="dashboard-compare-toggle">
             <input checked={comparePreviousMonth} onChange={(event) => setComparePreviousMonth(event.target.checked)} type="checkbox" />
             เทียบเดือนก่อน
@@ -1657,6 +1915,11 @@ function DashboardScreenV2({ expenses, ingredients, orders, products, shifts }) 
           <strong>{money(animatedTransferSales)} บาท</strong>
           <small>{animatedTransferOrders} ออร์เดอร์หน้าร้าน</small>
         </article>
+        <article className="metric-card metric-transfer" style={{ "--motion-index": 4 }}>
+          <span><CreditCard size={18} /> ไทยช่วยไทย</span>
+          <strong>{money(animatedThaiChuayThaiSales)} บาท</strong>
+          <small>{animatedThaiChuayThaiOrders} ออร์เดอร์หน้าร้าน</small>
+        </article>
       </div>
 
       <div className="dashboard-grid">
@@ -1684,15 +1947,16 @@ function DashboardScreenV2({ expenses, ingredients, orders, products, shifts }) 
             <WalletCards size={22} />
             <div>
               <h3>ช่องทางชำระเงิน</h3>
-              <p>เงินสดเทียบกับเงินโอน</p>
+              <p>เงินสด เงินโอน และไทยช่วยไทย</p>
             </div>
           </div>
-          <div className="payment-donut" style={{ "--cash": `${animatedCashPercent}%` }}>
+          <div className="payment-donut" style={{ "--cash": `${animatedCashPercent}%`, "--transfer": `${data.transferPercent}%` }}>
             <span>{animatedCashPercent}%</span>
           </div>
           <div className="legend-list">
             <span><i className="legend-cash" /> เงินสด <strong>{money(animatedCashSales)} บาท</strong></span>
             <span><i className="legend-transfer" /> เงินโอน <strong>{money(animatedTransferSales)} บาท</strong></span>
+            <span><i className="legend-thai-chuay-thai" /> ไทยช่วยไทย <strong>{money(animatedThaiChuayThaiSales)} บาท</strong></span>
           </div>
         </article>
 
@@ -1775,6 +2039,7 @@ function DashboardScreenV2({ expenses, ingredients, orders, products, shifts }) 
 
 function PosScreen({
   activeCategory,
+  allowNegativeStockSales,
   cart,
   cartLeavingKeys,
   closeShiftToken,
@@ -1785,6 +2050,7 @@ function PosScreen({
   onCategory,
   onCheckout,
   onCloseShift,
+  onEditCartItem,
   onOpenShift,
   onProduct,
   onReprintOrder,
@@ -1797,6 +2063,7 @@ function PosScreen({
   salesChannel,
   setPosView,
   shifts,
+  testMode = false,
   total,
 }) {
   const [shiftPanelOpen, setShiftPanelOpen] = useState(false);
@@ -1811,6 +2078,7 @@ function PosScreen({
     return matchesCategory && product.name.toLocaleLowerCase("th-TH").includes(normalizedProductSearch);
   });
   const currentSummary = openShift ? calculateShiftSummary(openShift, orders) : null;
+  const saleUnlocked = Boolean(openShift || testMode);
   useEffect(() => {
     if (
       closeShiftToken
@@ -1830,7 +2098,7 @@ function PosScreen({
     }
   }
   return (
-    <section className={`pos-screen ${!openShift && posView === "sale" ? "is-shift-locked" : ""}`}>
+    <section className={`pos-screen ${!saleUnlocked && posView === "sale" ? "is-shift-locked" : ""} ${testMode ? "is-test-mode" : ""}`}>
       <div className="subnav-row">
         <button className={posView === "sale" ? "is-active" : ""} onClick={() => setPosView("sale")} type="button">ขายสินค้า</button>
         <button className={posView === "history" ? "is-active" : ""} onClick={() => setPosView("history")} type="button">ประวัติการขาย</button>
@@ -1854,7 +2122,7 @@ function PosScreen({
               {productCategories.map((category) => (
                 <button
                   className={`category-button ${activeCategory === category ? "is-active" : ""}`}
-                  disabled={!openShift}
+                  disabled={!saleUnlocked}
                   key={category}
                   onClick={() => onCategory(category)}
                   type="button"
@@ -1865,11 +2133,13 @@ function PosScreen({
             </div>
             <div className="product-grid">
               {visibleProducts.map((product) => {
-                const available = openShift && canSellProduct(product.id, ingredients, [], catalog);
-                const stockBlocked = Boolean(openShift && !available);
+                const hasEnoughStock = canSellProduct(product.id, ingredients, [], catalog);
+                const available = testMode || (openShift && (hasEnoughStock || allowNegativeStockSales));
+                const stockBlocked = Boolean(!testMode && openShift && !hasEnoughStock);
+                const stockOverride = Boolean(stockBlocked && allowNegativeStockSales);
                 return (
                   <button
-                    className={`product-tile ${product.imageDataUrl ? "has-image" : ""} ${product.color || "bg-white"} ${available ? "" : "is-disabled"}`}
+                    className={`product-tile ${product.imageDataUrl ? "has-image" : ""} ${product.color || "bg-white"} ${available ? "" : "is-disabled"} ${stockOverride ? "is-stock-warning" : ""}`}
                     disabled={!available}
                     key={product.id}
                     onClick={() => onProduct(product)}
@@ -1878,14 +2148,14 @@ function PosScreen({
                     {product.imageDataUrl ? (
                       <span className="product-image-frame" aria-hidden="true">
                         <img alt="" className="product-tile-image" src={product.imageDataUrl} />
-                        {stockBlocked ? <span className="product-stock-overlay">วัตถุดิบไม่พอ</span> : null}
+                        {stockBlocked ? <span className="product-stock-overlay">{stockOverride ? "สต็อกติดลบได้" : "วัตถุดิบไม่พอ"}</span> : null}
                       </span>
                     ) : null}
                     <div className="product-tile-footer">
                       <span className="product-tile-name">{product.name}</span>
                       <strong>{money(getChannelPrice(product, salesChannel))} บาท</strong>
                     </div>
-                    {!openShift ? <em>ต้องเปิดกะก่อนขาย</em> : !available && !product.imageDataUrl ? <em>วัตถุดิบไม่พอ</em> : null}
+                    {!saleUnlocked ? <em>ต้องเปิดกะก่อนขาย</em> : testMode ? <em>TEST ไม่ตัดสต็อก</em> : stockBlocked && !product.imageDataUrl ? <em>{stockOverride ? "ขายได้ สต็อกติดลบ" : "วัตถุดิบไม่พอ"}</em> : null}
                   </button>
                 );
               })}
@@ -1896,15 +2166,16 @@ function PosScreen({
             cart={cart}
             cartLeavingKeys={cartLeavingKeys}
             changeQuantity={changeQuantity}
-            disabled={!openShift}
+            disabled={!saleUnlocked}
             onCheckout={onCheckout}
+            onEditItem={onEditCartItem}
             printOptions={printOptions}
             total={total}
           />
         </div>
       )}
 
-      {!openShift && posView === "sale" ? (
+      {!saleUnlocked && posView === "sale" ? (
         <div className="shift-gate-overlay">
           <OpenShiftCard onOpenShift={onOpenShift} />
         </div>
@@ -1940,6 +2211,7 @@ function CartPanel({
   changeQuantity,
   disabled,
   onCheckout,
+  onEditItem,
   printOptions,
   total,
 }) {
@@ -1954,20 +2226,32 @@ function CartPanel({
       </div>
       <div className="cart-list">
         {cart.length ? cart.map((item) => (
-          <div className={`cart-row cart-row-full ${cartLeavingKeys.includes(item.key) ? "is-hidden" : ""}`} key={item.key}>
+          <div
+            className={`cart-row cart-row-full ${cartLeavingKeys.includes(item.key) ? "is-hidden" : ""}`}
+            key={item.key}
+            onClick={() => onEditItem?.(item)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onEditItem?.(item);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+          >
             <div className="cart-row-head">
               <div>
                 <div className="cart-item-title">
                   <strong>{item.product.name}</strong>
                   <span>{money(item.unitPrice)} บาท</span>
                 </div>
-                {item.modifiers.length ? <p>{item.modifiers.map((modifier) => modifier.label).join(", ")}</p> : null}
+                {item.modifiers.length ? <p>{formatModifierSummary(item.modifiers).join(", ")}</p> : null}
                 {item.note ? <p className="cart-item-note">หมายเหตุ: {item.note}</p> : null}
               </div>
               <div className="qty-control">
-                <button onClick={() => changeQuantity(item.key, -1)} type="button"><Minus size={16} /></button>
+                <button onClick={(event) => { event.stopPropagation(); changeQuantity(item.key, -1); }} type="button"><Minus size={16} /></button>
                 <b>{item.quantity}</b>
-                <button onClick={() => changeQuantity(item.key, 1)} type="button"><Plus size={16} /></button>
+                <button onClick={(event) => { event.stopPropagation(); changeQuantity(item.key, 1); }} type="button"><Plus size={16} /></button>
               </div>
             </div>
           </div>
@@ -2023,8 +2307,9 @@ function ShiftStatusCard({ onCloseShift, onDismiss, shift, summary }) {
       <div className="shift-metrics">
         <span>ยอดขายสุทธิ <strong>{money(summary.netSales ?? summary.totalSales)} บาท</strong></span>
         <span>เงินสดเริ่มต้น <strong>{money(shift.openingCash)} บาท</strong></span>
-        <span>เงินสดขาย <strong>{money(summary.cashSales)} บาท</strong></span>
+        <span>เงินสด <strong>{money(summary.cashSales)} บาท</strong></span>
         <span>เงินโอน <strong>{money(summary.transferSales)} บาท</strong></span>
+        <span>ไทยช่วยไทย <strong>{money(summary.thaiChuayThaiSales || 0)} บาท</strong></span>
         <span>ออเดอร์ <strong>{summary.orderCount}</strong></span>
         <span>ยกเลิก <strong>{summary.voidOrderCount || 0}</strong></span>
         <span>คืนเงินสด <strong>{money(summary.cashRefundAmount || 0)} บาท</strong></span>
@@ -2057,14 +2342,22 @@ function ShiftClosedSummary({ onClose, summary }) {
         <h3>สรุปปิดกะ</h3>
         <p>ปิดกะแล้ว ตรวจยอดก่อนออกจากหน้าต่างนี้</p>
       </div>
+      <div className="shift-close-secondary">
+        <span>เปิดกะ <strong>{new Date(summary.openedAt || Date.now()).toLocaleString("th-TH")}</strong></span>
+        <span>ปิดกะ <strong>{new Date(summary.closedAt || Date.now()).toLocaleString("th-TH")}</strong></span>
+        <span>ออร์เดอร์ทั้งหมด <strong>{summary.orderCount}</strong></span>
+        <span>เบอร์เกอร์ <strong>{money(summary.burgerQuantity || 0)} ชิ้น</strong></span>
+        <span>BBQ <strong>{money(summary.bbqQuantity || 0)} ชิ้น</strong></span>
+      </div>
       <div className="shift-close-focus">
         <span>ยอดขายสุทธิ <strong>{money(summary.netSales ?? summary.totalSales)} บาท</strong></span>
         <span>เงินสดที่นับได้ <strong>{money(summary.closingCash)} บาท</strong></span>
         <span>ส่วนต่างเงินสด <strong className={summary.cashDifference < 0 ? "text-danger" : ""}>{money(summary.cashDifference)} บาท</strong></span>
       </div>
       <div className="shift-close-secondary">
-        <span>เงินสดขาย <strong>{money(summary.cashSales)} บาท</strong></span>
+        <span>เงินสด <strong>{money(summary.cashSales)} บาท</strong></span>
         <span>เงินโอน <strong>{money(summary.transferSales)} บาท</strong></span>
+        <span>ไทยช่วยไทย <strong>{money(summary.thaiChuayThaiSales || 0)} บาท</strong></span>
         <span>ออเดอร์ <strong>{summary.orderCount}</strong></span>
         <span>ยกเลิก <strong>{summary.voidOrderCount || 0}</strong></span>
       </div>
@@ -2073,6 +2366,8 @@ function ShiftClosedSummary({ onClose, summary }) {
         <div className="shift-metrics compact">
           <span>ยอดก่อนยกเลิก <strong>{money(summary.grossSales ?? summary.totalSales)} บาท</strong></span>
           <span>เงินสดเริ่มต้น <strong>{money(summary.openingCash)} บาท</strong></span>
+          <span>เบอร์เกอร์ <strong>{money(summary.burgerQuantity || 0)} ชิ้น</strong></span>
+          <span>BBQ <strong>{money(summary.bbqQuantity || 0)} ชิ้น</strong></span>
           <span>ยอดยกเลิก <strong>{money(summary.voidAmount || 0)} บาท</strong></span>
           <span>คืนเงินสด <strong>{money(summary.cashRefundAmount || 0)} บาท</strong></span>
           <span>คืนเงินโอน <strong>{money(summary.transferRefundAmount || 0)} บาท</strong></span>
@@ -2124,7 +2419,7 @@ function SalesHistoryPanel({ onReprintOrder, onVoidOrder, orders, shifts }) {
                     {getOrderDisplayNo(order)}
                     {isVoided ? <small className="void-badge">ยกเลิกแล้ว</small> : null}
                   </span>
-                  <small>{new Date(order.createdAt).toLocaleString("th-TH")} · {order.paymentMethod === "CASH" ? "เงินสด" : "เงินโอน"}</small>
+                  <small>{new Date(order.createdAt).toLocaleString("th-TH")} · {getPaymentMethodLabel(order.paymentMethod)}</small>
                 </span>
                 <strong>{money(order.totalAmount)} บาท</strong>
               </button>
@@ -2213,7 +2508,7 @@ function OrderDetailPanel({ onClose, onReprint, onVoidOrder, order, printNotice 
         <ClipboardList size={22} />
         <div>
           <h3>{getOrderDisplayNo(order)}</h3>
-          <p>{new Date(order.createdAt).toLocaleString("th-TH")} · {order.paymentMethod === "CASH" ? "เงินสด" : "เงินโอน"}</p>
+          <p>{new Date(order.createdAt).toLocaleString("th-TH")} · {getPaymentMethodLabel(order.paymentMethod)}</p>
         </div>
         {isVoided ? <span className="void-badge">ยกเลิกแล้ว</span> : null}
         {onClose ? <button className="icon-close-button" onClick={onClose} type="button">ปิด</button> : null}
@@ -2240,7 +2535,11 @@ function OrderDetailPanel({ onClose, onReprint, onVoidOrder, order, printNotice 
           <span>รับเงินสด {money(order.cashReceived)} บาท</span>
           <span>เงินทอน {money(order.changeDue)} บาท</span>
         </div>
-      ) : null}
+      ) : (
+        <div className="order-detail-payment">
+          <span>ชำระด้วย{getPaymentMethodLabel(order.paymentMethod)} {money(order.totalAmount)} บาท</span>
+        </div>
+      )}
       {isVoided ? (
         <div className="void-summary-box">
           <strong>ข้อมูลการยกเลิก</strong>
@@ -2329,6 +2628,23 @@ function formatRefundMethod(method) {
   return "กดผิด / ไม่ได้รับเงินจริง - ลบยอดรับเงินออก";
 }
 
+function getPaymentMethodLabel(method) {
+  if (method === "CASH") return "เงินสด";
+  if (method === "THAI_CHUAY_THAI") return "ไทยช่วยไทย";
+  return "เงินโอน";
+}
+
+function normalizeOrderItemCategory(item) {
+  const category = String(item?.category || "").trim();
+  const lowerCategory = category.toLowerCase();
+  const name = String(item?.name || "").trim().toLowerCase();
+  if (lowerCategory === "bbq" || lowerCategory.includes("bbq") || category.includes("บาร์บีคิว")) return "BBQ";
+  if (lowerCategory.includes("burger") || category.includes("เบอร์เกอร์")) return "เบอร์เกอร์";
+  if (name.includes("bbq") || name.includes("บาร์บีคิว")) return "BBQ";
+  if (name.includes("burger") || name.includes("เบอร์เกอร์")) return "เบอร์เกอร์";
+  return category;
+}
+
 function SalesHistory({ orders, shifts }) {
   const latestShifts = shifts.slice(0, 8);
   return (
@@ -2340,7 +2656,7 @@ function SalesHistory({ orders, shifts }) {
             <div className="table-row history-row" key={order.id}>
               <span>
                 {getOrderDisplayNo(order)}
-                <small>{new Date(order.createdAt).toLocaleString("th-TH")} · {order.paymentMethod === "CASH" ? "เงินสด" : "เงินโอน"}</small>
+                <small>{new Date(order.createdAt).toLocaleString("th-TH")} · {getPaymentMethodLabel(order.paymentMethod)}</small>
               </span>
               <strong>{money(order.totalAmount)} บาท</strong>
             </div>
@@ -2360,6 +2676,7 @@ function SalesHistory({ orders, shifts }) {
                 <div className="shift-metrics compact">
                   <span>เงินสด <strong>{money(summary.cashSales)} บาท</strong></span>
                   <span>เงินโอน <strong>{money(summary.transferSales)} บาท</strong></span>
+                  <span>ไทยช่วยไทย <strong>{money(summary.thaiChuayThaiSales || 0)} บาท</strong></span>
                   <span>ส่วนต่าง <strong className={summary.cashDifference < 0 ? "text-danger" : ""}>{money(summary.cashDifference)} บาท</strong></span>
                   <span>ออเดอร์ <strong>{summary.orderCount}</strong></span>
                 </div>
@@ -2372,7 +2689,7 @@ function SalesHistory({ orders, shifts }) {
   );
 }
 
-function ModifierModal({ ingredients, modifierGroups, modifierIds, modifierRecipes, modifiers, note, onClose, onConfirm, onNoteChange, onQuantityChange, onToggle, product, quantity = 1 }) {
+function ModifierModal({ allowMissingStock = false, confirmLabel = "เพิ่มลงตะกร้า", ingredients, modifierGroups, modifierIds, modifierRecipes, modifiers, note, onClose, onConfirm, onDecrement, onNoteChange, onQuantityChange, onToggle, product, quantity = 1 }) {
   const { backdropRef } = useAnimeModal(onClose, modifierModalChildren);
   const productModifiers = modifiers.filter((modifier) => modifier.productIds.includes(product.id));
   const knownModifierGroupIds = new Set(modifierGroups.map((group) => group.id));
@@ -2386,13 +2703,40 @@ function ModifierModal({ ingredients, modifierGroups, modifierIds, modifierRecip
       }),
     }))
     .filter((group) => group.modifiers.length);
-  const selectedRecipeLines = modifierRecipes
-    .filter((recipe) => modifierIds.includes(recipe.modifierId))
-    .map((recipe) => ({ ingredientId: recipe.ingredientId, quantity: Math.max(0, recipe.quantity) * Math.max(1, Number(quantity || 1)) }));
-  const missing = getMissingIngredients(selectedRecipeLines, ingredients);
   const safeQuantity = Math.max(1, Number.parseInt(quantity, 10) || 1);
+  const modifierCounts = countModifierIds(modifierIds);
+  const selectedRecipeLines = modifierRecipes.flatMap((recipe) => {
+    const modifierCount = Number(modifierCounts.get(recipe.modifierId) || 0);
+    if (!modifierCount) return [];
+    return [{ ingredientId: recipe.ingredientId, quantity: Math.max(0, recipe.quantity) * modifierCount * safeQuantity }];
+  });
+  const missing = getMissingIngredients(selectedRecipeLines, ingredients);
+  const confirmDisabled = missing.length > 0 && !allowMissingStock;
+  const [expandedGroupIds, setExpandedGroupIds] = useState(() => new Set(["addon"]));
+  const getModifierStockWarning = (modifierId) => {
+    const recipeLines = modifierRecipes
+      .filter((recipe) => recipe.modifierId === modifierId)
+      .map((recipe) => ({ ingredientId: recipe.ingredientId, quantity: Math.max(0, recipe.quantity) * safeQuantity }))
+      .filter((line) => line.quantity > 0);
+    const shortage = getMissingIngredients(recipeLines, ingredients);
+    if (!shortage.length) return null;
+    const hasSomeStock = shortage.some((item) => Number(item.stock || 0) > 0);
+    return {
+      label: hasSomeStock ? "วัตถุดิบไม่พอ" : "วัตถุดิบหมด",
+      names: shortage.map((item) => item.name).join(", "),
+    };
+  };
   const updateQuantity = (nextValue) => {
     onQuantityChange(Math.max(1, Number.parseInt(nextValue, 10) || 1));
+  };
+  const toggleGroupExpansion = (groupId) => {
+    if (groupId === "addon") return;
+    setExpandedGroupIds((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
   };
   return (
     <div className="modal-backdrop anime-modal" ref={backdropRef}>
@@ -2400,22 +2744,59 @@ function ModifierModal({ ingredients, modifierGroups, modifierIds, modifierRecip
         <h3>{product.name}</h3>
         <p>เลือกคำสั่งพิเศษก่อนเพิ่มลงตะกร้า</p>
         <div className="modifier-list">
-          {groupedModifiers.map((group) => (
-            <div className="modifier-group" key={group.id}>
-              <strong>{group.label}</strong>
-              {group.modifiers.map((modifier) => (
+          {groupedModifiers.map((group) => {
+            const isPinnedGroup = group.id === "addon";
+            const isExpanded = isPinnedGroup || expandedGroupIds.has(group.id);
+            const selectedInGroup = group.modifiers.reduce((sum, modifier) => sum + Number(modifierCounts.get(modifier.id) || 0), 0);
+            return (
+              <div className={`modifier-group ${isExpanded ? "is-expanded" : ""}`} key={group.id}>
                 <button
-                  className={`modifier-row ${modifierIds.includes(modifier.id) ? "is-active" : ""}`}
-                  key={modifier.id}
-                  onClick={() => onToggle(modifier.id)}
+                  aria-expanded={isExpanded}
+                  className="modifier-group-toggle"
+                  onClick={() => toggleGroupExpansion(group.id)}
                   type="button"
                 >
-                  <span>{modifier.label}</span>
-                  <strong>{modifier.price ? `+${money(modifier.price)} บาท` : "ไม่คิดเงิน"}</strong>
+                  <span>
+                    <strong>{group.label}</strong>
+                    <small>{isPinnedGroup ? "แสดงตัวเลือกหลัก" : "แตะเพื่อเปิดรายการด้านใน"}</small>
+                  </span>
+                  <span className="modifier-group-meta">
+                    {selectedInGroup ? `เลือก ${selectedInGroup}` : `${group.modifiers.length} รายการ`}
+                    {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                  </span>
                 </button>
-              ))}
-            </div>
-          ))}
+                {isExpanded ? (
+                  <div className="modifier-option-grid">
+                    {group.modifiers.map((modifier) => {
+                      const selectedCount = Number(modifierCounts.get(modifier.id) || 0);
+                      const allowsQuantity = modifierAllowsQuantity(modifier);
+                      const stockWarning = getModifierStockWarning(modifier.id);
+                      return (
+                        <div className={`modifier-row ${selectedCount ? "is-active" : ""} ${stockWarning ? "is-stock-warning" : ""}`} key={modifier.id}>
+                          <button className="modifier-row-button" onClick={() => onToggle(modifier.id)} type="button">
+                            <span>{modifier.label}</span>
+                            <strong>{modifier.price ? `+${money(modifier.price)} บาท` : "ไม่คิดเงิน"}</strong>
+                            {stockWarning ? <small className="modifier-stock-note">{stockWarning.label}: {stockWarning.names}</small> : null}
+                          </button>
+                          {allowsQuantity ? (
+                            <div className="modifier-option-qty">
+                              <button disabled={!selectedCount} onClick={() => onDecrement(modifier.id)} type="button"><Minus size={16} /></button>
+                              <b>{selectedCount}</b>
+                              <button onClick={() => onToggle(modifier.id)} type="button"><Plus size={16} /></button>
+                            </div>
+                          ) : (
+                            <button className="modifier-toggle-pill" onClick={() => onToggle(modifier.id)} type="button">
+                              {selectedCount ? <Check size={16} /> : <Plus size={16} />}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
         <div className="modifier-bottom-grid">
           <label className="modifier-note-field">
@@ -2441,10 +2822,15 @@ function ModifierModal({ ingredients, modifierGroups, modifierIds, modifierRecip
             </div>
           </label>
         </div>
-        {missing.length ? <div className="warning-box">วัตถุดิบไม่พอ: {missing.map((item) => item.name).join(", ")}</div> : null}
+        {missing.length ? (
+          <div className="warning-box">
+            วัตถุดิบไม่พอ: {missing.map((item) => item.name).join(", ")}
+            {allowMissingStock ? " · กดต่อได้ สต็อกจะติดลบ" : ""}
+          </div>
+        ) : null}
         <div className="modal-actions">
           <button className="ghost-button" onClick={onClose} type="button">ยกเลิก</button>
-          <button className="primary-button" disabled={missing.length > 0} onClick={onConfirm} type="button">เพิ่มลงตะกร้า</button>
+          <button className="primary-button" disabled={confirmDisabled} onClick={onConfirm} type="button">{confirmLabel}</button>
         </div>
       </div>
     </div>
@@ -2494,12 +2880,15 @@ function PaymentModal({ cart, onClose, onSubmit, total }) {
           <button className={method === "TRANSFER" ? "is-active" : ""} onClick={() => setMethod("TRANSFER")} type="button">
             <CreditCard size={18} /> เงินโอน
           </button>
+          <button className={method === "THAI_CHUAY_THAI" ? "is-active" : ""} onClick={() => setMethod("THAI_CHUAY_THAI")} type="button">
+            <CreditCard size={18} /> ไทยช่วยไทย
+          </button>
         </div>
         <div className="receipt-preview">
           {cart.map((item) => (
             <span key={item.key}>
               <b>{item.quantity}x {item.product.name}</b>
-              {item.modifiers.length ? <small>{item.modifiers.map((modifier) => modifier.label).join(", ")}</small> : null}
+              {item.modifiers.length ? <small>{formatModifierSummary(item.modifiers).join(", ")}</small> : null}
               {item.note ? <small>{item.note}</small> : null}
             </span>
           ))}
@@ -2526,7 +2915,7 @@ function PaymentModal({ cart, onClose, onSubmit, total }) {
             </div>
             <div className="change-line">เงินทอน {money(change)} บาท</div>
           </>
-        ) : <div className="transfer-ready"><Check size={20} /> เงินโอนสำเร็จได้ทันทีเมื่อกดยืนยัน</div>}
+        ) : <div className="transfer-ready"><Check size={20} /> {getPaymentMethodLabel(method)}สำเร็จได้ทันทีเมื่อกดยืนยัน</div>}
         {submitError ? <div className="inline-warning">{submitError}</div> : null}
         <div className="modal-actions">
           <button className="ghost-button" disabled={isSubmitting} onClick={closeWithAnimation} type="button">ยกเลิก</button>
@@ -2544,7 +2933,7 @@ function PaymentModal({ cart, onClose, onSubmit, total }) {
   );
 }
 
-function InventoryScreen({ adjustStock, deleteIngredient, ingredientCategories, ingredients, onAddPurchaseUnit, purchaseUnits, saveIngredient, setIngredientCategories, setIngredients }) {
+function InventoryScreen({ adjustStock, deleteIngredient, expenseCategories = defaultGeneralExpenseCategories, expenseSubcategories = defaultGeneralExpenseSubcategories, ingredientCategories, ingredients, onAddPurchaseUnit, purchaseUnits, saveIngredient, setIngredientCategories, setIngredients }) {
   const [filter, setFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [newCategory, setNewCategory] = useState("");
@@ -2568,6 +2957,8 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredientCategories, 
 
   const savedForm = selected || emptyIngredient();
   const hasUnsavedChanges = editorOpen && JSON.stringify(normalizeIngredientForm(form)) !== JSON.stringify(normalizeIngredientForm(savedForm));
+  const formExpenseCategory = form.expenseCategory || defaultIngredientExpenseCategory;
+  const formExpenseSubcategories = expenseSubcategories.filter((subcategory) => subcategory.category === formExpenseCategory);
 
   function warnUnsaved() {
     setEditorNotice("มีข้อมูลที่แก้ไขแล้วยังไม่ได้บันทึก");
@@ -2660,9 +3051,14 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredientCategories, 
       stock: selected ? Number(selected.stock || 0) : Number(form.stock || 0),
       minimumStock: Number(form.minimumStock || 0),
       category: form.category || ingredientCategories[0] || "อื่นๆ",
+      expenseCategory: form.expenseCategory || defaultIngredientExpenseCategory,
+      expenseSubcategory: form.expenseSubcategory
+        || firstExpenseSubcategory(form.expenseCategory || defaultIngredientExpenseCategory, expenseSubcategories)
+        || defaultIngredientExpenseSubcategory,
     };
     saveIngredient(next);
     if (isNew && purchaseLabel && purchaseRatio > 0) {
+      const timestamp = new Date().toISOString();
       onAddPurchaseUnit((current) => [
         ...current,
         {
@@ -2671,6 +3067,8 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredientCategories, 
           label: purchaseLabel,
           ratio: purchaseRatio,
           baseUnit: next.unit,
+          createdAt: timestamp,
+          updatedAt: timestamp,
         },
       ]);
     }
@@ -2702,12 +3100,16 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredientCategories, 
   function addUnit(event) {
     event.preventDefault();
     if (!selected) return;
+    const timestamp = new Date().toISOString();
+    const existingUnit = editingUnitId ? purchaseUnits.find((unit) => unit.id === editingUnitId) : null;
     const nextUnit = {
       id: editingUnitId || `unit_${Date.now()}`,
       ingredientId: selected.id,
       label: unitForm.label.trim() || selected.unit,
       ratio: Number(unitForm.ratio || 1),
       baseUnit: selected.unit,
+      createdAt: existingUnit?.createdAt || timestamp,
+      updatedAt: timestamp,
     };
     onAddPurchaseUnit((current) => {
       if (editingUnitId) {
@@ -2799,10 +3201,12 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredientCategories, 
         <div className="inventory-grid">
           {rows.map((item) => {
             const absoluteIndex = ingredients.findIndex((ingredient) => ingredient.id === item.id);
-            const low = Number(item.stock) <= Number(item.minimumStock);
+            const stock = Number(item.stock || 0);
+            const out = stock <= 0;
+            const low = !out && stock <= Number(item.minimumStock);
             return (
               <article
-                className={`inventory-card ${low ? "is-low" : ""} ${selectedId === item.id ? "is-active" : ""} ${reorderMode ? "is-reordering" : ""}`}
+                className={`inventory-card ${low ? "is-low" : ""} ${out ? "is-out" : ""} ${selectedId === item.id ? "is-active" : ""} ${reorderMode ? "is-reordering" : ""}`}
                 key={item.id}
                 onClick={() => {
                   if (editorOpen && selectedId === item.id) closeEditor();
@@ -2818,10 +3222,10 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredientCategories, 
                 </span> : null}
                 <div>
                   <h3>{item.name}</h3>
-                  <p>{item.category || "อื่นๆ"} · ขั้นต่ำ {money(item.minimumStock)} {item.unit}</p>
+                  <p>ขั้นต่ำ {money(item.minimumStock)} {item.unit}</p>
                 </div>
                 <strong>{money(item.stock)} <small>{item.unit}</small></strong>
-                <span>{low ? "ใกล้หมด" : "พร้อมขาย"}</span>
+                <span>{out ? "หมดแล้ว" : low ? "ใกล้หมด" : "พร้อมขาย"}</span>
               </article>
             );
           })}
@@ -2844,7 +3248,20 @@ function InventoryScreen({ adjustStock, deleteIngredient, ingredientCategories, 
           </div>
           {editorNotice ? <div className="inline-warning">{editorNotice}</div> : null}
           <label className={hasUnsavedChanges && normalizeIngredientForm(form).name !== normalizeIngredientForm(savedForm).name ? "is-dirty" : ""}>ชื่อ<input value={form.name || ""} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, name: event.target.value })); }} /></label>
-          <label>ประเภท<select value={form.category || ingredientCategories[0] || "อื่นๆ"} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}>{ingredientCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+          <label>ประเภทวัตถุดิบ (ไว้ดูในเว็บ)<select value={form.category || ingredientCategories[0] || "อื่นๆ"} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))}>{ingredientCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+          <label>ประเภทบัญชีหลัก<select value={formExpenseCategory} onChange={(event) => {
+            const category = event.target.value;
+            setDeleteArmed(false);
+            setForm((current) => ({
+              ...current,
+              expenseCategory: category,
+              expenseSubcategory: firstExpenseSubcategory(category, expenseSubcategories) || "",
+            }));
+          }}>{expenseCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+          <label>ประเภทย่อยบัญชี<select value={form.expenseSubcategory || ""} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, expenseSubcategory: event.target.value })); }}>
+            {!formExpenseSubcategories.some((subcategory) => subcategory.name === form.expenseSubcategory) && form.expenseSubcategory ? <option value={form.expenseSubcategory}>{form.expenseSubcategory}</option> : null}
+            {formExpenseSubcategories.map((subcategory) => <option key={subcategory.id} value={subcategory.name}>{subcategory.name}</option>)}
+          </select></label>
           <label className={hasUnsavedChanges && normalizeIngredientForm(form).unit !== normalizeIngredientForm(savedForm).unit ? "is-dirty" : ""}>หน่วยหลัก<input value={form.unit || ""} onChange={(event) => { setDeleteArmed(false); setForm((current) => ({ ...current, unit: event.target.value })); }} /></label>
           {selected ? (
             <div className="readonly-stock-field">
@@ -3695,29 +4112,48 @@ function ModifierManagementScreen({ ingredients, modifierGroups, modifierRecipes
   );
 }
 
-function GeneralExpenseMasterScreen({ categories: masterCategories, items, setCategories, setItems, setSubcategories, subcategories }) {
+function compareExpenseDatabaseRecords(a, b) {
+  const aCategory = a.expenseCategory || a.category || "";
+  const bCategory = b.expenseCategory || b.category || "";
+  const aSubcategory = a.expenseSubcategory || a.subcategory || "";
+  const bSubcategory = b.expenseSubcategory || b.subcategory || "";
+  return aCategory.localeCompare(bCategory, "th")
+    || aSubcategory.localeCompare(bSubcategory, "th")
+    || String(a.name || "").localeCompare(String(b.name || ""), "th");
+}
+
+function GeneralExpenseMasterScreen({ categories: masterCategories, ingredients = [], items, setCategories, setIngredients = () => {}, setItems, setSubcategories, subcategories }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [form, setForm] = useState(emptyGeneralExpenseItem(
-    masterCategories[0],
-    firstExpenseSubcategory(masterCategories[0], subcategories),
+    defaultNonStockExpenseCategory(masterCategories),
+    firstExpenseSubcategory(defaultNonStockExpenseCategory(masterCategories), subcategories),
   ));
   const [newCategory, setNewCategory] = useState("");
   const [newSubcategory, setNewSubcategory] = useState("");
-  const [newSubcategoryCategory, setNewSubcategoryCategory] = useState(masterCategories[0] || "");
+  const [newSubcategoryCategory, setNewSubcategoryCategory] = useState(defaultNonStockExpenseCategory(masterCategories) || masterCategories[0] || "");
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [subcategoryDialogOpen, setSubcategoryDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [categoryDeleteTarget, setCategoryDeleteTarget] = useState("");
   const [subcategoryDeleteTarget, setSubcategoryDeleteTarget] = useState(null);
   const [reorderMode, setReorderMode] = useState(false);
   const selected = selectedId ? items.find((item) => item.id === selectedId) : null;
   const normalizedQuery = query.trim().toLowerCase();
+  const visibleStockItems = ingredients.filter((item) => (
+    !normalizedQuery
+    || item.name.toLowerCase().includes(normalizedQuery)
+    || item.category?.toLowerCase().includes(normalizedQuery)
+    || item.expenseCategory?.toLowerCase().includes(normalizedQuery)
+    || item.expenseSubcategory?.toLowerCase().includes(normalizedQuery)
+  )).sort(compareExpenseDatabaseRecords);
   const visibleItems = items.filter((item) => (
     !normalizedQuery
     || item.name.toLowerCase().includes(normalizedQuery)
     || item.category?.toLowerCase().includes(normalizedQuery)
     || item.subcategory?.toLowerCase().includes(normalizedQuery)
-  ));
+  )).sort(compareExpenseDatabaseRecords);
   const formSubcategories = subcategories.filter((subcategory) => subcategory.category === form.category);
 
   function openEditor(item) {
@@ -3731,9 +4167,10 @@ function GeneralExpenseMasterScreen({ categories: masterCategories, items, setCa
 
   function startNew() {
     setSelectedId("");
+    const defaultCategory = defaultNonStockExpenseCategory(masterCategories);
     setForm(emptyGeneralExpenseItem(
-      masterCategories[0],
-      firstExpenseSubcategory(masterCategories[0], subcategories),
+      defaultCategory,
+      firstExpenseSubcategory(defaultCategory, subcategories),
     ));
     setEditorOpen(true);
   }
@@ -3747,7 +4184,7 @@ function GeneralExpenseMasterScreen({ categories: masterCategories, items, setCa
     event.preventDefault();
     const name = form.name.trim();
     const unit = form.unit.trim();
-    if (!name || !form.category || !form.subcategory || !unit) return;
+    if (!name || !form.category || !form.subcategory) return;
     const next = {
       ...form,
       id: form.id || `general_${Date.now()}`,
@@ -3778,12 +4215,30 @@ function GeneralExpenseMasterScreen({ categories: masterCategories, items, setCa
     setItems((current) => moveArrayItemToPosition(current, itemId, position));
   }
 
+  function updateIngredientExpenseMeta(ingredientId, patch) {
+    setIngredients((current) => current.map((ingredient) => (
+      ingredient.id === ingredientId ? { ...ingredient, ...patch } : ingredient
+    )));
+  }
+
+  function openCategoryDialog() {
+    setNewCategory("");
+    setCategoryDialogOpen(true);
+  }
+
+  function openSubcategoryDialog() {
+    setNewSubcategory("");
+    setNewSubcategoryCategory(defaultNonStockExpenseCategory(masterCategories) || masterCategories[0] || "");
+    setSubcategoryDialogOpen(true);
+  }
+
   function addCategory(event) {
     event.preventDefault();
     const name = newCategory.trim();
     if (!name || masterCategories.includes(name)) return;
     setCategories((current) => [...current, name]);
     setNewCategory("");
+    setCategoryDialogOpen(false);
   }
 
   function addSubcategory(event) {
@@ -3797,10 +4252,15 @@ function GeneralExpenseMasterScreen({ categories: masterCategories, items, setCa
       name,
     }]);
     setNewSubcategory("");
+    setSubcategoryDialogOpen(false);
   }
 
   function removeCategory() {
     if (!categoryDeleteTarget) return;
+    if (categoryDeleteTarget === defaultIngredientExpenseCategory) {
+      setCategoryDeleteTarget("");
+      return;
+    }
     if (masterCategories.length <= 1) {
       setCategoryDeleteTarget("");
       return;
@@ -3812,6 +4272,11 @@ function GeneralExpenseMasterScreen({ categories: masterCategories, items, setCa
     setItems((current) => current.map((item) => (
       item.category === categoryDeleteTarget
         ? { ...item, category: fallback, subcategory: fallbackSubcategory }
+        : item
+    )));
+    setIngredients((current) => current.map((item) => (
+      item.expenseCategory === categoryDeleteTarget
+        ? { ...item, expenseCategory: fallback, expenseSubcategory: fallbackSubcategory }
         : item
     )));
     setCategoryDeleteTarget("");
@@ -3834,6 +4299,11 @@ function GeneralExpenseMasterScreen({ categories: masterCategories, items, setCa
         ? { ...item, subcategory: fallback }
         : item
     )));
+    setIngredients((current) => current.map((item) => (
+      item.expenseCategory === subcategoryDeleteTarget.category && item.expenseSubcategory === subcategoryDeleteTarget.name
+        ? { ...item, expenseSubcategory: fallback }
+        : item
+    )));
     setSubcategoryDeleteTarget(null);
   }
 
@@ -3841,18 +4311,77 @@ function GeneralExpenseMasterScreen({ categories: masterCategories, items, setCa
     <section className={`management-layout ${editorOpen ? "" : "is-single"}`}>
       <div className="work-panel">
         <div className="toolbar management-toolbar general-expense-master-toolbar">
-          <div className="search-box"><Search size={18} /><input placeholder="ค้นหารายจ่ายทั่วไป" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
+          <div className="search-box"><Search size={18} /><input placeholder="ค้นหาฐานข้อมูลรายจ่าย" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
           <button className="new-record-button toolbar-add-button" onClick={startNew} type="button"><Plus size={19} /> เพิ่มรายการทั่วไป</button>
           <button className={`reorder-toggle-button ${reorderMode ? "is-active" : ""}`} onClick={() => setReorderMode((current) => !current)} type="button">
             <SlidersHorizontal size={18} /> {reorderMode ? "เสร็จสิ้นการจัดลำดับ" : "จัดลำดับ"}
           </button>
         </div>
-        <div className="general-expense-master-grid">
+        <div className="expense-database-section-title">
+          <div>
+            <h3>วัตถุดิบที่ลงสต็อก</h3>
+            <p>ประเภทวัตถุดิบยังใช้ไว้ดูในเว็บ ส่วนประเภทบัญชีหลัก/ย่อยจะใช้ตอนบันทึกรายจ่ายลงรายจ่าย</p>
+          </div>
+          <span>{visibleStockItems.length} รายการ</span>
+        </div>
+        <div className="expense-database-table expense-stock-master-table" role="table" aria-label="วัตถุดิบที่ลงสต็อก">
+          <div className="expense-database-row is-head" role="row">
+            <span>รายการ</span>
+            <span>ประเภทไว้ดูในเว็บ</span>
+            <span>ประเภทบัญชีหลัก</span>
+            <span>ประเภทย่อยบัญชี</span>
+          </div>
+          {visibleStockItems.map((ingredient) => {
+            const expenseCategory = ingredient.expenseCategory || defaultIngredientExpenseCategory;
+            const ingredientSubcategories = subcategories.filter((subcategory) => subcategory.category === expenseCategory);
+            return (
+              <div className="expense-database-row" key={ingredient.id} role="row">
+                <label className="expense-database-cell">
+                  <span className="sr-only">รายการ</span>
+                  <input value={ingredient.name || ""} onChange={(event) => updateIngredientExpenseMeta(ingredient.id, { name: event.target.value })} />
+                </label>
+                <span className="expense-database-muted">{ingredient.category || "อื่นๆ"} · {ingredient.unit || "ชิ้น"}</span>
+                <label className="expense-database-cell">
+                  <span className="sr-only">ประเภทบัญชีหลัก</span>
+                  <select value={expenseCategory} onChange={(event) => {
+                    const category = event.target.value;
+                    updateIngredientExpenseMeta(ingredient.id, {
+                      expenseCategory: category,
+                      expenseSubcategory: firstExpenseSubcategory(category, subcategories),
+                    });
+                  }}>{masterCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select>
+                </label>
+                <label className="expense-database-cell">
+                  <span className="sr-only">ประเภทย่อยบัญชี</span>
+                  <select value={ingredient.expenseSubcategory || ""} onChange={(event) => updateIngredientExpenseMeta(ingredient.id, { expenseSubcategory: event.target.value })}>
+                    {!ingredientSubcategories.some((subcategory) => subcategory.name === ingredient.expenseSubcategory) && ingredient.expenseSubcategory ? <option value={ingredient.expenseSubcategory}>{ingredient.expenseSubcategory}</option> : null}
+                    {ingredientSubcategories.map((subcategory) => <option key={subcategory.id} value={subcategory.name}>{subcategory.name}</option>)}
+                  </select>
+                </label>
+              </div>
+            );
+          })}
+        </div>
+        <div className="expense-database-section-title">
+          <div>
+            <h3>ค่าใช้จ่ายทั่วไป</h3>
+            <p>รายการที่ไม่เพิ่มสต็อก แต่ยังมีประเภทบัญชีหลัก/ย่อยเหมือนกัน</p>
+          </div>
+          <span>{visibleItems.length} รายการ</span>
+        </div>
+        <div className="expense-database-table" role="table" aria-label="ค่าใช้จ่ายทั่วไป">
+          <div className="expense-database-row general-expense-row is-head" role="row">
+            <span>รายการ</span>
+            <span>ประเภทหลัก</span>
+            <span>ประเภทย่อย</span>
+            <span>หน่วย / สถานะ</span>
+            <span>{reorderMode ? "ลำดับ" : ""}</span>
+          </div>
           {visibleItems.map((item) => {
             const absoluteIndex = items.findIndex((candidate) => candidate.id === item.id);
             return (
-              <article
-                className={`general-expense-master-card ${item.active === false ? "is-inactive" : ""} ${reorderMode ? "is-reordering" : ""}`}
+              <div
+                className={`expense-database-row general-expense-row is-clickable ${item.active === false ? "is-inactive" : ""}`}
                 key={item.id}
                 onClick={() => openEditor(item)}
                 onKeyDown={(event) => {
@@ -3861,40 +4390,47 @@ function GeneralExpenseMasterScreen({ categories: masterCategories, items, setCa
                 role="button"
                 tabIndex={0}
               >
-                {reorderMode ? (
-                  <span className="admin-item-order">
-                    <ReorderPositionInput label={item.name} max={items.length} onMove={(position) => moveItemTo(item.id, position)} value={absoluteIndex + 1} />
-                    <button aria-label={`เลื่อน ${item.name} ขึ้น`} disabled={absoluteIndex === 0} onClick={(event) => { event.stopPropagation(); moveItem(item.id, -1); }} type="button"><ChevronUp size={15} /></button>
-                    <button aria-label={`เลื่อน ${item.name} ลง`} disabled={absoluteIndex === items.length - 1} onClick={(event) => { event.stopPropagation(); moveItem(item.id, 1); }} type="button"><ChevronDown size={15} /></button>
-                  </span>
-                ) : null}
                 <strong>{item.name}</strong>
-                <span>{item.category} · {item.subcategory || "ทั่วไป"}</span>
-                <small>หน่วย: {item.unit} · {item.active === false ? "ปิดใช้งาน" : "เปิดใช้งาน"}</small>
-              </article>
+                <span>{item.category}</span>
+                <span>{item.subcategory || "ทั่วไป"}</span>
+                <small>{item.unit ? `${item.unit} · ` : ""}{item.active === false ? "ปิดใช้งาน" : "เปิดใช้งาน"}</small>
+                <span className="expense-database-actions" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                  {reorderMode ? (
+                    <>
+                      <ReorderPositionInput label={item.name} max={items.length} onMove={(position) => moveItemTo(item.id, position)} value={absoluteIndex + 1} />
+                      <button aria-label={`เลื่อน ${item.name} ขึ้น`} disabled={absoluteIndex === 0} onClick={(event) => { event.stopPropagation(); moveItem(item.id, -1); }} type="button"><ChevronUp size={15} /></button>
+                      <button aria-label={`เลื่อน ${item.name} ลง`} disabled={absoluteIndex === items.length - 1} onClick={(event) => { event.stopPropagation(); moveItem(item.id, 1); }} type="button"><ChevronDown size={15} /></button>
+                    </>
+                  ) : null}
+                </span>
+              </div>
             );
           })}
         </div>
-        <form className="category-quick-manager" onSubmit={addCategory}>
-          <strong>ประเภทหลัก</strong>
-          <input value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="เพิ่มประเภทหลัก" />
-          <button className="ghost-button" type="submit"><Plus size={16} /> เพิ่ม</button>
-          <div>{masterCategories.map((category) => <span key={category}>{category}<button aria-label={`ลบประเภท ${category}`} onClick={() => setCategoryDeleteTarget(category)} type="button"><Trash2 size={14} /></button></span>)}</div>
-        </form>
-        <form className="category-quick-manager subcategory-quick-manager" onSubmit={addSubcategory}>
-          <strong>ประเภทย่อย</strong>
-          <select aria-label="ประเภทหลักของประเภทย่อย" value={newSubcategoryCategory} onChange={(event) => setNewSubcategoryCategory(event.target.value)}>
-            {masterCategories.map((category) => <option key={category} value={category}>{category}</option>)}
-          </select>
-          <input value={newSubcategory} onChange={(event) => setNewSubcategory(event.target.value)} placeholder="เพิ่มประเภทย่อย" />
-          <button className="ghost-button" type="submit"><Plus size={16} /> เพิ่ม</button>
-          <div>{subcategories.map((subcategory) => (
+        <section className="expense-category-manager">
+          <div className="expense-category-manager-head">
+            <strong>ประเภทหลัก</strong>
+            <button className="ghost-button" onClick={openCategoryDialog} type="button"><Plus size={16} /> เพิ่มประเภทหลัก</button>
+          </div>
+          <div className="expense-category-chips">{masterCategories.map((category) => (
+            <span key={category}>
+              {category}
+              <button aria-label={`ลบประเภท ${category}`} disabled={category === defaultIngredientExpenseCategory} onClick={() => setCategoryDeleteTarget(category)} type="button"><Trash2 size={14} /></button>
+            </span>
+          ))}</div>
+        </section>
+        <section className="expense-category-manager">
+          <div className="expense-category-manager-head">
+            <strong>ประเภทย่อย</strong>
+            <button className="ghost-button" onClick={openSubcategoryDialog} type="button"><Plus size={16} /> เพิ่มประเภทย่อย</button>
+          </div>
+          <div className="expense-category-chips">{subcategories.map((subcategory) => (
             <span key={subcategory.id}>
               {subcategory.category} / {subcategory.name}
               <button aria-label={`ลบประเภทย่อย ${subcategory.name}`} onClick={() => setSubcategoryDeleteTarget(subcategory)} type="button"><Trash2 size={14} /></button>
             </span>
           ))}</div>
-        </form>
+        </section>
       </div>
       {editorOpen ? (
         <form className="side-editor" onSubmit={saveItem}>
@@ -3916,7 +4452,7 @@ function GeneralExpenseMasterScreen({ categories: masterCategories, items, setCa
             {!formSubcategories.some((item) => item.name === form.subcategory) && form.subcategory ? <option value={form.subcategory}>{form.subcategory}</option> : null}
             {formSubcategories.map((subcategory) => <option key={subcategory.id} value={subcategory.name}>{subcategory.name}</option>)}
           </select></label>
-          <label>หน่วย<input value={form.unit || ""} onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))} placeholder="เช่น ครั้ง, แพ็ค, ถัง" /></label>
+          <label>หน่วยนับ (ไม่บังคับ)<input value={form.unit || ""} onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))} placeholder="เว้นว่างได้ เช่น ค่าส่ง เงินเดือน ค่าเช่า" /></label>
           <label>หมายเหตุ<input value={form.note || ""} onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))} /></label>
           <label className="check-line"><input checked={form.active !== false} onChange={(event) => setForm((current) => ({ ...current, active: event.target.checked }))} type="checkbox" /> เปิดใช้งาน</label>
           <div className="modal-actions">
@@ -3925,6 +4461,33 @@ function GeneralExpenseMasterScreen({ categories: masterCategories, items, setCa
           </div>
         </form>
       ) : null}
+      {categoryDialogOpen ? (
+        <div className="modal-backdrop">
+          <form className="modal-card category-dialog-card" onSubmit={addCategory}>
+            <h3>เพิ่มประเภทหลัก</h3>
+            <label>ชื่อประเภทหลัก<input autoFocus value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="เช่น ค่าแรง, ของใช้ร้าน" /></label>
+            <div className="modal-actions">
+              <button className="ghost-button" onClick={() => setCategoryDialogOpen(false)} type="button">ยกเลิก</button>
+              <button className="primary-button" type="submit"><Plus size={17} /> เพิ่ม</button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+      {subcategoryDialogOpen ? (
+        <div className="modal-backdrop">
+          <form className="modal-card category-dialog-card" onSubmit={addSubcategory}>
+            <h3>เพิ่มประเภทย่อย</h3>
+            <label>ประเภทหลัก<select value={newSubcategoryCategory} onChange={(event) => setNewSubcategoryCategory(event.target.value)}>
+              {masterCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+            </select></label>
+            <label>ชื่อประเภทย่อย<input autoFocus value={newSubcategory} onChange={(event) => setNewSubcategory(event.target.value)} placeholder="เช่น เนื้อสัตว์, ค่าขนส่ง" /></label>
+            <div className="modal-actions">
+              <button className="ghost-button" onClick={() => setSubcategoryDialogOpen(false)} type="button">ยกเลิก</button>
+              <button className="primary-button" type="submit"><Plus size={17} /> เพิ่ม</button>
+            </div>
+          </form>
+        </div>
+      ) : null}
       {deleteTarget ? <ConfirmDialog title="ลบรายจ่ายทั่วไป" message={`ต้องการลบ “${deleteTarget.name}” จากฐานข้อมูลใช่ไหม? ประวัติรายจ่ายเดิมจะไม่ถูกลบ`} onCancel={() => setDeleteTarget(null)} onConfirm={removeItem} /> : null}
       {categoryDeleteTarget ? <ConfirmDialog title="ลบประเภทค่าใช้จ่าย" message={`ต้องการลบประเภท “${categoryDeleteTarget}” ใช่ไหม? รายการในประเภทนี้จะถูกย้ายไปประเภทอื่น`} onCancel={() => setCategoryDeleteTarget("")} onConfirm={removeCategory} /> : null}
       {subcategoryDeleteTarget ? <ConfirmDialog title="ลบประเภทย่อย" message={`ต้องการลบประเภทย่อย “${subcategoryDeleteTarget.name}” ใช่ไหม? รายการในประเภทย่อยนี้จะถูกย้ายไปประเภทย่อยอื่น`} onCancel={() => setSubcategoryDeleteTarget(null)} onConfirm={removeSubcategory} /> : null}
@@ -3932,7 +4495,7 @@ function GeneralExpenseMasterScreen({ categories: masterCategories, items, setCa
   );
 }
 
-function ExpenseScreen({ generalExpenseCategories, generalExpenseItems, generalExpenseSubcategories, ingredients, onAddIngredient, onAddPurchaseUnit, onDeleteExpense, onRecord, purchaseUnits, recentExpenses, setGeneralExpenseCategories, setGeneralExpenseItems, setGeneralExpenseSubcategories, setView, view }) {
+function ExpenseScreen({ generalExpenseCategories, generalExpenseItems, generalExpenseSubcategories, ingredients, onAddIngredient, onAddPurchaseUnit, onDeleteExpense, onRecord, purchaseUnits, recentExpenses, setGeneralExpenseCategories, setGeneralExpenseItems, setGeneralExpenseSubcategories, setIngredients, setView, view }) {
   const [draft, setDraft] = usePersistentState("burger-pos.expenseDraft", makeEmptyExpenseDraft());
   const [leavingRowIds, setLeavingRowIds] = useState([]);
   const [ingredientModalOpen, setIngredientModalOpen] = useState(false);
@@ -3972,12 +4535,12 @@ function ExpenseScreen({ generalExpenseCategories, generalExpenseItems, generalE
     const invalidRowIndex = rows.findIndex((row) => {
       const hasInput = Boolean(row.ingredientId || row.generalExpenseItemId || row.ingredientSearch || row.generalExpenseSearch || row.name || row.quantity || row.unitPrice);
       if (!hasInput) return false;
-      if (row.mode === "custom" && (!row.generalExpenseSearch?.trim() || !row.category || !row.subcategory || !row.generalUnit?.trim())) return true;
+      if (row.mode === "custom" && (!row.generalExpenseSearch?.trim() || !row.category || !row.subcategory)) return true;
       if (row.mode === "ingredient" && (!row.ingredientId || !row.purchaseUnitId || row.purchaseUnitId === "__new_unit__")) return true;
       return Number(row.quantity || 0) <= 0 || Number(row.unitPrice || 0) <= 0;
     });
     if (invalidRowIndex >= 0) {
-      alert(`แถวที่ ${invalidRowIndex + 1}: กรุณากรอกรายการ ประเภท หน่วย จำนวน และราคาให้ครบ`);
+      alert(`แถวที่ ${invalidRowIndex + 1}: กรุณากรอกรายการ ประเภท จำนวน และราคาให้ครบ`);
       return;
     }
     if (!previewItems.length) {
@@ -3992,16 +4555,26 @@ function ExpenseScreen({ generalExpenseCategories, generalExpenseItems, generalE
       totalAmount,
       items: previewItems,
     };
-    await onRecord(expense);
+    const result = await onRecord(expense);
     setDraft(makeEmptyExpenseDraft());
-    setSaveNotice({ count: previewItems.length, totalAmount });
+    setSaveNotice({ count: previewItems.length, totalAmount, testMode: result?.testMode === true });
   }
 
   function createIngredientFromExpense({ name, unit, stock, minimumStock, purchaseLabel, ratio }) {
-    const newIngredient = { id: `ing_${Date.now()}`, name, unit, stock: Number(stock || 0), minimumStock: Number(minimumStock || 0) };
+    const newIngredient = {
+      id: `ing_${Date.now()}`,
+      name,
+      unit,
+      category: inferIngredientCategory(name),
+      expenseCategory: defaultIngredientExpenseCategory,
+      expenseSubcategory: firstExpenseSubcategory(defaultIngredientExpenseCategory, generalExpenseSubcategories) || defaultIngredientExpenseSubcategory,
+      stock: Number(stock || 0),
+      minimumStock: Number(minimumStock || 0),
+    };
     onAddIngredient(newIngredient);
     if (Number.isFinite(ratio) && ratio > 0) {
-      onAddPurchaseUnit((current) => [...current, { id: `unit_${Date.now()}`, ingredientId: newIngredient.id, label: purchaseLabel, ratio, baseUnit: unit }]);
+      const timestamp = new Date().toISOString();
+      onAddPurchaseUnit((current) => [...current, { id: `unit_${Date.now()}`, ingredientId: newIngredient.id, label: purchaseLabel, ratio, baseUnit: unit, createdAt: timestamp, updatedAt: timestamp }]);
     }
     setRows((current) => current.map((row, index) => (
       index === 0
@@ -4018,8 +4591,10 @@ function ExpenseScreen({ generalExpenseCategories, generalExpenseItems, generalE
     return (
       <GeneralExpenseMasterScreen
         categories={generalExpenseCategories}
+        ingredients={ingredients}
         items={generalExpenseItems}
         setCategories={setGeneralExpenseCategories}
+        setIngredients={setIngredients}
         setItems={setGeneralExpenseItems}
         setSubcategories={setGeneralExpenseSubcategories}
         subcategories={generalExpenseSubcategories}
@@ -4103,8 +4678,8 @@ function ExpenseScreen({ generalExpenseCategories, generalExpenseItems, generalE
       {saveNotice ? (
         <div className="modal-backdrop success-modal-backdrop">
           <div className="modal-card success-modal-card">
-            <h3>บันทึกรายจ่ายสำเร็จ</h3>
-            <p>บันทึก {saveNotice.count} รายการ รวม {money(saveNotice.totalAmount)} บาท</p>
+            <h3>{saveNotice.testMode ? "ทดสอบรายจ่ายสำเร็จ" : "บันทึกรายจ่ายสำเร็จ"}</h3>
+            <p>{saveNotice.testMode ? "โหมดทดสอบ ไม่บันทึกข้อมูลจริง ไม่เพิ่มสต็อก และไม่ส่ง Google Sheet" : `บันทึก ${saveNotice.count} รายการ รวม ${money(saveNotice.totalAmount)} บาท`}</p>
             <button className="primary-button" onClick={() => setSaveNotice(null)} type="button">ตกลง</button>
           </div>
         </div>
@@ -4147,7 +4722,7 @@ function ExpenseEntryRow({ generalExpenseCategories, generalExpenseItems, genera
       name: selectedGeneralExpense.name,
       category: selectedGeneralExpense.category || "",
       subcategory: expectedSubcategory,
-      generalUnit: selectedGeneralExpense.unit || "ครั้ง",
+      generalUnit: selectedGeneralExpense.unit || "",
     });
   }, [
     generalExpenseSubcategories,
@@ -4174,9 +4749,9 @@ function ExpenseEntryRow({ generalExpenseCategories, generalExpenseItems, genera
       mode: "custom",
       generalExpenseItemId: row.generalExpenseItemId || "",
       generalExpenseSearch: row.generalExpenseSearch || row.name || "",
-      category: row.category || generalExpenseCategories[0] || "",
-      subcategory: row.subcategory || firstExpenseSubcategory(generalExpenseCategories[0], generalExpenseSubcategories),
-      generalUnit: row.generalUnit || "ครั้ง",
+      category: row.category || defaultNonStockExpenseCategory(generalExpenseCategories),
+      subcategory: row.subcategory || firstExpenseSubcategory(defaultNonStockExpenseCategory(generalExpenseCategories), generalExpenseSubcategories),
+      generalUnit: row.generalUnit || "",
     });
   }
 
@@ -4193,12 +4768,15 @@ function ExpenseEntryRow({ generalExpenseCategories, generalExpenseItems, genera
     if (!selectedIngredient) return;
     const ratio = Number(unitDraft.ratio || 0);
     if (!unitDraft.label.trim() || !ratio) return;
+    const timestamp = new Date().toISOString();
     const nextUnit = {
       id: `unit_${Date.now()}_${Math.random().toString(36).slice(2)}`,
       ingredientId: selectedIngredient.id,
       label: unitDraft.label.trim(),
       ratio,
       baseUnit: selectedIngredient.unit,
+      createdAt: timestamp,
+      updatedAt: timestamp,
     };
     onAddPurchaseUnit((current) => [...current, nextUnit]);
     updateRow(row.id, { purchaseUnitId: nextUnit.id });
@@ -4228,7 +4806,7 @@ function ExpenseEntryRow({ generalExpenseCategories, generalExpenseItems, genera
       name: item.name,
       category: item.category || "",
       subcategory: item.subcategory || firstExpenseSubcategory(item.category, generalExpenseSubcategories),
-      generalUnit: item.unit || "ครั้ง",
+      generalUnit: item.unit || "",
     });
     setGeneralSuggestionsOpen(false);
   }
@@ -4408,11 +4986,11 @@ function ExpenseEntryRow({ generalExpenseCategories, generalExpenseItems, genera
             </select>
           </label>
           <label className="expense-field">
-            <span className="expense-field-label">หน่วย</span>
+            <span className="expense-field-label">หน่วยนับ</span>
             <input
               aria-label={`หน่วยรายจ่ายแถว ${rowNumber}`}
               onChange={(event) => updateRow(row.id, { generalUnit: event.target.value })}
-              placeholder="หน่วย"
+              placeholder="ไม่บังคับ"
               value={row.generalUnit || ""}
             />
           </label>
@@ -4446,7 +5024,9 @@ function ExpenseEntryRow({ generalExpenseCategories, generalExpenseItems, genera
       </label>
       {row.mode === "ingredient" ? (
         <span className="stock-preview">
-          {selectedIngredient && selectedUnit ? `+${money(stockQuantity)} ${selectedIngredient.unit}` : selectedIngredient ? "เลือกหน่วยซื้อ" : "เลือกวัตถุดิบ"}
+          {selectedIngredient && selectedUnit
+            ? `+${money(stockQuantity)} ${selectedIngredient.unit} · ${(selectedIngredient.expenseCategory || defaultIngredientExpenseCategory)} / ${(selectedIngredient.expenseSubcategory || defaultIngredientExpenseSubcategory)}`
+            : selectedIngredient ? "เลือกหน่วยซื้อ" : "เลือกวัตถุดิบ"}
         </span>
       ) : (
         <span className="general-expense-preview">
@@ -4498,7 +5078,7 @@ function NewIngredientModal({ onClose, onSubmit }) {
   );
 }
 
-function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onResetData, orders, queueLists, refreshQueues, setSettings, settings }) {
+function SettingsScreen({ clearPrintQueue, flushLineQueue, flushPrintQueue, flushSheetQueue, onResetData, orders, queueLists, refreshQueues, setSettings, settings }) {
   const [activeSection, setActiveSection] = useState("printer");
   const [printerNotice, setPrinterNotice] = useState("");
   const [syncNotice, setSyncNotice] = useState("");
@@ -4515,6 +5095,7 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
   const bridgeMethodValue = settings.bridgeMethod === "RAWBT_INTENT" ? "RAWBT_INTENT" : /^wss?:\/\//i.test(settings.bridgeUrl || "") ? "RAWBT_WS" : settings.bridgeMethod || "POST";
   const basicSections = [
     { id: "printer", label: "เครื่องพิมพ์", icon: Printer },
+    { id: "sale", label: "การขาย", icon: Store },
     { id: "orders", label: "ประวัติออร์เดอร์", icon: ReceiptText },
     { id: "developer", label: "โหมดผู้พัฒนา", icon: SlidersHorizontal },
   ];
@@ -4562,10 +5143,11 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
       printerPort: "9100",
       bluetoothPrintTimeoutMs: 20000,
       bluetoothPrintChunkSize: 320,
-      bluetoothPrintChunkDelayMs: 20,
-      bluetoothPrintFinalDelayMs: 2000,
+      bluetoothPrintChunkDelayMs: 2,
+      bluetoothPrintFinalDelayMs: 2200,
       bridgeMethod: "RAWBT_INTENT",
-      thaiCodePage: current.thaiCodePage || "42",
+      thaiCodePage: "20",
+      nativeThaiRenderMode: "BITMAP",
       bridgeUrl: "ws://127.0.0.1:40213/",
     }));
     setPrinterNotice("ใช้ preset POS-8390: Bluetooth Native, กระดาษ 80mm, ส่งข้อมูลแบบ chunk ที่ทดสอบผ่านแล้ว");
@@ -4631,6 +5213,23 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
     }
   }
 
+  async function runNativeThaiCodePageSweep() {
+    setPrinterBusy(true);
+    setPrinterNotice("");
+    try {
+      const result = await printAndroidBluetoothThaiCodePageSweep({
+        address: settings.bluetoothPrinterAddress,
+        start: 0,
+        end: 255,
+      });
+      setPrinterNotice(`ส่งใบเทส Thai code page 0-255 แล้ว (${result?.bytesWritten || 0} bytes) ให้ดูบรรทัด CP ที่อ่านไทยถูก`);
+    } catch (error) {
+      setPrinterNotice(`ส่งเทส Thai code page ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setPrinterBusy(false);
+    }
+  }
+
   async function runBridgeTest() {
     setPrinterBusy(true);
     setPrinterNotice("");
@@ -4649,9 +5248,23 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
     setPrinterNotice("");
     try {
       await flushPrintQueue();
-      setPrinterNotice("ส่งคิวพิมพ์ค้างแล้ว ตรวจสถานะใน Print Queue");
+      setPrinterNotice(settings.printingPaused ? "ยังไม่ได้ส่งคิว เพราะเปิดหยุดพิมพ์ชั่วคราวอยู่" : "ส่งคิวพิมพ์ค้างแล้ว ตรวจสถานะใน Print Queue");
     } catch (error) {
       setPrinterNotice(`ส่งคิวไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setPrinterBusy(false);
+    }
+  }
+
+  async function clearPendingPrintQueue() {
+    if (!clearPrintQueue) return;
+    setPrinterBusy(true);
+    setPrinterNotice("");
+    try {
+      await clearPrintQueue();
+      setPrinterNotice("ล้างคิวพิมพ์ค้างทั้งหมดแล้ว");
+    } catch (error) {
+      setPrinterNotice(`ล้างคิวพิมพ์ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setPrinterBusy(false);
     }
@@ -4661,6 +5274,10 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
     setSyncBusy(true);
     setSyncNotice("");
     try {
+      if (settings.testModeEnabled === true) {
+        setSyncNotice("โหมดทดสอบเปิดอยู่: ไม่ส่งคิวจริงไป Google Sheet");
+        return;
+      }
       await flushSheetQueue();
       setSyncNotice("ส่งคิว Google Sheet แล้ว ตรวจสถานะรายการค้างด้านล่าง");
     } catch (error) {
@@ -4674,6 +5291,10 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
     setSyncBusy(true);
     setSyncNotice("");
     try {
+      if (settings.testModeEnabled === true) {
+        setSyncNotice("โหมดทดสอบเปิดอยู่: ไม่ส่งคิวจริงไป LINE");
+        return;
+      }
       await flushLineQueue();
       setSyncNotice("ส่งคิวแจ้งเตือน LINE แล้ว ตรวจสถานะรายการค้างด้านล่าง");
     } catch (error) {
@@ -4681,6 +5302,37 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
     } finally {
       setSyncBusy(false);
     }
+  }
+
+  function runSheetDryRun() {
+    const now = new Date().toISOString();
+    const sampleOrder = {
+      id: `DRY-RUN-${Date.now()}`,
+      orderNo: makeTestOrderNo(),
+      createdAt: now,
+      salesChannel: "store",
+      paymentMethod: "CASH",
+      totalAmount: 1,
+      cashReceived: 1,
+      changeDue: 0,
+      shiftId: "TEST-SHIFT",
+      paymentStatus: "PAID",
+      isTest: true,
+      note: "TEST MODE - not saved",
+      items: [
+        {
+          productId: "TEST-PRODUCT",
+          name: "TEST ITEM",
+          quantity: 1,
+          unitPrice: 1,
+          modifiers: ["TEST ADD ON"],
+          note: "",
+        },
+      ],
+    };
+    const job = makeOrderSheetJob(sampleOrder, []);
+    const tabs = Array.from(new Set((job.rows || []).map((row) => row.tab))).join(", ");
+    setSyncNotice(`จำลองข้อมูล Sheet สำเร็จ: ${job.rows?.length || 0} แถว (${tabs || "ไม่มีแท็บ"}) ไม่ได้ส่งข้อมูลจริง`);
   }
 
   async function runDataReset(mode) {
@@ -4790,6 +5442,37 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
         {developerNotice ? <div className={developerUnlocked ? "inline-confirm" : "inline-warning"}>{developerNotice}</div> : null}
       </article>
       ) : null}
+      {activeSection === "sale" ? (
+      <article className="settings-card settings-card-wide">
+        <Store size={24} />
+        <h3>การขายและสต็อก</h3>
+        <p>ตั้งค่าว่าหน้าขายควรหยุดขายทันทีเมื่อวัตถุดิบไม่พอ หรือให้ขายต่อแล้วให้สต็อกติดลบเพื่อไปลงเติมย้อนหลัง</p>
+        <label className="check-line"><input checked={settings.allowNegativeStockSales === true} onChange={(event) => update("allowNegativeStockSales", event.target.checked)} type="checkbox" /> อนุญาตให้ขายแม้วัตถุดิบไม่พอ</label>
+        <div className={settings.allowNegativeStockSales === true ? "inline-warning" : "inline-confirm"}>
+          {settings.allowNegativeStockSales === true
+            ? "เปิดอยู่: ออเดอร์จะขายได้ต่อ และสต็อกวัตถุดิบอาจติดลบจนกว่าจะลงรายการเติมสต็อก"
+            : "ปิดอยู่: ระบบจะบล็อกสินค้าเมื่อวัตถุดิบในสูตรไม่พอ เหมือนเดิม"}
+        </div>
+        <div className="settings-subsection test-mode-settings">
+          <strong>โหมดทดสอบ</strong>
+          <p>ใช้ซ้อมขาย ซ้อมพิมพ์ ซ้อมเปิดลิ้นชัก และเช็ค payload ที่จะส่งออก โดยไม่บันทึกออเดอร์ ไม่ตัดสต็อก ไม่เพิ่มสต็อกจากรายจ่าย และไม่ส่ง Google Sheet/LINE จริง</p>
+          <label className="check-line test-mode-toggle">
+            <input
+              checked={settings.testModeEnabled === true}
+              data-testid="settings-test-mode-toggle"
+              onChange={(event) => update("testModeEnabled", event.target.checked)}
+              type="checkbox"
+            />
+            เปิดโหมดทดสอบในเครื่องนี้
+          </label>
+          <div className={settings.testModeEnabled === true ? "inline-warning" : "inline-confirm"}>
+            {settings.testModeEnabled === true
+              ? "กำลังทดสอบ: หน้าขายกดออเดอร์ได้โดยไม่ต้องเปิดกะ และใบพิมพ์จะมีป้าย TEST MODE"
+              : "ปิดอยู่: ทุกอย่างทำงานจริงตามปกติ"}
+          </div>
+        </div>
+      </article>
+      ) : null}
       {activeSection === "printer" ? (
       <article className="settings-card">
         <Printer size={24} />
@@ -4801,6 +5484,7 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
           <label className="check-line"><input checked={settings.defaultPrintOptions?.kitchen !== false} onChange={(event) => updateDefaultPrintOption("kitchen", event.target.checked)} type="checkbox" /> พิมพ์ใบครัวอัตโนมัติ</label>
           <label className="check-line"><input checked={settings.defaultPrintOptions?.receipt === true} onChange={(event) => updateDefaultPrintOption("receipt", event.target.checked)} type="checkbox" /> พิมพ์ใบเสร็จอัตโนมัติ</label>
           <label className="check-line"><input checked={settings.defaultPrintOptions?.shiftSummary !== false} onChange={(event) => updateDefaultPrintOption("shiftSummary", event.target.checked)} type="checkbox" /> พิมพ์ใบสรุปปิดกะอัตโนมัติ</label>
+          <label className="check-line"><input checked={settings.printingPaused === true} onChange={(event) => update("printingPaused", event.target.checked)} type="checkbox" /> หยุดส่งคิวพิมพ์ชั่วคราว</label>
         </div>
         <div className="printer-preset-card">
           <strong>POS-8390 Thermal Receipt Printer</strong>
@@ -4836,8 +5520,11 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
             <label>Port เครื่องพิมพ์<input inputMode="numeric" value={settings.printerPort || "9100"} onChange={(event) => update("printerPort", event.target.value)} /></label>
           </>
         ) : null}
-        <label>Thai code page<select value={settings.thaiCodePage || defaultSettings.thaiCodePage} onChange={(event) => update("thaiCodePage", event.target.value)}><option value="42">42 - Thai ทั่วไป</option><option value="20">20 - KU42 Thai</option><option value="21">21 - TIS11 Thai</option><option value="26">26 - TIS18 Thai</option><option value="47">47 - WPC1253 fallback</option></select></label>
+        <label>Thai code page<select value={settings.thaiCodePage === "42" ? "20" : settings.thaiCodePage || defaultSettings.thaiCodePage} onChange={(event) => update("thaiCodePage", event.target.value)}><option value="20">20 - Thai code 42 / KU42</option><option value="21">21 - Thai code 11 / TIS11</option><option value="22">22 - Thai code 13 / TIS13</option><option value="23">23 - Thai code 14 / TIS14</option><option value="24">24 - Thai code 16 / TIS16</option><option value="25">25 - Thai code 17 / TIS17</option><option value="26">26 - Thai code 18 / TIS18</option><option value="15">15 - Generic KU42 fallback</option><option value="16">16 - Generic TIS11 fallback</option><option value="255">255 - User page fallback</option></select></label>
+        <label>โหมดพิมพ์ภาษาไทย<select value="BITMAP" onChange={() => update("nativeThaiRenderMode", "BITMAP")}><option value="BITMAP">Bitmap ผ่าน Bluetooth Classic / ใช้งานจริง</option></select></label>
         <label>ขนาดกระดาษ<select value={settings.paperSize} onChange={(event) => update("paperSize", event.target.value)}><option value="80mm">80mm</option><option value="58mm">58mm</option></select></label>
+        <label className="check-line"><input checked={settings.cashDrawerEnabled !== false} onChange={(event) => update("cashDrawerEnabled", event.target.checked)} type="checkbox" /> เปิดลิ้นชักเงินสดหลังออเดอร์เงินสด</label>
+        <label>ขาลิ้นชักเงินสด<select value={settings.cashDrawerPin || defaultSettings.cashDrawerPin} onChange={(event) => update("cashDrawerPin", event.target.value)}><option value="0">ขา 0 / มาตรฐาน</option><option value="1">ขา 1 / สำรอง</option></select></label>
         <label className="check-line"><input checked={settings.buzzerEnabled} onChange={(event) => update("buzzerEnabled", event.target.checked)} type="checkbox" /> เปิด Kitchen Buzzer</label>
         <div className="printer-help-box">
           <strong>หมายเหตุสำหรับรุ่น POS-8390</strong>
@@ -4853,7 +5540,9 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
           <button className="ghost-button" disabled={printerBusy} onClick={runBridgeTest} type="button"><Wifi size={18} /> ตรวจ RawBT</button>
           <button className="ghost-button" disabled={printerBusy} onClick={runPrinterTest} type="button"><Printer size={18} /> RawBT อังกฤษ</button>
           <button className="ghost-button" disabled={printerBusy} onClick={runThaiCodePageTest} type="button"><ReceiptText size={18} /> RawBT code page</button>
+          <button className="ghost-button" disabled={printerBusy || !nativeThaiPrinterAvailable || settings.printerConnection !== "BLUETOOTH_NATIVE"} onClick={runNativeThaiCodePageSweep} type="button"><ReceiptText size={18} /> Native code page 0-255</button>
           <button className="ghost-button" disabled={printerBusy} onClick={sendPendingPrintQueue} type="button"><RefreshCw size={18} /> ส่งคิวค้าง</button>
+          <button className="danger-button" disabled={printerBusy} onClick={clearPendingPrintQueue} type="button"><Trash2 size={18} /> ล้างคิวพิมพ์</button>
         </div>
         {printerNotice ? <div className="inline-confirm">{printerNotice}</div> : null}
       </article>
@@ -4865,7 +5554,7 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
         <p>Sheet ใช้เป็นสำเนา/รายงาน ไม่ใช่ฐานหลักของ POS</p>
         <div className="printer-preset-card">
           <strong>Google Sheet ร้านเบอร์เกอร์</strong>
-          <span>ใช้ชีทเบอร์เกอร์เป็นรายงานหลัก: Sales + Expenses + Stock Movements + Shift Summary</span>
+          <span>ใช้ชีทเบอร์เกอร์เป็นรายงานหลัก: Sales + รายรับ + รายจ่าย + Stock Movements + Shift Summary</span>
           <button className="ghost-button" onClick={applyBurgerSheetPreset} type="button">ใช้ Sheet ร้านเบอร์เกอร์</button>
         </div>
         <label>Sheet ID<input value={settings.sheetId} onChange={(event) => update("sheetId", event.target.value)} /></label>
@@ -4881,9 +5570,13 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
             ))}
           </div>
         </div>
+        {settings.testModeEnabled === true ? (
+          <div className="inline-warning">โหมดทดสอบเปิดอยู่: ระบบจะไม่ส่งคิวจริงไป Google Sheet จนกว่าจะปิดโหมดทดสอบ</div>
+        ) : null}
         <div className="queue-line"><RefreshCw size={18} /> รอ sync {queueLists.sheet.filter((job) => job.status !== "SYNCED").length} รายการ</div>
         <div className="settings-printer-actions">
-          <button className="primary-button" disabled={syncBusy || !settings.sheetWebAppUrl} onClick={sendPendingSheetQueue} type="button"><RefreshCw size={18} /> ส่งคิวไป Google Sheet</button>
+          <button className="ghost-button" disabled={syncBusy} onClick={runSheetDryRun} type="button"><Database size={18} /> จำลองข้อมูล Sheet</button>
+          <button className="primary-button" disabled={syncBusy || !settings.sheetWebAppUrl || settings.testModeEnabled === true} onClick={sendPendingSheetQueue} type="button"><RefreshCw size={18} /> ส่งคิวไป Google Sheet</button>
         </div>
         {syncNotice ? <div className={syncNotice.includes("ไม่สำเร็จ") ? "inline-warning" : "inline-confirm"}>{syncNotice}</div> : null}
         <QueueList jobs={queueLists.sheet} onDone={(job) => markFirstJobDone("sheetSyncJobs", job)} />
@@ -4906,9 +5599,12 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
           <label className="check-line"><input checked={settings.lineStockAlertsEnabled !== false} onChange={(event) => update("lineStockAlertsEnabled", event.target.checked)} type="checkbox" /> ส่ง LINE ทุกครั้งที่แก้ไขสต็อก</label>
           <label className="check-line"><input checked={settings.lineShiftSummaryEnabled !== false} onChange={(event) => update("lineShiftSummaryEnabled", event.target.checked)} type="checkbox" /> ส่ง LINE ตอนปิดกะ</label>
         </div>
+        {settings.testModeEnabled === true ? (
+          <div className="inline-warning">โหมดทดสอบเปิดอยู่: ระบบจะไม่ส่งคิวจริงไป LINE จนกว่าจะปิดโหมดทดสอบ</div>
+        ) : null}
         <div className="queue-line"><RefreshCw size={18} /> รอส่ง LINE {(queueLists.line || []).filter((job) => job.status !== "SENT").length} รายการ</div>
         <div className="settings-printer-actions">
-          <button className="primary-button" disabled={syncBusy || !settings.lineWebAppUrl} onClick={sendPendingLineQueue} type="button"><RefreshCw size={18} /> ส่งคิว LINE</button>
+          <button className="primary-button" disabled={syncBusy || !settings.lineWebAppUrl || settings.testModeEnabled === true} onClick={sendPendingLineQueue} type="button"><RefreshCw size={18} /> ส่งคิว LINE</button>
         </div>
         {syncNotice ? <div className={syncNotice.includes("ไม่สำเร็จ") ? "inline-warning" : "inline-confirm"}>{syncNotice}</div> : null}
         <QueueList jobs={queueLists.line || []} onDone={(job) => markFirstJobDone("lineNotifyJobs", job)} />
@@ -4998,6 +5694,11 @@ function SettingsScreen({ flushLineQueue, flushPrintQueue, flushSheetQueue, onRe
       <article className="settings-card">
         <Printer size={24} />
         <h3>Print Queue</h3>
+        <div className="queue-line"><RefreshCw size={18} /> รอพิมพ์ {queueLists.print.filter((job) => job.status !== "PRINTED").length} รายการ</div>
+        <div className="settings-printer-actions">
+          <button className="ghost-button" disabled={printerBusy} onClick={sendPendingPrintQueue} type="button"><RefreshCw size={18} /> ส่งคิวค้าง</button>
+          <button className="danger-button" disabled={printerBusy} onClick={clearPendingPrintQueue} type="button"><Trash2 size={18} /> ล้างคิวพิมพ์ทั้งหมด</button>
+        </div>
         <QueueList jobs={queueLists.print} onDone={(job) => markFirstJobDone("printJobs", job)} />
       </article>
       </>
@@ -5411,29 +6112,44 @@ function calculateShiftSummary(shift, orders, closingCash = null) {
   const transferRefundAmount = voidedOrders
     .filter((order) => order.voidRefundMethod === "TRANSFER")
     .reduce((sum, order) => sum + Number(order.voidRefundAmount || 0), 0);
-  const cashSales = shiftOrders
+  const cashSales = activeOrders
+    .filter((order) => order.paymentMethod === "CASH")
+    .reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const transferSales = activeOrders
+    .filter((order) => order.paymentMethod === "TRANSFER")
+    .reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const thaiChuayThaiSales = activeOrders
+    .filter((order) => order.paymentMethod === "THAI_CHUAY_THAI")
+    .reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const netSales = activeOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const cashDrawerSales = shiftOrders
     .filter((order) => (
       order.paymentMethod === "CASH"
-      && (order.paymentStatus !== "VOIDED" || order.voidRefundMethod === "CASH")
-    ))
-    .reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
-  const transferSales = shiftOrders
-    .filter((order) => (
-      order.paymentMethod === "TRANSFER"
       && (order.paymentStatus !== "VOIDED" || order.voidRefundMethod === "CASH" || order.voidRefundMethod === "TRANSFER")
     ))
     .reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
-  const netSales = activeOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
-  const expectedCash = Number(shift.openingCash || 0) + cashSales - cashRefundAmount;
+  const soldQuantities = activeOrders.reduce((counts, order) => {
+    (order.items || []).forEach((item) => {
+      const quantity = Number(item.quantity || 0);
+      const category = normalizeOrderItemCategory(item);
+      if (category === "เบอร์เกอร์") counts.burgerQuantity += quantity;
+      if (category === "BBQ") counts.bbqQuantity += quantity;
+    });
+    return counts;
+  }, { burgerQuantity: 0, bbqQuantity: 0 });
+  const expectedCash = Number(shift.openingCash || 0) + cashDrawerSales - cashRefundAmount;
   const countedCash = closingCash === null || closingCash === undefined ? expectedCash : Number(closingCash || 0);
   return {
     openingCash: Number(shift.openingCash || 0),
     cashSales,
     transferSales,
+    thaiChuayThaiSales,
     expectedCash,
     closingCash: countedCash,
     cashDifference: countedCash - expectedCash,
     orderCount: activeOrders.length,
+    burgerQuantity: soldQuantities.burgerQuantity,
+    bbqQuantity: soldQuantities.bbqQuantity,
     voidOrderCount: voidedOrders.length,
     grossSales,
     voidAmount,
@@ -5454,8 +6170,10 @@ function buildDashboardData(orders, expenses, ingredients, products, shifts, opt
   const storeOrders = activeOrders.filter((order) => (order.salesChannel || "store") === "store");
   const cashOrders = storeOrders.filter((order) => order.paymentMethod === "CASH");
   const transferOrders = storeOrders.filter((order) => order.paymentMethod === "TRANSFER");
+  const thaiChuayThaiOrders = storeOrders.filter((order) => order.paymentMethod === "THAI_CHUAY_THAI");
   const cashSales = cashOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
   const transferSales = transferOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const thaiChuayThaiSales = thaiChuayThaiOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
   const expenseTotal = periodExpenses.reduce((sum, expense) => sum + Number(expense.totalAmount || 0), 0);
   const productMap = new Map(products.map((product) => [product.id, product.name]));
   const topProductMap = new Map();
@@ -5474,19 +6192,19 @@ function buildDashboardData(orders, expenses, ingredients, products, shifts, opt
     });
   });
 
-  const dailyRaw = buildDashboardDayBuckets(period.range);
+  const dailyRaw = buildDashboardSalesBuckets(period.range);
   activeOrders.forEach((order) => {
-    const key = toLocalDateKey(order.createdAt);
+    const key = dailyRaw.bucketType === "month" ? toLocalMonthKey(order.createdAt) : toLocalDateKey(order.createdAt);
     if (dailyRaw.has(key)) {
       dailyRaw.get(key).total += Number(order.totalAmount || 0);
     }
   });
   const maxDaily = Math.max(1, ...Array.from(dailyRaw.values()).map((day) => day.total));
   const dailySales = Array.from(dailyRaw.values()).map((day) => ({ ...day, percent: Math.max(4, Math.round((day.total / maxDaily) * 100)) }));
-  const previousMonthRange = getPreviousMonthRange();
-  const previousMonthOrders = filterByDashboardRange(orders, previousMonthRange, (order) => order.createdAt)
+  const previousRange = getPreviousDashboardRange(period);
+  const previousOrders = filterByDashboardRange(orders, previousRange?.range, (order) => order.createdAt)
     .filter((order) => order.paymentStatus !== "VOIDED");
-  const previousTotal = previousMonthOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
+  const previousTotal = previousOrders.reduce((sum, order) => sum + Number(order.totalAmount || 0), 0);
   const delta = options.comparePreviousMonth ? totalSales - previousTotal : 0;
   const percent = previousTotal ? Math.round((delta / previousTotal) * 100) : (totalSales ? 100 : 0);
 
@@ -5499,7 +6217,11 @@ function buildDashboardData(orders, expenses, ingredients, products, shifts, opt
     cashOrders: cashOrders.length,
     transferSales,
     transferOrders: transferOrders.length,
+    thaiChuayThaiSales,
+    thaiChuayThaiOrders: thaiChuayThaiOrders.length,
     cashPercent: totalSales ? Math.round((cashSales / totalSales) * 100) : 0,
+    transferPercent: totalSales ? Math.round((transferSales / totalSales) * 100) : 0,
+    thaiChuayThaiPercent: totalSales ? Math.round((thaiChuayThaiSales / totalSales) * 100) : 0,
     dailySales,
     channelSales: Array.from(channelMap.values()).map((channel) => ({ ...channel, label: getSalesChannelLabel(channel.id) })),
     topProducts: Array.from(topProductMap.values()).sort((a, b) => b.quantity - a.quantity).slice(0, 5),
@@ -5514,11 +6236,15 @@ function buildDashboardData(orders, expenses, ingredients, products, shifts, opt
       previousTotal,
       delta,
       percent,
+      label: previousRange?.label || "ช่วงก่อนหน้า",
     },
   };
 }
 
 function getDashboardPeriod(period) {
+  if (period && typeof period === "object") {
+    return getCustomDashboardPeriod(period);
+  }
   const now = new Date();
   const todayStart = startOfLocalDay(now);
   const tomorrow = addDays(todayStart, 1);
@@ -5543,6 +6269,39 @@ function getDashboardPeriod(period) {
   };
 }
 
+function getCustomDashboardPeriod(selection = {}) {
+  const mode = selection.mode || "today";
+  if (mode === "day") {
+    const day = parseDashboardInputDate(selection.selectedDate) || startOfLocalDay(new Date());
+    return {
+      mode,
+      label: formatDashboardFullDate(day),
+      range: { start: day, end: addDays(day, 1) },
+    };
+  }
+  if (mode === "range") {
+    const first = parseDashboardInputDate(selection.rangeStart) || startOfLocalDay(new Date());
+    const second = parseDashboardInputDate(selection.rangeEnd) || first;
+    const start = first <= second ? first : second;
+    const endDay = first <= second ? second : first;
+    const sameDay = toLocalDateKey(start) === toLocalDateKey(endDay);
+    return {
+      mode,
+      label: sameDay ? formatDashboardFullDate(start) : `${formatDashboardShortDate(start)} - ${formatDashboardShortDate(endDay)}`,
+      range: { start, end: addDays(endDay, 1) },
+    };
+  }
+  if (mode === "month") {
+    const month = parseDashboardInputMonth(selection.selectedMonth) || startOfLocalMonth(new Date());
+    return {
+      mode,
+      label: month.toLocaleDateString("th-TH", { month: "long", year: "numeric" }),
+      range: { start: month, end: new Date(month.getFullYear(), month.getMonth() + 1, 1) },
+    };
+  }
+  return getDashboardPeriod(mode);
+}
+
 function filterByDashboardRange(items, range, getDateValue) {
   if (!range) return items;
   return items.filter((item) => {
@@ -5552,25 +6311,46 @@ function filterByDashboardRange(items, range, getDateValue) {
   });
 }
 
-function buildDashboardDayBuckets(range) {
+function buildDashboardSalesBuckets(range) {
   const buckets = new Map();
   const now = new Date();
   const start = range?.start || addDays(startOfLocalDay(now), -6);
   const end = range?.end || addDays(startOfLocalDay(now), 1);
-  const maxDays = Math.min(31, Math.max(1, Math.ceil((end - start) / 86400000)));
-  for (let offset = 0; offset < maxDays; offset += 1) {
+  const dayCount = Math.max(1, Math.ceil((end - start) / 86400000));
+  if (dayCount > 31) {
+    let cursor = startOfLocalMonth(start);
+    while (cursor < end && buckets.size < 24) {
+      const key = toLocalMonthKey(cursor);
+      buckets.set(key, { key, label: cursor.toLocaleDateString("th-TH", { month: "short", year: "2-digit" }), total: 0 });
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    }
+    buckets.bucketType = "month";
+    return buckets;
+  }
+  for (let offset = 0; offset < dayCount; offset += 1) {
     const date = addDays(start, offset);
     const key = toLocalDateKey(date);
     buckets.set(key, { key, label: date.toLocaleDateString("th-TH", { day: "2-digit", month: "short" }), total: 0 });
   }
+  buckets.bucketType = "day";
   return buckets;
 }
 
-function getPreviousMonthRange() {
-  const now = new Date();
+function getPreviousDashboardRange(period) {
+  if (!period?.range) return { label: "ช่วงก่อนหน้า", range: null };
+  const { start, end } = period.range;
+  if (period.mode === "month") {
+    return {
+      label: "เดือนก่อน",
+      range: { start: new Date(start.getFullYear(), start.getMonth() - 1, 1), end: new Date(start.getFullYear(), start.getMonth(), 1) },
+    };
+  }
+  const dayCount = Math.max(1, Math.ceil((end - start) / 86400000));
+  const previousEnd = start;
+  const previousStart = addDays(start, -dayCount);
   return {
-    start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
-    end: new Date(now.getFullYear(), now.getMonth(), 1),
+    label: dayCount === 1 ? "วันก่อนหน้า" : "ช่วงก่อนหน้า",
+    range: { start: previousStart, end: previousEnd },
   };
 }
 
@@ -5581,9 +6361,26 @@ function parseDashboardDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function parseDashboardInputDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function parseDashboardInputMonth(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}$/.test(value)) return null;
+  const [year, month] = value.split("-").map(Number);
+  return new Date(year, month - 1, 1);
+}
+
 function startOfLocalDay(value) {
   const date = new Date(value);
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function startOfLocalMonth(value) {
+  const date = new Date(value);
+  return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
 function addDays(value, days) {
@@ -5598,6 +6395,28 @@ function toLocalDateKey(value) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function toLocalMonthKey(value) {
+  const date = value instanceof Date ? value : parseDashboardDate(value);
+  if (!date) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function toDateInputValue(value) {
+  return toLocalDateKey(value) || toLocalDateKey(new Date());
+}
+
+function toMonthInputValue(value) {
+  return toLocalMonthKey(value) || toLocalMonthKey(new Date());
+}
+
+function formatDashboardFullDate(value) {
+  return value.toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" });
+}
+
+function formatDashboardShortDate(value) {
+  return value.toLocaleDateString("th-TH", { day: "2-digit", month: "short", year: "2-digit" });
+}
+
 function blankExpenseRow(ingredientId = "", ingredientSearch = "") {
   return {
     id: `row_${Date.now()}_${Math.random().toString(36).slice(2)}`,
@@ -5607,7 +6426,7 @@ function blankExpenseRow(ingredientId = "", ingredientSearch = "") {
     purchaseUnitId: "",
     generalExpenseItemId: "",
     generalExpenseSearch: "",
-    generalUnit: "ครั้ง",
+    generalUnit: "",
     category: "",
     subcategory: "",
     name: "",
@@ -5634,7 +6453,7 @@ function normalizeExpenseDraft(draft) {
       ? draft.rows.map((row) => ({
         ...row,
         generalExpenseSearch: row.generalExpenseSearch ?? row.name ?? "",
-        generalUnit: row.generalUnit || "ครั้ง",
+        generalUnit: row.generalUnit || "",
         category: row.category || "",
         subcategory: row.subcategory || "",
       }))
@@ -5651,8 +6470,8 @@ function buildExpenseItem(row, ingredients, purchaseUnits, generalExpenseItems =
     const name = generalItem?.name || row.generalExpenseSearch?.trim() || row.name?.trim();
     const category = generalItem?.category || row.category;
     const subcategory = generalItem?.subcategory || row.subcategory;
-    const unit = generalItem?.unit || row.generalUnit?.trim();
-    if (!name || !category || !subcategory || !unit) return null;
+    const unit = generalItem?.unit || row.generalUnit?.trim() || "";
+    if (!name || !category || !subcategory) return null;
     return {
       id: row.id,
       mode: "custom",
@@ -5677,14 +6496,16 @@ function buildExpenseItem(row, ingredients, purchaseUnits, generalExpenseItems =
   const selectedUnit = availableUnits.find((unit) => unit.id === row.purchaseUnitId);
   if (!selectedUnit) return null;
   const stockQuantity = quantity * Number(selectedUnit?.ratio || 1);
+  const category = ingredient.expenseCategory || defaultIngredientExpenseCategory;
+  const subcategory = ingredient.expenseSubcategory || defaultIngredientExpenseSubcategory;
   return {
     id: row.id,
     mode: "ingredient",
     name: ingredient.name,
     ingredientId: ingredient.id,
     generalExpenseItemId: "",
-    category: "วัตถุดิบ",
-    subcategory: ingredient.category || "อื่นๆ",
+    category,
+    subcategory,
     purchaseUnit: selectedUnit?.label || ingredient.unit,
     purchaseQuantity: quantity,
     stockQuantity,
@@ -5694,13 +6515,17 @@ function buildExpenseItem(row, ingredients, purchaseUnits, generalExpenseItems =
   };
 }
 
-function emptyGeneralExpenseItem(category = defaultGeneralExpenseCategories[0], subcategory = "") {
+function defaultNonStockExpenseCategory(categories = defaultGeneralExpenseCategories) {
+  return categories.find((category) => category !== defaultIngredientExpenseCategory) || categories[0] || "";
+}
+
+function emptyGeneralExpenseItem(category = defaultNonStockExpenseCategory(), subcategory = "") {
   return {
     id: "",
     name: "",
     category: category || "",
     subcategory: subcategory || firstExpenseSubcategory(category, defaultGeneralExpenseSubcategories),
-    unit: "ครั้ง",
+    unit: "",
     note: "",
     active: true,
   };
@@ -5708,6 +6533,13 @@ function emptyGeneralExpenseItem(category = defaultGeneralExpenseCategories[0], 
 
 function firstExpenseSubcategory(category, subcategories = defaultGeneralExpenseSubcategories) {
   return subcategories.find((subcategory) => subcategory.category === category)?.name || "";
+}
+
+function makeExpenseSubcategoryId(category, name, index = 0) {
+  const slug = `${category}_${name}`
+    .replace(/\s+/g, "_")
+    .replace(/[^\p{L}\p{N}_-]/gu, "");
+  return `expense_sub_${slug || "item"}_${index}`;
 }
 
 function rankSearchMatches(items, query, getSearchText) {
@@ -5730,7 +6562,18 @@ function rankSearchMatches(items, query, getSearchText) {
 }
 
 function emptyIngredient() {
-  return { id: "", name: "", category: defaultIngredientCategories[0], stock: 0, unit: "ชิ้น", minimumStock: 0, purchaseLabel: "แพ็ค", purchaseRatio: 1 };
+  return {
+    id: "",
+    name: "",
+    category: defaultIngredientCategories[0],
+    expenseCategory: defaultIngredientExpenseCategory,
+    expenseSubcategory: defaultIngredientExpenseSubcategory,
+    stock: 0,
+    unit: "ชิ้น",
+    minimumStock: 0,
+    purchaseLabel: "แพ็ค",
+    purchaseRatio: 1,
+  };
 }
 
 function normalizeIngredientForm(item) {
@@ -5738,6 +6581,8 @@ function normalizeIngredientForm(item) {
     id: item?.id || "",
     name: (item?.name || "").trim(),
     category: item?.category || "อื่นๆ",
+    expenseCategory: item?.expenseCategory || defaultIngredientExpenseCategory,
+    expenseSubcategory: item?.expenseSubcategory || defaultIngredientExpenseSubcategory,
     stock: Number(item?.stock || 0),
     unit: (item?.unit || "").trim(),
     minimumStock: Number(item?.minimumStock || 0),
@@ -5804,6 +6649,32 @@ function emptyModifier(products = []) {
 
 function getModifierGroupLabel(groupId, groups = defaultModifierGroups) {
   return groups.find((group) => group.id === groupId)?.label || "Add on";
+}
+
+function countModifierIds(ids = []) {
+  return ids.reduce((counts, id) => {
+    counts.set(id, Number(counts.get(id) || 0) + 1);
+    return counts;
+  }, new Map());
+}
+
+function buildSelectedModifiers(ids = [], availableModifiers = []) {
+  const modifierMap = new Map(availableModifiers.map((modifier) => [modifier.id, modifier]));
+  return ids.map((id) => modifierMap.get(id)).filter(Boolean);
+}
+
+function formatModifierSummary(modifiers = []) {
+  const summary = new Map();
+  modifiers.forEach((modifier) => {
+    const key = modifier.id || modifier.label;
+    const current = summary.get(key) || { label: modifier.label || key, count: 0 };
+    summary.set(key, { ...current, count: current.count + 1 });
+  });
+  return Array.from(summary.values()).map((item) => (item.count > 1 ? `${item.label} x${item.count}` : item.label));
+}
+
+function modifierAllowsQuantity(modifier) {
+  return Number(modifier?.price || 0) > 0;
 }
 
 function moveArrayItem(items, itemId, direction) {
