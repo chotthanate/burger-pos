@@ -62,6 +62,16 @@ import { makeShiftSummaryLineJob, makeStockEditLineJob, sendLineNotificationJob 
 import { BURGER_POS_SHEET_ID, SHEET_HEADERS, makeExpenseDeleteSheetJob, makeExpenseSheetJob, makeOrderSheetJob, makeOrderVoidSheetJob, makeResetSheetJob, makeShiftSheetJob, makeStockMovementSheetJob } from "./lib/sheetExport.js";
 import { useSheetBackedAppState, useSupabaseAppState } from "./lib/supabaseAppState.js";
 import { SUPABASE_STORE_ID } from "./lib/supabaseClient.js";
+import {
+  getBoyCentralAuthState,
+  makeBoyCentralOrderJob,
+  makeBoyCentralVoidJob,
+  onBoyCentralAuthChange,
+  sendBoyCentralJob,
+  sendBoyCentralLoginLink,
+  signOutBoyCentral,
+  stageBoyCentralMaster,
+} from "./lib/boyCentralSync.js";
 import { usePersistentState } from "./lib/storage.js";
 
 const navItems = [
@@ -413,7 +423,7 @@ export default function App() {
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [lastOrder, setLastOrder] = useState(null);
   const [closeShiftToken, setCloseShiftToken] = useState(0);
-  const [queueLists, setQueueLists] = useState({ print: [], sheet: [], line: [] });
+  const [queueLists, setQueueLists] = useState({ print: [], sheet: [], line: [], central: [] });
   const [cartLeavingKeys, setCartLeavingKeys] = useState([]);
 
   const catalog = useMemo(() => ({ recipes, modifierRecipes }), [recipes, modifierRecipes]);
@@ -556,12 +566,13 @@ export default function App() {
   }, [activeCategory, activeProducts, menuCategories]);
 
   async function refreshQueues() {
-    const [print, sheet, line] = await Promise.all([
+    const [print, sheet, line, central] = await Promise.all([
       listLocalJobs("printJobs").catch(() => []),
       listLocalJobs("sheetSyncJobs").catch(() => []),
       listLocalJobs("lineNotifyJobs").catch(() => []),
+      listLocalJobs("centralSyncJobs").catch(() => []),
     ]);
-    setQueueLists({ print, sheet, line });
+    setQueueLists({ print, sheet, line, central });
   }
 
   async function flushPrintQueue() {
@@ -622,6 +633,26 @@ export default function App() {
         await updateLocalJob("lineNotifyJobs", { ...job, status: "SENT", lastError: "" });
       } catch (error) {
         await updateLocalJob("lineNotifyJobs", {
+          ...job,
+          status: "ERROR",
+          retryCount: Number(job.retryCount || 0) + 1,
+          lastError: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    await refreshQueues();
+  }
+
+  async function flushCentralQueue() {
+    if (isTestMode) return;
+    const jobs = await listLocalJobs("centralSyncJobs").catch(() => []);
+    const pendingJobs = jobs.filter((job) => job.status !== "SYNCED").slice(0, 25);
+    for (const job of pendingJobs) {
+      try {
+        await sendBoyCentralJob(job);
+        await updateLocalJob("centralSyncJobs", { ...job, status: "SYNCED", lastError: "" });
+      } catch (error) {
+        await updateLocalJob("centralSyncJobs", {
           ...job,
           status: "ERROR",
           retryCount: Number(job.retryCount || 0) + 1,
@@ -815,7 +846,10 @@ export default function App() {
       const openDrawerWithReceipt = shouldOpenCashDrawer && printOptions.receipt;
       if (printOptions.kitchen) await addLocalJob("printJobs", { type: "KITCHEN", order, openCashDrawer: openDrawerWithKitchen, isTest: isTestMode });
       if (printOptions.receipt) await addLocalJob("printJobs", { type: "RECEIPT", order, openCashDrawer: openDrawerWithReceipt, isTest: isTestMode });
-      if (!isTestMode) await addLocalJob("sheetSyncJobs", makeOrderSheetJob(order, movements));
+      if (!isTestMode) {
+        await addLocalJob("sheetSyncJobs", makeOrderSheetJob(order, movements));
+        await addLocalJob("centralSyncJobs", makeBoyCentralOrderJob(order, movements));
+      }
     } catch (error) {
       console.error("Failed to queue order follow-up jobs", error);
     }
@@ -825,6 +859,7 @@ export default function App() {
       console.error("Failed to refresh queues after order", error);
     }
     void flushPrintQueue();
+    if (!isTestMode) void flushCentralQueue();
     return true;
   }
 
@@ -867,7 +902,9 @@ export default function App() {
     }
 
     await addLocalJob("sheetSyncJobs", makeOrderVoidSheetJob(updatedOrder, restoreMovements));
+    await addLocalJob("centralSyncJobs", makeBoyCentralVoidJob(updatedOrder));
     await refreshQueues();
+    void flushCentralQueue();
     return true;
   }
 
@@ -1196,6 +1233,7 @@ export default function App() {
     print: queueLists.print.filter((job) => job.status !== "PRINTED").length,
     sheet: queueLists.sheet.filter((job) => job.status !== "SYNCED").length,
     line: (queueLists.line || []).filter((job) => job.status !== "SENT").length,
+    central: (queueLists.central || []).filter((job) => job.status !== "SYNCED").length,
   };
   const notificationItems = buildNotificationItems({
     lowStock,
@@ -1404,7 +1442,10 @@ export default function App() {
               flushLineQueue={flushLineQueue}
               flushPrintQueue={flushPrintQueue}
               flushSheetQueue={flushSheetQueue}
+              flushCentralQueue={flushCentralQueue}
+              ingredients={ingredients}
               orders={orders}
+              products={products}
               queueLists={queueLists}
               refreshQueues={refreshQueues}
               onResetData={resetOperationalData}
@@ -5078,7 +5119,7 @@ function NewIngredientModal({ onClose, onSubmit }) {
   );
 }
 
-function SettingsScreen({ clearPrintQueue, flushLineQueue, flushPrintQueue, flushSheetQueue, onResetData, orders, queueLists, refreshQueues, setSettings, settings }) {
+function SettingsScreen({ clearPrintQueue, flushCentralQueue, flushLineQueue, flushPrintQueue, flushSheetQueue, ingredients, onResetData, orders, products, queueLists, refreshQueues, setSettings, settings }) {
   const [activeSection, setActiveSection] = useState("printer");
   const [printerNotice, setPrinterNotice] = useState("");
   const [syncNotice, setSyncNotice] = useState("");
@@ -5091,9 +5132,14 @@ function SettingsScreen({ clearPrintQueue, flushLineQueue, flushPrintQueue, flus
   const [developerUnlocked, setDeveloperUnlocked] = useState(false);
   const [developerPin, setDeveloperPin] = useState("");
   const [developerNotice, setDeveloperNotice] = useState("");
+  const [centralUser, setCentralUser] = useState(null);
+  const [centralEmail, setCentralEmail] = useState("chotthanate@gmail.com");
+  const [centralNotice, setCentralNotice] = useState("");
+  const [centralBusy, setCentralBusy] = useState(false);
   const receiptTemplateValue = settings.receiptTemplate?.includes("[TOTAL (price*quantity)]") ? settings.receiptTemplate : defaultSettings.receiptTemplate;
   const bridgeMethodValue = settings.bridgeMethod === "RAWBT_INTENT" ? "RAWBT_INTENT" : /^wss?:\/\//i.test(settings.bridgeUrl || "") ? "RAWBT_WS" : settings.bridgeMethod || "POST";
   const basicSections = [
+    { id: "central", label: "BOY Central", icon: Database },
     { id: "printer", label: "เครื่องพิมพ์", icon: Printer },
     { id: "sale", label: "การขาย", icon: Store },
     { id: "orders", label: "ประวัติออร์เดอร์", icon: ReceiptText },
@@ -5107,6 +5153,61 @@ function SettingsScreen({ clearPrintQueue, flushLineQueue, flushPrintQueue, flus
   ];
   const sections = developerUnlocked ? [...basicSections, ...developerSections] : basicSections;
   const nativeThaiPrinterAvailable = isNativeThaiPrinterAvailable();
+
+  useEffect(() => {
+    let active = true;
+    getBoyCentralAuthState()
+      .then((state) => { if (active) setCentralUser(state.user); })
+      .catch((error) => { if (active) setCentralNotice(error.message); });
+    const unsubscribe = onBoyCentralAuthChange((user) => {
+      if (!active) return;
+      setCentralUser(user);
+      if (user) setCentralNotice("เข้าสู่ระบบ BOY Central แล้ว");
+    });
+    return () => { active = false; unsubscribe(); };
+  }, []);
+
+  async function requestCentralLogin(event) {
+    event.preventDefault();
+    setCentralBusy(true);
+    setCentralNotice("");
+    try {
+      await sendBoyCentralLoginLink(centralEmail);
+      setCentralNotice("ส่งลิงก์เข้าสู่ระบบแล้ว กรุณาเปิดอีเมลจากเครื่องนี้");
+    } catch (error) {
+      setCentralNotice(`ส่งลิงก์ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setCentralBusy(false);
+    }
+  }
+
+  async function syncCentralNow() {
+    setCentralBusy(true);
+    setCentralNotice("");
+    try {
+      const staged = await stageBoyCentralMaster({ ingredients, products });
+      await flushCentralQueue();
+      await refreshQueues();
+      setCentralNotice(`ซิงก์ Master ${Number(staged?.ingredients || 0) + Number(staged?.products || 0)} รายการ และส่งคิวออเดอร์แล้ว`);
+    } catch (error) {
+      setCentralNotice(`ซิงก์ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setCentralBusy(false);
+    }
+  }
+
+  async function logoutCentral() {
+    setCentralBusy(true);
+    try {
+      await signOutBoyCentral();
+      setCentralUser(null);
+      setCentralNotice("ออกจากระบบ BOY Central แล้ว");
+    } catch (error) {
+      setCentralNotice(`ออกจากระบบไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setCentralBusy(false);
+    }
+  }
 
   function update(key, value) {
     setSettings((current) => ({ ...current, [key]: value }));
@@ -5412,6 +5513,29 @@ function SettingsScreen({ clearPrintQueue, flushLineQueue, flushPrintQueue, flus
         })}
       </div>
       <div className="settings-grid">
+      {activeSection === "central" ? (
+      <article className="settings-card settings-card-wide">
+        <Database size={24} />
+        <h3>BOY Central</h3>
+        {centralUser ? (
+          <>
+            <div className="inline-confirm">เชื่อมต่อด้วย {centralUser.email}</div>
+            <div className="queue-line"><RefreshCw size={18} /> รอส่ง {(queueLists.central || []).filter((job) => job.status !== "SYNCED").length} รายการ</div>
+            <div className="settings-printer-actions">
+              <button className="primary-button" disabled={centralBusy} onClick={syncCentralNow} type="button"><RefreshCw size={18} /> ซิงก์ตอนนี้</button>
+              <button className="ghost-button" disabled={centralBusy} onClick={logoutCentral} type="button">ออกจากระบบ</button>
+            </div>
+            <QueueList jobs={queueLists.central || []} onDone={(job) => markFirstJobDone("centralSyncJobs", job)} />
+          </>
+        ) : (
+          <form className="developer-lock-form" onSubmit={requestCentralLogin}>
+            <label>อีเมลเจ้าของร้าน<input autoComplete="email" inputMode="email" type="email" value={centralEmail} onChange={(event) => setCentralEmail(event.target.value)} /></label>
+            <button className="primary-button" disabled={centralBusy || !centralEmail.trim()} type="submit">ส่งลิงก์เข้าสู่ระบบ</button>
+          </form>
+        )}
+        {centralNotice ? <div className={centralNotice.includes("ไม่สำเร็จ") ? "inline-warning" : "inline-confirm"}>{centralNotice}</div> : null}
+      </article>
+      ) : null}
       {activeSection === "developer" ? (
       <article className="settings-card settings-card-wide developer-card">
         <SlidersHorizontal size={24} />

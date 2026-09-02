@@ -1,6 +1,6 @@
 const DB_NAME = "burger-pos-local";
-const DB_VERSION = 2;
-const STORES = ["printJobs", "sheetSyncJobs", "lineNotifyJobs"];
+const DB_VERSION = 3;
+const STORES = ["printJobs", "sheetSyncJobs", "lineNotifyJobs", "centralSyncJobs"];
 
 export async function addLocalJob(storeName, job) {
   const db = await openDb();
