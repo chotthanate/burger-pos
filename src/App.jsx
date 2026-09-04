@@ -63,9 +63,12 @@ import { BURGER_POS_SHEET_ID, SHEET_HEADERS, makeExpenseDeleteSheetJob, makeExpe
 import { useSheetBackedAppState, useSupabaseAppState } from "./lib/supabaseAppState.js";
 import { SUPABASE_STORE_ID } from "./lib/supabaseClient.js";
 import {
+  backfillBoyCentralOrders,
   getBoyCentralAuthState,
+  getBoyCentralSyncState,
   makeBoyCentralOrderJob,
   makeBoyCentralVoidJob,
+  mergeBoyCentralStock,
   onBoyCentralAuthChange,
   sendBoyCentralJob,
   sendBoyCentralLoginLink,
@@ -425,6 +428,7 @@ export default function App() {
   const [closeShiftToken, setCloseShiftToken] = useState(0);
   const [queueLists, setQueueLists] = useState({ print: [], sheet: [], line: [], central: [] });
   const [cartLeavingKeys, setCartLeavingKeys] = useState([]);
+  const centralStockSyncingRef = useRef(false);
 
   const catalog = useMemo(() => ({ recipes, modifierRecipes }), [recipes, modifierRecipes]);
   const printOptions = resolvedSettings.defaultPrintOptions || defaultSettings.defaultPrintOptions;
@@ -488,6 +492,29 @@ export default function App() {
   useEffect(() => {
     refreshQueues();
   }, []);
+
+  useEffect(() => {
+    if (isTestMode) return undefined;
+    let cancelled = false;
+
+    const pull = () => {
+      if (!cancelled) void pullCentralStock().catch(() => {});
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") pull();
+    };
+
+    pull();
+    const timer = window.setInterval(pull, 15000);
+    window.addEventListener("online", pull);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("online", pull);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [isTestMode]);
 
   useEffect(() => {
     if (generalExpenseCategories.includes(defaultIngredientExpenseCategory)) return;
@@ -643,15 +670,32 @@ export default function App() {
     await refreshQueues();
   }
 
-  async function flushCentralQueue() {
+  async function pullCentralStock({ force = false } = {}) {
+    if (isTestMode || centralStockSyncingRef.current) return { skipped: true };
+    centralStockSyncingRef.current = true;
+    try {
+      const jobs = await listLocalJobs("centralSyncJobs").catch(() => []);
+      const pending = jobs.filter((job) => job.status !== "SYNCED");
+      if (pending.length && !force) return { skipped: true, pending: pending.length };
+      const snapshot = await getBoyCentralSyncState();
+      setIngredients((current) => mergeBoyCentralStock(current, snapshot));
+      return { skipped: false, snapshot };
+    } finally {
+      centralStockSyncingRef.current = false;
+    }
+  }
+
+  async function flushCentralQueue({ pullStock = true } = {}) {
     if (isTestMode) return;
     const jobs = await listLocalJobs("centralSyncJobs").catch(() => []);
-    const pendingJobs = jobs.filter((job) => job.status !== "SYNCED").slice(0, 25);
+    const pendingJobs = jobs.filter((job) => job.status !== "SYNCED");
+    let failed = false;
     for (const job of pendingJobs) {
       try {
         await sendBoyCentralJob(job);
         await updateLocalJob("centralSyncJobs", { ...job, status: "SYNCED", lastError: "" });
       } catch (error) {
+        failed = true;
         await updateLocalJob("centralSyncJobs", {
           ...job,
           status: "ERROR",
@@ -661,6 +705,18 @@ export default function App() {
       }
     }
     await refreshQueues();
+    if (!failed && pullStock) await pullCentralStock({ force: true });
+    return { sent: pendingJobs.length, failed };
+  }
+
+  async function syncCentralData(onProgress = () => {}) {
+    const staged = await stageBoyCentralMaster({ ingredients, products });
+    const queueResult = await flushCentralQueue({ pullStock: false });
+    if (queueResult?.failed) throw new Error("ยังมีออเดอร์ส่งเข้า BOY Central ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง");
+    const snapshot = await getBoyCentralSyncState();
+    const backfill = await backfillBoyCentralOrders(orders, snapshot, onProgress);
+    await pullCentralStock({ force: true });
+    return { staged, backfill };
   }
 
   function preserveScrollPosition() {
@@ -1443,6 +1499,7 @@ export default function App() {
               flushPrintQueue={flushPrintQueue}
               flushSheetQueue={flushSheetQueue}
               flushCentralQueue={flushCentralQueue}
+              syncCentralData={syncCentralData}
               ingredients={ingredients}
               orders={orders}
               products={products}
@@ -5119,7 +5176,7 @@ function NewIngredientModal({ onClose, onSubmit }) {
   );
 }
 
-function SettingsScreen({ clearPrintQueue, flushCentralQueue, flushLineQueue, flushPrintQueue, flushSheetQueue, ingredients, onResetData, orders, products, queueLists, refreshQueues, setSettings, settings }) {
+function SettingsScreen({ clearPrintQueue, flushCentralQueue, flushLineQueue, flushPrintQueue, flushSheetQueue, ingredients, onResetData, orders, products, queueLists, refreshQueues, setSettings, settings, syncCentralData }) {
   const [activeSection, setActiveSection] = useState("printer");
   const [printerNotice, setPrinterNotice] = useState("");
   const [syncNotice, setSyncNotice] = useState("");
@@ -5185,10 +5242,12 @@ function SettingsScreen({ clearPrintQueue, flushCentralQueue, flushLineQueue, fl
     setCentralBusy(true);
     setCentralNotice("");
     try {
-      const staged = await stageBoyCentralMaster({ ingredients, products });
-      await flushCentralQueue();
+      const result = await syncCentralData(({ completed, total }) => {
+        setCentralNotice(`กำลังย้ายประวัติออเดอร์ ${completed}/${total} รายการ…`);
+      });
       await refreshQueues();
-      setCentralNotice(`ซิงก์ Master ${Number(staged?.ingredients || 0) + Number(staged?.products || 0)} รายการ และส่งคิวออเดอร์แล้ว`);
+      const masterCount = Number(result.staged?.ingredients || 0) + Number(result.staged?.products || 0);
+      setCentralNotice(`ซิงก์ Master ${masterCount} รายการ ประวัติออเดอร์ ${result.backfill.completed} รายการ และสต็อกล่าสุดแล้ว`);
     } catch (error) {
       setCentralNotice(`ซิงก์ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
     } finally {

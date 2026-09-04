@@ -45,6 +45,47 @@ export async function stageBoyCentralMaster({ ingredients, products }) {
   return data;
 }
 
+export async function getBoyCentralSyncState() {
+  const auth = await getBoyCentralAuthState();
+  if (!auth.user) throw new Error("กรุณาเข้าสู่ระบบ BOY Central ในหน้าตั้งค่าก่อน");
+  const { data, error } = await schema().rpc("get_burger_pos_sync_state");
+  if (error) throw error;
+  return data || { stock: [], synced_order_external_ids: [] };
+}
+
+export function mergeBoyCentralStock(ingredients, snapshot) {
+  const stockByLegacyKey = new Map(
+    (snapshot?.stock || []).map((row) => [String(row.legacy_key), row]),
+  );
+  return (ingredients || []).map((ingredient) => {
+    const central = stockByLegacyKey.get(String(ingredient.id));
+    if (!central) return ingredient;
+    const nextStock = Number(central.quantity_on_hand || 0);
+    if (Number(ingredient.stock || 0) === nextStock) return ingredient;
+    return {
+      ...ingredient,
+      stock: nextStock,
+      centralItemId: central.item_id,
+      centralSyncedAt: snapshot.server_time || new Date().toISOString(),
+    };
+  });
+}
+
+export async function backfillBoyCentralOrders(orders, snapshot, onProgress = () => {}) {
+  const synced = new Set(snapshot?.synced_order_external_ids || []);
+  const pending = (orders || [])
+    .filter((order) => order?.id && !order.isTest && !synced.has(order.id))
+    .sort((left, right) => new Date(left.createdAt || 0) - new Date(right.createdAt || 0));
+  let completed = 0;
+  for (const order of pending) {
+    await sendBoyCentralJob(makeBoyCentralOrderJob(order, []));
+    if (order.voidedAt) await sendBoyCentralJob(makeBoyCentralVoidJob(order));
+    completed += 1;
+    onProgress({ completed, total: pending.length });
+  }
+  return { completed, total: pending.length };
+}
+
 export function makeBoyCentralOrderJob(order, movements = []) {
   return {
     id: `CENTRAL-ORDER-${order.id}`,
@@ -97,7 +138,7 @@ async function sendOrder(job, context) {
     source_system: "burger_pos_app_state",
     external_id: order.id,
     idempotency_key: `burger-pos:order:${order.id}`,
-    order_no: order.orderNo || order.id,
+    order_no: `BURGER-${order.id}`,
     ordered_at: order.createdAt,
     shift_external_id: order.shiftId || null,
     sales_channel: order.salesChannel || "store",
