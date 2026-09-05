@@ -64,16 +64,13 @@ import { useSheetBackedAppState, useSupabaseAppState } from "./lib/supabaseAppSt
 import { SUPABASE_STORE_ID } from "./lib/supabaseClient.js";
 import {
   backfillBoyCentralOrders,
-  getBoyCentralAuthState,
+  ensureBoyCentralDeviceSession,
   getBoyCentralSyncState,
   makeBoyCentralOrderJob,
   makeBoyCentralVoidJob,
   mergeBoyCentralStock,
   onBoyCentralAuthChange,
   sendBoyCentralJob,
-  sendBoyCentralLoginLink,
-  signOutBoyCentral,
-  stageBoyCentralMaster,
 } from "./lib/boyCentralSync.js";
 import { usePersistentState } from "./lib/storage.js";
 
@@ -491,7 +488,8 @@ export default function App() {
 
   useEffect(() => {
     refreshQueues();
-  }, []);
+    if (!isTestMode) void ensureBoyCentralDeviceSession().catch(() => {});
+  }, [isTestMode]);
 
   useEffect(() => {
     if (isTestMode) return undefined;
@@ -710,13 +708,13 @@ export default function App() {
   }
 
   async function syncCentralData(onProgress = () => {}) {
-    const staged = await stageBoyCentralMaster({ ingredients, products });
+    await ensureBoyCentralDeviceSession();
     const queueResult = await flushCentralQueue({ pullStock: false });
     if (queueResult?.failed) throw new Error("ยังมีออเดอร์ส่งเข้า BOY Central ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง");
     const snapshot = await getBoyCentralSyncState();
     const backfill = await backfillBoyCentralOrders(orders, snapshot, onProgress);
     await pullCentralStock({ force: true });
-    return { staged, backfill };
+    return { backfill };
   }
 
   function preserveScrollPosition() {
@@ -5190,7 +5188,6 @@ function SettingsScreen({ clearPrintQueue, flushCentralQueue, flushLineQueue, fl
   const [developerPin, setDeveloperPin] = useState("");
   const [developerNotice, setDeveloperNotice] = useState("");
   const [centralUser, setCentralUser] = useState(null);
-  const [centralEmail, setCentralEmail] = useState("chotthanate@gmail.com");
   const [centralNotice, setCentralNotice] = useState("");
   const [centralBusy, setCentralBusy] = useState(false);
   const receiptTemplateValue = settings.receiptTemplate?.includes("[TOTAL (price*quantity)]") ? settings.receiptTemplate : defaultSettings.receiptTemplate;
@@ -5213,30 +5210,16 @@ function SettingsScreen({ clearPrintQueue, flushCentralQueue, flushLineQueue, fl
 
   useEffect(() => {
     let active = true;
-    getBoyCentralAuthState()
+    ensureBoyCentralDeviceSession()
       .then((state) => { if (active) setCentralUser(state.user); })
       .catch((error) => { if (active) setCentralNotice(error.message); });
     const unsubscribe = onBoyCentralAuthChange((user) => {
       if (!active) return;
       setCentralUser(user);
-      if (user) setCentralNotice("เข้าสู่ระบบ BOY Central แล้ว");
+      if (user) setCentralNotice("เครื่อง POS เชื่อมต่อ BOY Central แล้ว");
     });
     return () => { active = false; unsubscribe(); };
   }, []);
-
-  async function requestCentralLogin(event) {
-    event.preventDefault();
-    setCentralBusy(true);
-    setCentralNotice("");
-    try {
-      await sendBoyCentralLoginLink(centralEmail);
-      setCentralNotice("ส่งลิงก์เข้าสู่ระบบแล้ว กรุณาเปิดอีเมลจากเครื่องนี้");
-    } catch (error) {
-      setCentralNotice(`ส่งลิงก์ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setCentralBusy(false);
-    }
-  }
 
   async function syncCentralNow() {
     setCentralBusy(true);
@@ -5246,23 +5229,9 @@ function SettingsScreen({ clearPrintQueue, flushCentralQueue, flushLineQueue, fl
         setCentralNotice(`กำลังย้ายประวัติออเดอร์ ${completed}/${total} รายการ…`);
       });
       await refreshQueues();
-      const masterCount = Number(result.staged?.ingredients || 0) + Number(result.staged?.products || 0);
-      setCentralNotice(`ซิงก์ Master ${masterCount} รายการ ประวัติออเดอร์ ${result.backfill.completed} รายการ และสต็อกล่าสุดแล้ว`);
+      setCentralNotice(`ซิงก์ประวัติออเดอร์ ${result.backfill.completed} รายการ และสต็อกล่าสุดแล้ว`);
     } catch (error) {
       setCentralNotice(`ซิงก์ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setCentralBusy(false);
-    }
-  }
-
-  async function logoutCentral() {
-    setCentralBusy(true);
-    try {
-      await signOutBoyCentral();
-      setCentralUser(null);
-      setCentralNotice("ออกจากระบบ BOY Central แล้ว");
-    } catch (error) {
-      setCentralNotice(`ออกจากระบบไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setCentralBusy(false);
     }
@@ -5578,19 +5547,15 @@ function SettingsScreen({ clearPrintQueue, flushCentralQueue, flushLineQueue, fl
         <h3>BOY Central</h3>
         {centralUser ? (
           <>
-            <div className="inline-confirm">เชื่อมต่อด้วย {centralUser.email}</div>
+            <div className="inline-confirm">เครื่อง POS เชื่อมต่ออัตโนมัติแล้ว</div>
             <div className="queue-line"><RefreshCw size={18} /> รอส่ง {(queueLists.central || []).filter((job) => job.status !== "SYNCED").length} รายการ</div>
             <div className="settings-printer-actions">
               <button className="primary-button" disabled={centralBusy} onClick={syncCentralNow} type="button"><RefreshCw size={18} /> ซิงก์ตอนนี้</button>
-              <button className="ghost-button" disabled={centralBusy} onClick={logoutCentral} type="button">ออกจากระบบ</button>
             </div>
             <QueueList jobs={queueLists.central || []} onDone={(job) => markFirstJobDone("centralSyncJobs", job)} />
           </>
         ) : (
-          <form className="developer-lock-form" onSubmit={requestCentralLogin}>
-            <label>อีเมลเจ้าของร้าน<input autoComplete="email" inputMode="email" type="email" value={centralEmail} onChange={(event) => setCentralEmail(event.target.value)} /></label>
-            <button className="primary-button" disabled={centralBusy || !centralEmail.trim()} type="submit">ส่งลิงก์เข้าสู่ระบบ</button>
-          </form>
+          <div className="inline-warning">กำลังเชื่อมเครื่อง POS กับ BOY Central อัตโนมัติ</div>
         )}
         {centralNotice ? <div className={centralNotice.includes("ไม่สำเร็จ") ? "inline-warning" : "inline-confirm"}>{centralNotice}</div> : null}
       </article>

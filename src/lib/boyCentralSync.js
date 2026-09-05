@@ -9,26 +9,19 @@ export async function getBoyCentralAuthState() {
   return { configured: true, user: data.session?.user || null };
 }
 
+export async function ensureBoyCentralDeviceSession() {
+  if (!isSupabaseConfigured || !supabase) return { configured: false, user: null };
+  const current = await getBoyCentralAuthState();
+  if (current.user) return current;
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) throw error;
+  return { configured: true, user: data.user || data.session?.user || null };
+}
+
 export function onBoyCentralAuthChange(callback) {
   if (!supabase) return () => {};
   const { data } = supabase.auth.onAuthStateChange((_event, session) => callback(session?.user || null));
   return () => data.subscription.unsubscribe();
-}
-
-export async function sendBoyCentralLoginLink(email) {
-  if (!supabase) throw new Error("เครื่องนี้ยังไม่ได้ตั้งค่า Supabase");
-  const redirectTo = `${window.location.origin}${window.location.pathname}`;
-  const { error } = await supabase.auth.signInWithOtp({
-    email: String(email || "").trim(),
-    options: { emailRedirectTo: redirectTo },
-  });
-  if (error) throw error;
-}
-
-export async function signOutBoyCentral() {
-  if (!supabase) return;
-  const { error } = await supabase.auth.signOut();
-  if (error) throw error;
 }
 
 export async function stageBoyCentralMaster({ ingredients, products }) {
@@ -46,8 +39,8 @@ export async function stageBoyCentralMaster({ ingredients, products }) {
 }
 
 export async function getBoyCentralSyncState() {
-  const auth = await getBoyCentralAuthState();
-  if (!auth.user) throw new Error("กรุณาเข้าสู่ระบบ BOY Central ในหน้าตั้งค่าก่อน");
+  const auth = await ensureBoyCentralDeviceSession();
+  if (!auth.user) throw new Error("เครื่อง POS ยังเชื่อม BOY Central ไม่สำเร็จ");
   const { data, error } = await schema().rpc("get_burger_pos_sync_state");
   if (error) throw error;
   return data || { stock: [], synced_order_external_ids: [] };
@@ -108,8 +101,8 @@ export function makeBoyCentralVoidJob(order) {
 }
 
 export async function sendBoyCentralJob(job) {
-  const auth = await getBoyCentralAuthState();
-  if (!auth.user) throw new Error("กรุณาเข้าสู่ระบบ BOY Central ในหน้าตั้งค่าก่อน");
+  const auth = await ensureBoyCentralDeviceSession();
+  if (!auth.user) throw new Error("เครื่อง POS ยังเชื่อม BOY Central ไม่สำเร็จ");
   const context = await getBurgerContext();
   if (job.type === "ORDER") return sendOrder(job, context);
   if (job.type === "ORDER_VOID") return sendVoid(job, context);
