@@ -41,15 +41,40 @@ function doPost(e) {
 }
 
 function appendSheetSyncJob_(payload) {
-  const spreadsheet = SpreadsheetApp.openById(payload.sheetId);
-  const rows = normalizeSheetRows_(payload.job || {});
-  const operations = normalizeSheetOperations_(payload.job || {}, payload.job && payload.job.operations ? payload.job.operations : []);
-  rows.forEach((row) => {
-    const sheet = getOrCreateDataSheet_(spreadsheet, row.tab);
-    sheet.appendRow(normalizeRowValuesForSheet_(row));
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const spreadsheet = SpreadsheetApp.openById(payload.sheetId);
+    const rows = normalizeSheetRows_(payload.job || {});
+    const operations = normalizeSheetOperations_(payload.job || {}, payload.job && payload.job.operations ? payload.job.operations : []);
+    appendRowsInBatches_(spreadsheet, rows);
+    const operationResults = runSheetOperations_(spreadsheet, operations);
+    return { ok: true, appendedRows: rows.length, operations: operationResults };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function appendRowsInBatches_(spreadsheet, rows) {
+  const groups = {};
+  rows.forEach(function(row) {
+    const tab = String(row && row.tab || "Data");
+    if (!groups[tab]) groups[tab] = [];
+    groups[tab].push(normalizeRowValuesForSheet_(row));
   });
-  const operationResults = runSheetOperations_(spreadsheet, operations);
-  return { ok: true, appendedRows: rows.length, operations: operationResults };
+  Object.keys(groups).forEach(function(tab) {
+    const values = groups[tab];
+    if (!values.length) return;
+    const width = values.reduce(function(maximum, row) { return Math.max(maximum, row.length); }, 0);
+    if (!width) return;
+    const normalized = values.map(function(row) {
+      const output = row.slice();
+      while (output.length < width) output.push("");
+      return output;
+    });
+    const sheet = getOrCreateDataSheet_(spreadsheet, tab);
+    sheet.getRange(sheet.getLastRow() + 1, 1, normalized.length, width).setValues(normalized);
+  });
 }
 
 function getAppState_(payload) {

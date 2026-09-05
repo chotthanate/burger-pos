@@ -44,7 +44,7 @@ import {
   seedIngredients,
 } from "./data/seedData.js";
 import { addLocalJob, clearAllLocalJobs, clearLocalJobs, listLocalJobs, updateLocalJob } from "./lib/localQueues.js";
-import { sendSheetSyncJob } from "./lib/googleSheetSync.js";
+import { sendSheetSyncJob, sendSheetSyncJobs } from "./lib/googleSheetSync.js";
 import { getOrderDisplayNo, makeNextOrderNo } from "./lib/orderFormat.js";
 import {
   applyStockMovement,
@@ -61,7 +61,7 @@ import { getAndroidBluetoothPrinters, isNativeThaiPrinterAvailable, openAndroidC
 import { makeShiftSummaryLineJob, makeStockEditLineJob, sendLineNotificationJob } from "./lib/lineNotifications.js";
 import { BURGER_POS_SHEET_ID, SHEET_HEADERS, makeExpenseDeleteSheetJob, makeExpenseSheetJob, makeOrderSheetJob, makeOrderVoidSheetJob, makeResetSheetJob, makeShiftSheetJob, makeStockMovementSheetJob } from "./lib/sheetExport.js";
 import { useSheetBackedAppState, useSupabaseAppState } from "./lib/supabaseAppState.js";
-import { SUPABASE_STORE_ID } from "./lib/supabaseClient.js";
+import { SUPABASE_STORE_ID, isSupabaseConfigured } from "./lib/supabaseClient.js";
 import {
   backfillBoyCentralOrders,
   ensureBoyCentralDeviceSession,
@@ -72,7 +72,7 @@ import {
   onBoyCentralAuthChange,
   sendBoyCentralJob,
 } from "./lib/boyCentralSync.js";
-import { usePersistentState } from "./lib/storage.js";
+import { useIndexedDbPersistentState, usePersistentState } from "./lib/storage.js";
 
 const navItems = [
   { id: "pos", label: "ขาย", icon: Store, children: [{ id: "sales-history", label: "ประวัติขาย", tab: "pos", view: "history" }] },
@@ -393,7 +393,7 @@ export default function App() {
   const [modifiers, setModifiers] = usePersistentState("burger-pos.modifiers", seedModifiers);
   const [modifierGroups, setModifierGroups] = usePersistentState("burger-pos.modifierGroups", defaultModifierGroups);
   const [modifierRecipes, setModifierRecipes] = usePersistentState("burger-pos.modifierRecipes", seedModifierRecipes);
-  const [orders, setOrders] = usePersistentState("burger-pos.orders", []);
+  const [orders, setOrders] = useIndexedDbPersistentState("orders", [], { legacyLocalStorageKey: "burger-pos.orders" });
   const [expenses, setExpenses] = usePersistentState("burger-pos.expenses", []);
   const [shifts, setShifts] = usePersistentState("burger-pos.shifts", []);
   const [stockMovements, setStockMovements] = usePersistentState("burger-pos.stockMovements", []);
@@ -425,6 +425,8 @@ export default function App() {
   const [closeShiftToken, setCloseShiftToken] = useState(0);
   const [queueLists, setQueueLists] = useState({ print: [], sheet: [], line: [], central: [] });
   const [cartLeavingKeys, setCartLeavingKeys] = useState([]);
+  const sheetQueueSyncingRef = useRef(false);
+  const centralQueueSyncingRef = useRef(false);
   const centralStockSyncingRef = useRef(false);
 
   const catalog = useMemo(() => ({ recipes, modifierRecipes }), [recipes, modifierRecipes]);
@@ -472,7 +474,7 @@ export default function App() {
     preferLocalOnHydrate: preferLocalSupabaseHydrate,
   });
   const sheetBackedState = useSheetBackedAppState(appStateSources, {
-    enabled: !supabaseState.connected,
+    enabled: !isSupabaseConfigured,
     sheetId: resolvedSettings.sheetId,
     webAppUrl: resolvedSettings.sheetWebAppUrl,
     storeId: resolvedSettings.supabaseStoreId || SUPABASE_STORE_ID,
@@ -495,21 +497,24 @@ export default function App() {
     if (isTestMode) return undefined;
     let cancelled = false;
 
-    const pull = () => {
-      if (!cancelled) void pullCentralStock().catch(() => {});
+    const syncPendingData = () => {
+      if (cancelled) return;
+      void pullCentralStock().catch(() => {});
+      if (resolvedSettings.sheetWebAppUrl) void flushSheetQueue();
+      void flushCentralQueue();
     };
     const onVisibility = () => {
-      if (document.visibilityState === "visible") pull();
+      if (document.visibilityState === "visible") syncPendingData();
     };
 
-    pull();
-    const timer = window.setInterval(pull, 15000);
-    window.addEventListener("online", pull);
+    syncPendingData();
+    const timer = window.setInterval(syncPendingData, 15000);
+    window.addEventListener("online", syncPendingData);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
-      window.removeEventListener("online", pull);
+      window.removeEventListener("online", syncPendingData);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [isTestMode]);
@@ -629,23 +634,49 @@ export default function App() {
   }
 
   async function flushSheetQueue() {
-    if (isTestMode) return;
-    const jobs = await listLocalJobs("sheetSyncJobs").catch(() => []);
-    const pendingJobs = jobs.filter((job) => job.status !== "SYNCED").slice(0, SHEET_SYNC_BATCH_SIZE);
-    for (const job of pendingJobs) {
-      try {
-        await sendSheetSyncJob(job, resolvedSettings);
-        await updateLocalJob("sheetSyncJobs", { ...job, status: "SYNCED", lastError: "" });
-      } catch (error) {
-        await updateLocalJob("sheetSyncJobs", {
-          ...job,
-          status: "ERROR",
-          retryCount: Number(job.retryCount || 0) + 1,
-          lastError: error instanceof Error ? error.message : String(error),
-        });
+    if (isTestMode || sheetQueueSyncingRef.current) return { skipped: true };
+    sheetQueueSyncingRef.current = true;
+    try {
+      const jobs = await listLocalJobs("sheetSyncJobs").catch(() => []);
+      const pendingJobs = jobs.filter((job) => job.status !== "SYNCED").slice(0, SHEET_SYNC_BATCH_SIZE);
+      const batchableTypes = new Set(["ORDER", "ORDER_VOID", "SHIFT_SUMMARY", "STOCK_MOVEMENT"]);
+      const batchableJobs = pendingJobs.filter((job) => batchableTypes.has(job.type));
+      const individualJobs = pendingJobs.filter((job) => !batchableTypes.has(job.type));
+      if (batchableJobs.length) {
+        try {
+          await sendSheetSyncJobs(batchableJobs, resolvedSettings);
+          await Promise.all(batchableJobs.map((job) => (
+            updateLocalJob("sheetSyncJobs", { ...job, status: "SYNCED", lastError: "" })
+          )));
+        } catch (error) {
+          await Promise.all(batchableJobs.map((job) => (
+            updateLocalJob("sheetSyncJobs", {
+              ...job,
+              status: "ERROR",
+              retryCount: Number(job.retryCount || 0) + 1,
+              lastError: error instanceof Error ? error.message : String(error),
+            })
+          )));
+        }
       }
+      for (const job of individualJobs) {
+        try {
+          await sendSheetSyncJob(job, resolvedSettings);
+          await updateLocalJob("sheetSyncJobs", { ...job, status: "SYNCED", lastError: "" });
+        } catch (error) {
+          await updateLocalJob("sheetSyncJobs", {
+            ...job,
+            status: "ERROR",
+            retryCount: Number(job.retryCount || 0) + 1,
+            lastError: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      await refreshQueues();
+      return { sent: pendingJobs.length };
+    } finally {
+      sheetQueueSyncingRef.current = false;
     }
-    await refreshQueues();
   }
 
   async function flushLineQueue() {
@@ -684,27 +715,32 @@ export default function App() {
   }
 
   async function flushCentralQueue({ pullStock = true } = {}) {
-    if (isTestMode) return;
-    const jobs = await listLocalJobs("centralSyncJobs").catch(() => []);
-    const pendingJobs = jobs.filter((job) => job.status !== "SYNCED");
-    let failed = false;
-    for (const job of pendingJobs) {
-      try {
-        await sendBoyCentralJob(job);
-        await updateLocalJob("centralSyncJobs", { ...job, status: "SYNCED", lastError: "" });
-      } catch (error) {
-        failed = true;
-        await updateLocalJob("centralSyncJobs", {
-          ...job,
-          status: "ERROR",
-          retryCount: Number(job.retryCount || 0) + 1,
-          lastError: error instanceof Error ? error.message : String(error),
-        });
+    if (isTestMode || centralQueueSyncingRef.current) return { skipped: true };
+    centralQueueSyncingRef.current = true;
+    try {
+      const jobs = await listLocalJobs("centralSyncJobs").catch(() => []);
+      const pendingJobs = jobs.filter((job) => job.status !== "SYNCED");
+      let failed = false;
+      for (const job of pendingJobs) {
+        try {
+          await sendBoyCentralJob(job);
+          await updateLocalJob("centralSyncJobs", { ...job, status: "SYNCED", lastError: "" });
+        } catch (error) {
+          failed = true;
+          await updateLocalJob("centralSyncJobs", {
+            ...job,
+            status: "ERROR",
+            retryCount: Number(job.retryCount || 0) + 1,
+            lastError: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
+      await refreshQueues();
+      if (!failed && pullStock) await pullCentralStock({ force: true });
+      return { sent: pendingJobs.length, failed };
+    } finally {
+      centralQueueSyncingRef.current = false;
     }
-    await refreshQueues();
-    if (!failed && pullStock) await pullCentralStock({ force: true });
-    return { sent: pendingJobs.length, failed };
   }
 
   async function syncCentralData(onProgress = () => {}) {
@@ -887,7 +923,7 @@ export default function App() {
 
     if (!isTestMode) {
       setIngredients((current) => applyStockMovement(current, requirements, "out", { allowNegative: allowNegativeStock }));
-      setOrders((current) => [order, ...current].slice(0, 200));
+      setOrders((current) => [order, ...current]);
       setStockMovements((current) => [...movements, ...current].slice(0, 500));
     }
     setLastOrder(order);
@@ -913,7 +949,10 @@ export default function App() {
       console.error("Failed to refresh queues after order", error);
     }
     void flushPrintQueue();
-    if (!isTestMode) void flushCentralQueue();
+    if (!isTestMode) {
+      if (resolvedSettings.sheetWebAppUrl) void flushSheetQueue();
+      void flushCentralQueue();
+    }
     return true;
   }
 

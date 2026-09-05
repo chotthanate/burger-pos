@@ -63,17 +63,42 @@ function doPost(e) {
 }
 
 function appendSheetSyncJob_(payload) {
-  const spreadsheet = SpreadsheetApp.openById(payload.sheetId);
-  const job = payload.job || {};
-  const rows = normalizeSheetRows_(job);
-  const operations = normalizeSheetOperations_(job, job && job.operations ? job.operations : []);
-  prepareRawRowsForAppend_(spreadsheet, job, rows);
-  rows.forEach((row) => {
-    const sheet = getOrCreateDataSheet_(spreadsheet, row.tab);
-    sheet.appendRow(normalizeRowValuesForSheet_(row));
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const spreadsheet = SpreadsheetApp.openById(payload.sheetId);
+    const job = payload.job || {};
+    const rows = normalizeSheetRows_(job);
+    const operations = normalizeSheetOperations_(job, job && job.operations ? job.operations : []);
+    prepareRawRowsForAppend_(spreadsheet, job, rows);
+    appendRowsInBatches_(spreadsheet, rows);
+    const operationResults = runSheetOperations_(spreadsheet, operations);
+    return { ok: true, appendedRows: rows.length, operations: operationResults };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function appendRowsInBatches_(spreadsheet, rows) {
+  const groups = {};
+  rows.forEach(function(row) {
+    const tab = canonicalDataTabName_(row && row.tab);
+    if (!groups[tab]) groups[tab] = [];
+    groups[tab].push(normalizeRowValuesForSheet_(row));
   });
-  const operationResults = runSheetOperations_(spreadsheet, operations);
-  return { ok: true, appendedRows: rows.length, operations: operationResults };
+  Object.keys(groups).forEach(function(tab) {
+    const values = groups[tab];
+    if (!values.length) return;
+    const width = values.reduce(function(maximum, row) { return Math.max(maximum, row.length); }, 0);
+    if (!width) return;
+    const normalized = values.map(function(row) {
+      const output = row.slice();
+      while (output.length < width) output.push("");
+      return output;
+    });
+    const sheet = getOrCreateDataSheet_(spreadsheet, tab);
+    sheet.getRange(sheet.getLastRow() + 1, 1, normalized.length, width).setValues(normalized);
+  });
 }
 
 function getAppState_(payload) {

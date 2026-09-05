@@ -20,8 +20,7 @@ function mergeStateValue(key, incoming, current) {
   if (key === "purchaseUnits") return mergeRecordsById(current, incoming);
   if (key === "orders") {
     return mergeRecordsById(current, incoming)
-      .sort((left, right) => getUpdatedAtTime(right) - getUpdatedAtTime(left))
-      .slice(0, 200);
+      .sort((left, right) => getUpdatedAtTime(right) - getUpdatedAtTime(left));
   }
   return incoming;
 }
