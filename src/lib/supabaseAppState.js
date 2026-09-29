@@ -13,16 +13,46 @@ function serialize(value) {
   }
 }
 
+const PRODUCT_LOCAL_IMAGE_FIELDS = ["imageDataUrl", "imageName", "imageSize"];
+
+function sanitizeRemoteStateValue(key, value) {
+  if (key !== "products" || !Array.isArray(value)) return value;
+  return value.map((product) => {
+    if (!product || typeof product !== "object") return product;
+    const cleaned = { ...product };
+    PRODUCT_LOCAL_IMAGE_FIELDS.forEach((field) => delete cleaned[field]);
+    return cleaned;
+  });
+}
+
+function serializeRemoteStateValue(key, value) {
+  return serialize(sanitizeRemoteStateValue(key, value));
+}
+
 function mergeStateValue(key, incoming, current) {
   if (!Array.isArray(incoming) || !Array.isArray(current)) {
     return incoming;
   }
   if (key === "purchaseUnits") return mergeRecordsById(current, incoming);
+  if (key === "products") return mergeProductsWithLocalImages(incoming, current);
   if (key === "orders") {
     return mergeRecordsById(current, incoming)
       .sort((left, right) => getUpdatedAtTime(right) - getUpdatedAtTime(left));
   }
   return incoming;
+}
+
+function mergeProductsWithLocalImages(incoming, current) {
+  const localById = new Map((current || []).filter((item) => item?.id).map((item) => [item.id, item]));
+  return (incoming || []).map((remoteProduct) => {
+    const localProduct = localById.get(remoteProduct?.id);
+    if (!localProduct) return remoteProduct;
+    const localImage = {};
+    PRODUCT_LOCAL_IMAGE_FIELDS.forEach((field) => {
+      if (localProduct[field] !== undefined) localImage[field] = localProduct[field];
+    });
+    return { ...remoteProduct, ...localImage };
+  });
 }
 
 function mergeRecordsById(localItems, remoteItems) {
@@ -104,7 +134,7 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID,
   const keySignature = Object.keys(stateSources).sort().join("|");
   const keys = useMemo(() => keySignature.split("|").filter(Boolean), [keySignature]);
   const payloadSignature = useMemo(
-    () => keys.map((key) => `${key}:${serialize(stateSources[key]?.[0])}`).join("\n"),
+    () => keys.map((key) => `${key}:${serializeRemoteStateValue(key, stateSources[key]?.[0])}`).join("\n"),
     [keySignature, keys, stateSources],
   );
 
@@ -286,12 +316,13 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID,
 
     const changedRows = keys.flatMap((key) => {
       const value = stateSources[key]?.[0];
-      const serialized = serialize(value);
+      const remoteValue = sanitizeRemoteStateValue(key, value);
+      const serialized = serialize(remoteValue);
       if (lastSerializedRef.current[key] === serialized) return [];
       return [{
         store_id: storeId,
         key,
-        payload: value,
+        payload: remoteValue,
         updated_at: new Date().toISOString(),
       }];
     });

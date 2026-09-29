@@ -444,12 +444,7 @@ export default function App() {
     modifiers: [modifiers, setModifiers],
     modifierGroups: [modifierGroups, setModifierGroups],
     modifierRecipes: [modifierRecipes, setModifierRecipes],
-    orders: [orders, setOrders],
-    expenses: [expenses, setExpenses],
-    shifts: [shifts, setShifts],
-    stockMovements: [stockMovements, setStockMovements],
   }), [
-    expenses,
     generalExpenseCategories,
     generalExpenseItems,
     generalExpenseSubcategories,
@@ -459,12 +454,9 @@ export default function App() {
     modifierGroups,
     modifierRecipes,
     modifiers,
-    orders,
     products,
     purchaseUnits,
     recipes,
-    shifts,
-    stockMovements,
   ]);
   const preferLocalSupabaseHydrate = isNativeThaiPrinterAvailable() && Boolean(
     orders.length || expenses.length || shifts.length || stockMovements.length,

@@ -7,7 +7,8 @@ Updated: 2026-09-05
 - The mobile dashboard synchronization fix is merged into `main` and deployed through GitHub Pages.
 - On 2026-07-16, the live Supabase `products` app-state row was restored from the real Google Sheet catalog after an old four-item test catalog appeared on phones. The restored catalog contained 22 entries when verified.
 - Recovery snapshots are stored only in the local ignored `tmp/recovery-2026-07-16/` directory. They must not be committed or deleted automatically.
-- Burger POS ใช้ `public.pos_app_state` และ BOY Central เป็นข้อมูลออนไลน์หลัก โดย Google Sheets เป็นสำเนา/รายงาน ไม่ใช้ Sheet App State กลับมาทับเมื่อ Supabase ถูกตั้งค่าแล้ว
+- Burger POS ใช้ BOY Central เป็นข้อมูลออร์เดอร์และสต็อกออนไลน์หลัก ส่วน `public.pos_app_state` เหลือเฉพาะข้อมูลตั้งค่าร่วมที่มีขนาดเล็ก โดย Google Sheets เป็นสำเนา/รายงาน
+- รูปเมนูเก็บเฉพาะในเครื่อง POS และไม่ส่ง Base64 เข้า Supabase; ประวัติออร์เดอร์ รายจ่าย กะ และสต็อกเคลื่อนไหวในเครื่องไม่ส่งเป็น JSON ทั้งก้อนแล้ว
 - เพิ่มคิว `centralSyncJobs` สำหรับส่งออเดอร์และการยกเลิกเข้า `boy_central` แบบ idempotent โดยหน้าร้านยังขายต่อได้เมื่อออฟไลน์
 - POS ไม่มีหน้าล็อกอินและไม่ใช้บัญชีเจ้าของร้าน โดยจะสร้าง session ประจำเครื่องอัตโนมัติและส่งเฉพาะออเดอร์/สต็อกที่จำเป็น; การจัดการ Master ทำจาก BOY ฝั่งผู้ดูแล
 - BOY Central เป็นแหล่งยอดสต็อกกลางแล้ว: POS ดึงยอดกลับเมื่อเปิดแอป/กลับมาออนไลน์/ทุก 15 วินาที และหลังส่งออเดอร์สำเร็จ โดยจะไม่ดึงยอดมาทับเมื่อยังมีคิวออฟไลน์ค้าง

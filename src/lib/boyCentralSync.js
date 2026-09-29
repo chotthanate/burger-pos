@@ -26,12 +26,16 @@ export function onBoyCentralAuthChange(callback) {
 
 export async function stageBoyCentralMaster({ ingredients, products }) {
   const context = await getBurgerContext();
+  const productsWithoutDeviceImages = (products || []).map((product) => {
+    const { imageDataUrl: _imageDataUrl, imageName: _imageName, imageSize: _imageSize, ...sharedProduct } = product || {};
+    return sharedProduct;
+  });
   const { data, error } = await schema().rpc("stage_pos_master_snapshot", {
     payload: {
       branch_id: context.branch_id,
       source_system: "burger_pos_app_state",
       ingredients: ingredients || [],
-      products: products || [],
+      products: productsWithoutDeviceImages,
     },
   });
   if (error) throw error;
