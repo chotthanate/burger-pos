@@ -3,7 +3,8 @@ import { SUPABASE_STORE_ID, isSupabaseConfigured, supabase } from "./supabaseCli
 
 const SUPABASE_SYNC_DEBOUNCE_MS = 750;
 const SHEET_SYNC_DEBOUNCE_MS = 1500;
-const REMOTE_REFRESH_INTERVAL_MS = 15000;
+const REMOTE_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+const REMOTE_REFRESH_MIN_GAP_MS = 5 * 60 * 1000;
 
 function serialize(value) {
   try {
@@ -118,6 +119,7 @@ function shouldKeepLocalValue(localValue, remoteValue) {
 export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID, preferLocalOnHydrate = false } = {}) {
   const sourceRef = useRef(stateSources);
   const lastSerializedRef = useRef({});
+  const lastRemoteRefreshRef = useRef(0);
   const applyingRemoteRef = useRef(false);
   const hydratedRef = useRef(false);
   const [hydrationTick, setHydrationTick] = useState(0);
@@ -190,6 +192,7 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID,
       });
 
       hydratedRef.current = true;
+      lastRemoteRefreshRef.current = Date.now();
       setStatus({
         mode: "supabase",
         connected: true,
@@ -215,6 +218,7 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID,
         (payload) => {
           const row = payload.new;
           if (!row?.key || !sourceRef.current[row.key]) return;
+          lastRemoteRefreshRef.current = Date.now();
           const nextSerialized = serialize(row.payload);
           if (lastSerializedRef.current[row.key] === nextSerialized) return;
           const entry = sourceRef.current[row.key];
@@ -262,8 +266,10 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID,
 
     let cancelled = false;
 
-    async function refreshRemoteState() {
-      if (document.visibilityState === "hidden") return;
+    async function refreshRemoteState({ force = false } = {}) {
+      if (document.visibilityState === "hidden" || navigator.onLine === false) return;
+      const now = Date.now();
+      if (!force && now - lastRemoteRefreshRef.current < REMOTE_REFRESH_MIN_GAP_MS) return;
       const { data, error } = await supabase
         .from("pos_app_state")
         .select("key,payload,updated_at")
@@ -271,6 +277,7 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID,
         .in("key", keys);
 
       if (cancelled || error) return;
+      lastRemoteRefreshRef.current = Date.now();
       applyingRemoteRef.current = true;
       for (const row of data || []) {
         const entry = sourceRef.current[row.key];
@@ -299,14 +306,17 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID,
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") void refreshRemoteState();
     };
+    const refreshWhenOnline = () => void refreshRemoteState({ force: true });
     const timer = window.setInterval(() => void refreshRemoteState(), REMOTE_REFRESH_INTERVAL_MS);
     window.addEventListener("focus", refreshWhenVisible);
+    window.addEventListener("online", refreshWhenOnline);
     document.addEventListener("visibilitychange", refreshWhenVisible);
 
     return () => {
       cancelled = true;
       window.clearInterval(timer);
       window.removeEventListener("focus", refreshWhenVisible);
+      window.removeEventListener("online", refreshWhenOnline);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [keySignature, keys, storeId]);

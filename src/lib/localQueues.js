@@ -25,6 +25,20 @@ export async function updateLocalJob(storeName, job) {
   await txStore(db, storeName, "readwrite").put({ ...job, updatedAt: new Date().toISOString() });
 }
 
+export async function pruneCompletedLocalJobs(storeName, completedStatuses, { keep = 50 } = {}) {
+  const db = await openDb();
+  const statuses = new Set(completedStatuses || []);
+  const jobs = await txStore(db, storeName, "readonly").getAll();
+  const completed = jobs
+    .filter((job) => statuses.has(job.status))
+    .sort((left, right) => getJobTime(right) - getJobTime(left));
+  const removable = completed.slice(Math.max(0, Number(keep) || 0));
+  for (const job of removable) {
+    await txStore(db, storeName, "readwrite").delete(job.id);
+  }
+  return removable.length;
+}
+
 export async function clearLocalJobs(storeName) {
   const db = await openDb();
   await txStore(db, storeName, "readwrite").clear();
@@ -57,7 +71,13 @@ function txStore(db, name, mode) {
     put: (value) => requestToPromise(store.put(value), tx),
     getAll: () => requestToPromise(store.getAll(), tx),
     clear: () => requestToPromise(store.clear(), tx),
+    delete: (key) => requestToPromise(store.delete(key), tx),
   };
+}
+
+function getJobTime(job) {
+  const parsed = Date.parse(job?.updatedAt || job?.createdAt || "");
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function requestToPromise(request, tx) {

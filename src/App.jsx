@@ -43,7 +43,7 @@ import {
   recipes as seedRecipes,
   seedIngredients,
 } from "./data/seedData.js";
-import { addLocalJob, clearAllLocalJobs, clearLocalJobs, listLocalJobs, updateLocalJob } from "./lib/localQueues.js";
+import { addLocalJob, clearAllLocalJobs, clearLocalJobs, listLocalJobs, pruneCompletedLocalJobs, updateLocalJob } from "./lib/localQueues.js";
 import { sendSheetSyncJob, sendSheetSyncJobs } from "./lib/googleSheetSync.js";
 import { getOrderDisplayNo, makeNextOrderNo } from "./lib/orderFormat.js";
 import {
@@ -127,6 +127,9 @@ const legacyWebAppUrls = new Set([
   "https://script.google.com/macros/s/AKfycbyaHJT2m9MJNvlTQ2bf1g4SibFbh8iaadKugMV-C6B3fVDPSIUz_ZKHW-7thIJuiKXgJg/exec",
 ]);
 const SHEET_SYNC_BATCH_SIZE = 50;
+const BACKGROUND_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const CENTRAL_STOCK_REFRESH_MIN_GAP_MS = 15 * 60 * 1000;
+const COMPLETED_JOB_RETENTION = 50;
 
 const defaultSettings = {
   printerModel: "POS-8390",
@@ -428,6 +431,7 @@ export default function App() {
   const sheetQueueSyncingRef = useRef(false);
   const centralQueueSyncingRef = useRef(false);
   const centralStockSyncingRef = useRef(false);
+  const lastCentralStockPullAtRef = useRef(0);
 
   const catalog = useMemo(() => ({ recipes, modifierRecipes }), [recipes, modifierRecipes]);
   const printOptions = resolvedSettings.defaultPrintOptions || defaultSettings.defaultPrintOptions;
@@ -491,16 +495,15 @@ export default function App() {
 
     const syncPendingData = () => {
       if (cancelled) return;
-      void pullCentralStock().catch(() => {});
       if (resolvedSettings.sheetWebAppUrl) void flushSheetQueue();
-      void flushCentralQueue();
+      void flushCentralQueue({ pullStock: true });
     };
     const onVisibility = () => {
       if (document.visibilityState === "visible") syncPendingData();
     };
 
     syncPendingData();
-    const timer = window.setInterval(syncPendingData, 15000);
+    const timer = window.setInterval(syncPendingData, BACKGROUND_SYNC_INTERVAL_MS);
     window.addEventListener("online", syncPendingData);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
@@ -617,6 +620,7 @@ export default function App() {
         });
       }
     }
+    await pruneCompletedLocalJobs("printJobs", ["PRINTED"], { keep: COMPLETED_JOB_RETENTION });
     await refreshQueues();
   }
 
@@ -664,6 +668,7 @@ export default function App() {
           });
         }
       }
+      await pruneCompletedLocalJobs("sheetSyncJobs", ["SYNCED"], { keep: COMPLETED_JOB_RETENTION * 2 });
       await refreshQueues();
       return { sent: pendingJobs.length };
     } finally {
@@ -688,11 +693,15 @@ export default function App() {
         });
       }
     }
+    await pruneCompletedLocalJobs("lineNotifyJobs", ["SENT"], { keep: COMPLETED_JOB_RETENTION });
     await refreshQueues();
   }
 
   async function pullCentralStock({ force = false } = {}) {
     if (isTestMode || centralStockSyncingRef.current) return { skipped: true };
+    if (!force && Date.now() - lastCentralStockPullAtRef.current < CENTRAL_STOCK_REFRESH_MIN_GAP_MS) {
+      return { skipped: true, reason: "cooldown" };
+    }
     centralStockSyncingRef.current = true;
     try {
       const jobs = await listLocalJobs("centralSyncJobs").catch(() => []);
@@ -700,6 +709,7 @@ export default function App() {
       if (pending.length && !force) return { skipped: true, pending: pending.length };
       const snapshot = await getBoyCentralSyncState();
       setIngredients((current) => mergeBoyCentralStock(current, snapshot));
+      lastCentralStockPullAtRef.current = Date.now();
       return { skipped: false, snapshot };
     } finally {
       centralStockSyncingRef.current = false;
@@ -727,8 +737,9 @@ export default function App() {
           });
         }
       }
+      await pruneCompletedLocalJobs("centralSyncJobs", ["SYNCED"], { keep: COMPLETED_JOB_RETENTION * 2 });
       await refreshQueues();
-      if (!failed && pullStock) await pullCentralStock({ force: true });
+      if (!failed && pullStock) await pullCentralStock();
       return { sent: pendingJobs.length, failed };
     } finally {
       centralQueueSyncingRef.current = false;
