@@ -1,11 +1,23 @@
 import { isSupabaseConfigured, supabase } from "./supabaseClient.js";
 
-const schema = () => supabase?.schema("boy_central");
 const DEVICE_TOKEN_KEY = "boy-burger-central-device-token";
 const DEVICE_ID_KEY = "boy-burger-central-device-id";
 const DEVICE_CODE_KEY = "boy-burger-central-device-code";
 const DEFAULT_DEVICE_CODE = "BURGER-POS-01";
 const APP_VERSION = "1.3";
+const CENTRAL_STOCK_NAME_ALIASES = {
+  "ขนมปังเบอร์เกอร์": "ขนมปัง",
+  ชีส: "ชีส Allowrie",
+  เนื้อกุ้ง: "เนื้อกุ้ง Ramly 65 กรัม",
+  เนื้อไก่: "เนื้อไก่ Ramly 60 กรัม",
+  เนื้อปลา: "เนื้อปลา Ramly 65 กรัม",
+  เนื้อวัว: "เนื้อวัว Ramly 60 กรัม",
+};
+
+function makeCentralOrderNo(order) {
+  const externalId = String(order?.id || "").replace(/^ORD-/, "");
+  return `BG-${externalId || Date.now()}`;
+}
 
 function readLocal(key) {
   if (typeof window === "undefined") return "";
@@ -37,9 +49,12 @@ export async function getBoyCentralAuthState() {
 
 export async function ensureBoyCentralDeviceSession() {
   if (!isSupabaseConfigured || !supabase) return { configured: false, user: null };
-  const current = await getBoyCentralAuthState();
-  if (current.user) return current;
-  throw new Error("ยังไม่ได้จับคู่เครื่อง POS กับ BOY Central");
+  const registration = getBoyCentralDeviceRegistration();
+  if (!registration.deviceToken) throw new Error("ยังไม่ได้จับคู่เครื่อง POS กับ BOY Central");
+  return {
+    configured: true,
+    user: { id: registration.deviceId || registration.deviceCode, ...registration },
+  };
 }
 
 export function onBoyCentralAuthChange(callback) {
@@ -52,7 +67,7 @@ export async function claimBoyCentralDevice({ pairingCode, deviceCode = DEFAULT_
   const normalizedCode = String(pairingCode || "").trim();
   if (!/^\d{8}$/.test(normalizedCode)) throw new Error("กรุณากรอกรหัสจับคู่ 8 หลัก");
   const normalizedDeviceCode = String(deviceCode || DEFAULT_DEVICE_CODE).trim() || DEFAULT_DEVICE_CODE;
-  const { data, error } = await schema().rpc("claim_pos_device", {
+  const { data, error } = await supabase.rpc("pos_claim_device", {
     target_branch_code: "BURGER",
     target_device_code: normalizedDeviceCode,
     pairing_code: normalizedCode,
@@ -68,7 +83,7 @@ export async function claimBoyCentralDevice({ pairingCode, deviceCode = DEFAULT_
 export async function getBoyCentralSyncState() {
   const auth = await ensureBoyCentralDeviceSession();
   if (!auth.user) throw new Error("เครื่อง POS ยังเชื่อม BOY Central ไม่สำเร็จ");
-  const { data, error } = await schema().rpc("get_pos_device_bootstrap", {
+  const { data, error } = await supabase.rpc("pos_device_bootstrap", {
     device_token: auth.user.deviceToken,
   });
   if (error) throw error;
@@ -92,12 +107,13 @@ export function mergeBoyCentralStock(ingredients, snapshot) {
   const stockByCentralId = new Map((snapshot?.stock || []).filter((row) => row.item_id).map((row) => [String(row.item_id), row]));
   const stockByName = new Map((snapshot?.stock || []).filter((row) => row.item_name).map((row) => [String(row.item_name).trim(), row]));
   return (ingredients || []).map((ingredient) => {
+    const ingredientName = String(ingredient.name || "").trim();
     const central = stockByLegacyKey.get(String(ingredient.id))
       || stockByCentralId.get(String(ingredient.centralItemId || ""))
-      || stockByName.get(String(ingredient.name || "").trim());
+      || stockByName.get(CENTRAL_STOCK_NAME_ALIASES[ingredientName] || ingredientName);
     if (!central) return ingredient;
     const nextStock = Number(central.quantity_on_hand || 0);
-    if (Number(ingredient.stock || 0) === nextStock) return ingredient;
+    if (Number(ingredient.stock || 0) === nextStock && ingredient.centralItemId === central.item_id) return ingredient;
     return {
       ...ingredient,
       stock: nextStock,
@@ -133,12 +149,13 @@ export function makeBoyCentralOrderJob(order, movements = []) {
   };
 }
 
-export function makeBoyCentralVoidJob(order) {
+export function makeBoyCentralVoidJob(order, movements = []) {
   return {
     id: `CENTRAL-VOID-${order.id}`,
     type: "ORDER_VOID",
     sourceId: order.id,
     order,
+    movements,
     description: `${order.orderNo || order.id} void -> BOY Central`,
   };
 }
@@ -174,7 +191,8 @@ async function sendOrder(job) {
     data: {
       id: order.id,
       shiftId: order.shiftId || null,
-      orderNo: order.orderNo || order.id,
+      orderNo: makeCentralOrderNo(order),
+      displayOrderNo: order.orderNo || order.id,
       payment,
       paymentMethod: order.paymentMethod || "OTHER",
       salesChannel: order.salesChannel || "store",
@@ -196,7 +214,7 @@ async function sendOrder(job) {
     },
     stock_deltas: stockMovements,
   };
-  const { data, error } = await schema().rpc("sync_pos_event", {
+  const { data, error } = await supabase.rpc("pos_sync_event", {
     device_token: auth.user.deviceToken,
     event,
   });
@@ -229,10 +247,28 @@ async function sendVoid(job) {
       refundAmount: payload.refund_amount,
     },
   };
-  const { data, error } = await schema().rpc("sync_pos_event", {
+  const { data, error } = await supabase.rpc("pos_sync_event", {
     device_token: auth.user.deviceToken,
     event,
   });
   if (error) throw error;
-  return data;
+  const stockMovements = (job.movements || []).map((movement) => ({
+    central_item_id: movement.centralItemId || null,
+    name: movement.ingredientName || null,
+    quantity_delta: Number(movement.quantityDelta || 0),
+  })).filter((movement) => movement.quantity_delta !== 0);
+  if (!stockMovements.length) return data;
+  const { data: stockData, error: stockError } = await supabase.rpc("pos_sync_event", {
+    device_token: auth.user.deviceToken,
+    event: {
+      event_type: "STOCK_ADJUST",
+      external_id: `${order.id}:void-stock`,
+      occurred_at: payload.voided_at,
+      app_version: APP_VERSION,
+      reason: `คืนสต็อกจากการยกเลิก ${order.orderNo || order.id}`,
+      stock_deltas: stockMovements,
+    },
+  });
+  if (stockError) throw stockError;
+  return { void: data, stock: stockData };
 }

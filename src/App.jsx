@@ -1005,7 +1005,7 @@ export default function App() {
     }
 
     await addLocalJob("sheetSyncJobs", makeOrderVoidSheetJob(updatedOrder, restoreMovements));
-    await addLocalJob("centralSyncJobs", makeBoyCentralVoidJob(updatedOrder));
+    await addLocalJob("centralSyncJobs", makeBoyCentralVoidJob(updatedOrder, restoreMovements));
     await refreshQueues();
     void flushCentralQueue();
     return true;
