@@ -7412,9 +7412,14 @@ body,
 }
 
 .developer-lock-form,
+.central-pair-form,
 .developer-shortcuts {
   display: grid;
   gap: 12px;
+}
+
+.central-pair-form {
+  max-width: 520px;
 }
 
 .developer-shortcuts {

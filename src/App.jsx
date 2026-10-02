@@ -63,8 +63,9 @@ import { BURGER_POS_SHEET_ID, SHEET_HEADERS, makeExpenseDeleteSheetJob, makeExpe
 import { useSheetBackedAppState, useSupabaseAppState } from "./lib/supabaseAppState.js";
 import { SUPABASE_STORE_ID, isSupabaseConfigured } from "./lib/supabaseClient.js";
 import {
-  backfillBoyCentralOrders,
+  claimBoyCentralDevice,
   ensureBoyCentralDeviceSession,
+  getBoyCentralDeviceRegistration,
   getBoyCentralSyncState,
   makeBoyCentralOrderJob,
   makeBoyCentralVoidJob,
@@ -720,8 +721,14 @@ export default function App() {
     if (isTestMode || centralQueueSyncingRef.current) return { skipped: true };
     centralQueueSyncingRef.current = true;
     try {
+      try {
+        await ensureBoyCentralDeviceSession();
+      } catch (error) {
+        await refreshQueues();
+        return { sent: 0, failed: true, error: error instanceof Error ? error.message : String(error) };
+      }
       const jobs = await listLocalJobs("centralSyncJobs").catch(() => []);
-      const pendingJobs = jobs.filter((job) => job.status !== "SYNCED");
+      const pendingJobs = jobs.filter((job) => job.status !== "SYNCED").slice(0, 25);
       let failed = false;
       for (const job of pendingJobs) {
         try {
@@ -735,6 +742,7 @@ export default function App() {
             retryCount: Number(job.retryCount || 0) + 1,
             lastError: error instanceof Error ? error.message : String(error),
           });
+          break;
         }
       }
       await pruneCompletedLocalJobs("centralSyncJobs", ["SYNCED"], { keep: COMPLETED_JOB_RETENTION * 2 });
@@ -750,10 +758,9 @@ export default function App() {
     await ensureBoyCentralDeviceSession();
     const queueResult = await flushCentralQueue({ pullStock: false });
     if (queueResult?.failed) throw new Error("ยังมีออเดอร์ส่งเข้า BOY Central ไม่สำเร็จ กรุณาตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง");
-    const snapshot = await getBoyCentralSyncState();
-    const backfill = await backfillBoyCentralOrders(orders, snapshot, onProgress);
+    onProgress({ completed: 0, total: 0 });
     await pullCentralStock({ force: true });
-    return { backfill };
+    return { backfill: { completed: 0, total: 0 } };
   }
 
   function preserveScrollPosition() {
@@ -5232,6 +5239,9 @@ function SettingsScreen({ clearPrintQueue, flushCentralQueue, flushLineQueue, fl
   const [centralUser, setCentralUser] = useState(null);
   const [centralNotice, setCentralNotice] = useState("");
   const [centralBusy, setCentralBusy] = useState(false);
+  const initialDeviceRegistration = getBoyCentralDeviceRegistration();
+  const [centralPairingCode, setCentralPairingCode] = useState("");
+  const [centralDeviceCode, setCentralDeviceCode] = useState(initialDeviceRegistration.deviceCode);
   const receiptTemplateValue = settings.receiptTemplate?.includes("[TOTAL (price*quantity)]") ? settings.receiptTemplate : defaultSettings.receiptTemplate;
   const bridgeMethodValue = settings.bridgeMethod === "RAWBT_INTENT" ? "RAWBT_INTENT" : /^wss?:\/\//i.test(settings.bridgeUrl || "") ? "RAWBT_WS" : settings.bridgeMethod || "POST";
   const basicSections = [
@@ -5274,6 +5284,28 @@ function SettingsScreen({ clearPrintQueue, flushCentralQueue, flushLineQueue, fl
       setCentralNotice(`ซิงก์ประวัติออเดอร์ ${result.backfill.completed} รายการ และสต็อกล่าสุดแล้ว`);
     } catch (error) {
       setCentralNotice(`ซิงก์ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setCentralBusy(false);
+    }
+  }
+
+  async function pairCentralDevice(event) {
+    event.preventDefault();
+    setCentralBusy(true);
+    setCentralNotice("");
+    try {
+      const user = await claimBoyCentralDevice({
+        pairingCode: centralPairingCode,
+        deviceCode: centralDeviceCode,
+        deviceName: "Burger POS เครื่อง 1",
+      });
+      setCentralUser(user);
+      setCentralPairingCode("");
+      setCentralNotice("จับคู่เครื่อง POS กับสาขาเบอร์เกอร์แล้ว กำลังส่งข้อมูลค้าง");
+      await flushCentralQueue({ pullStock: true });
+      await refreshQueues();
+    } catch (error) {
+      setCentralNotice(`จับคู่ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setCentralBusy(false);
     }
@@ -5597,9 +5629,14 @@ function SettingsScreen({ clearPrintQueue, flushCentralQueue, flushLineQueue, fl
             <QueueList jobs={queueLists.central || []} onDone={(job) => markFirstJobDone("centralSyncJobs", job)} />
           </>
         ) : (
-          <div className="inline-warning">กำลังเชื่อมเครื่อง POS กับ BOY Central อัตโนมัติ</div>
+          <form className="central-pair-form" onSubmit={pairCentralDevice}>
+            <div className="inline-warning">เครื่องนี้ยังไม่ได้จับคู่กับสาขาเบอร์เกอร์</div>
+            <label>รหัสเครื่อง<input autoComplete="off" value={centralDeviceCode} onChange={(event) => setCentralDeviceCode(event.target.value)} /></label>
+            <label>รหัสจับคู่ 8 หลัก<input autoComplete="one-time-code" inputMode="numeric" maxLength={8} type="text" value={centralPairingCode} onChange={(event) => setCentralPairingCode(event.target.value.replace(/\D/g, "").slice(0, 8))} /></label>
+            <button className="primary-button" disabled={centralBusy || centralPairingCode.length !== 8} type="submit">จับคู่เครื่อง POS</button>
+          </form>
         )}
-        {centralNotice ? <div className={centralNotice.includes("ไม่สำเร็จ") ? "inline-warning" : "inline-confirm"}>{centralNotice}</div> : null}
+        {centralNotice ? <div className={centralNotice.includes("ไม่สำเร็จ") || centralNotice.includes("ยังไม่ได้") ? "inline-warning" : "inline-confirm"}>{centralNotice}</div> : null}
       </article>
       ) : null}
       {activeSection === "developer" ? (
@@ -6158,6 +6195,7 @@ function makeSaleMovements(requirements, ingredients, orderId) {
       id: `MOV-${Date.now()}-${line.ingredientId}`,
       ingredientId: line.ingredientId,
       ingredientName: ingredient?.name || line.ingredientId,
+      centralItemId: ingredient?.centralItemId || null,
       type: "SALE",
       sourceType: "ORDER",
       quantityBefore: Number(ingredient?.stock || 0),
@@ -6179,6 +6217,7 @@ function makeVoidStockMovements(requirements, ingredients, order) {
       id: `MOV-${Date.now()}-${line.ingredientId}`,
       ingredientId: line.ingredientId,
       ingredientName: ingredient?.name || line.ingredientId,
+      centralItemId: ingredient?.centralItemId || null,
       type: "VOID",
       sourceType: "ORDER_VOID",
       quantityBefore,
