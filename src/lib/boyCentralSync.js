@@ -4,7 +4,7 @@ const DEVICE_TOKEN_KEY = "boy-burger-central-device-token";
 const DEVICE_ID_KEY = "boy-burger-central-device-id";
 const DEVICE_CODE_KEY = "boy-burger-central-device-code";
 const DEFAULT_DEVICE_CODE = "BURGER-POS-01";
-const APP_VERSION = "1.3";
+const APP_VERSION = "1.4";
 const CENTRAL_STOCK_NAME_ALIASES = {
   "ขนมปังเบอร์เกอร์": "ขนมปัง",
   ชีส: "ชีส Allowrie",
@@ -113,11 +113,19 @@ export function mergeBoyCentralStock(ingredients, snapshot) {
       || stockByName.get(CENTRAL_STOCK_NAME_ALIASES[ingredientName] || ingredientName);
     if (!central) return ingredient;
     const nextStock = Number(central.quantity_on_hand || 0);
-    if (Number(ingredient.stock || 0) === nextStock && ingredient.centralItemId === central.item_id) return ingredient;
+    const nextUnit = central.unit_name || ingredient.unit;
+    if (
+      Number(ingredient.stock || 0) === nextStock
+      && ingredient.centralItemId === central.item_id
+      && ingredient.unit === nextUnit
+      && ingredient.centralItemName === central.item_name
+    ) return ingredient;
     return {
       ...ingredient,
       stock: nextStock,
+      unit: nextUnit,
       centralItemId: central.item_id,
+      centralItemName: central.item_name,
       centralSyncedAt: snapshot.server_time || new Date().toISOString(),
     };
   });

@@ -129,7 +129,7 @@ const legacyWebAppUrls = new Set([
 ]);
 const SHEET_SYNC_BATCH_SIZE = 50;
 const BACKGROUND_SYNC_INTERVAL_MS = 5 * 60 * 1000;
-const CENTRAL_STOCK_REFRESH_MIN_GAP_MS = 15 * 60 * 1000;
+const CENTRAL_STOCK_REFRESH_MIN_GAP_MS = 5 * 60 * 1000;
 const COMPLETED_JOB_RETENTION = 50;
 
 const defaultSettings = {
