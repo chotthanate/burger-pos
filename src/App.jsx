@@ -15,6 +15,7 @@ import {
   Minus,
   MoreVertical,
   Package,
+  PackageCheck,
   Plus,
   Printer,
   ReceiptText,
@@ -66,12 +67,14 @@ import {
   claimBoyCentralDevice,
   ensureBoyCentralDeviceSession,
   getBoyCentralDeviceRegistration,
+  getBoyCentralPendingReceipts,
   getBoyCentralSyncState,
   makeBoyCentralOrderJob,
   makeBoyCentralVoidJob,
   mergeBoyCentralMaster,
   mergeBoyCentralStock,
   onBoyCentralAuthChange,
+  receiveBoyCentralPurchaseReceipt,
   saveBoyCentralModifierRecipe,
   saveBoyCentralRecipe,
   sendBoyCentralJob,
@@ -83,6 +86,7 @@ const navItems = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3 },
   { id: "menu", label: "รายการสินค้า", icon: Utensils, children: [{ id: "categories", label: "หมวดหมู่", tab: "categories" }, { id: "modifiers", label: "จัดการตัวเลือกเสริม", tab: "modifiers" }] },
   { id: "inventory", label: "วัตถุดิบ", icon: Package },
+  { id: "receipts", label: "รอรับสินค้า", icon: PackageCheck },
   { id: "expense", label: "รายจ่าย", icon: ReceiptText, children: [{ id: "expense-history", label: "ประวัติรายจ่าย", tab: "expense", view: "history" }, { id: "expense-master", label: "ฐานข้อมูลรายจ่าย", tab: "expense", view: "master" }] },
   { id: "settings", label: "ตั้งค่า", icon: Settings },
   { id: "notifications", label: "แจ้งเตือน", icon: Bell },
@@ -404,6 +408,9 @@ export default function App() {
   const [expenses, setExpenses] = usePersistentState("burger-pos.expenses", []);
   const [shifts, setShifts] = usePersistentState("burger-pos.shifts", []);
   const [stockMovements, setStockMovements] = usePersistentState("burger-pos.stockMovements", []);
+  const [pendingReceipts, setPendingReceipts] = useState([]);
+  const [pendingReceiptsLoading, setPendingReceiptsLoading] = useState(false);
+  const [pendingReceiptsError, setPendingReceiptsError] = useState("");
   const [settings, setSettings] = usePersistentState("burger-pos.settings", defaultSettings);
   const resolvedSettings = useMemo(() => ({
     ...defaultSettings,
@@ -501,6 +508,7 @@ export default function App() {
       if (cancelled) return;
       if (resolvedSettings.sheetWebAppUrl) void flushSheetQueue();
       void flushCentralQueue({ pullStock: true });
+      void loadPendingReceipts({ quiet: true });
     };
     const onVisibility = () => {
       if (document.visibilityState === "visible") syncPendingData();
@@ -515,6 +523,20 @@ export default function App() {
       window.clearInterval(timer);
       window.removeEventListener("online", syncPendingData);
       document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [isTestMode]);
+
+  useEffect(() => {
+    if (isTestMode) return undefined;
+    const refresh = () => {
+      if (document.visibilityState === "visible") void loadPendingReceipts({ quiet: true });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 15000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
     };
   }, [isTestMode]);
 
@@ -719,6 +741,38 @@ export default function App() {
       return { skipped: false, snapshot };
     } finally {
       centralStockSyncingRef.current = false;
+    }
+  }
+
+  async function loadPendingReceipts({ quiet = false } = {}) {
+    if (isTestMode || pendingReceiptsLoading) return;
+    setPendingReceiptsLoading(true);
+    if (!quiet) setPendingReceiptsError("");
+    try {
+      const rows = await getBoyCentralPendingReceipts();
+      setPendingReceipts(rows);
+      setPendingReceiptsError("");
+    } catch (error) {
+      if (!quiet) setPendingReceiptsError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPendingReceiptsLoading(false);
+    }
+  }
+
+  async function receivePendingReceipt(receiptId) {
+    const confirmed = window.confirm("ยืนยันว่ารับสินค้าครบแล้วและเพิ่มเข้าสต็อกใช่ไหม?");
+    if (!confirmed) return;
+    setPendingReceiptsLoading(true);
+    setPendingReceiptsError("");
+    try {
+      await receiveBoyCentralPurchaseReceipt(receiptId);
+      setPendingReceipts((current) => current.filter((receipt) => receipt.receipt_id !== receiptId));
+      await pullCentralStock({ force: true });
+      await loadPendingReceipts({ quiet: true });
+    } catch (error) {
+      setPendingReceiptsError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPendingReceiptsLoading(false);
     }
   }
 
@@ -1492,6 +1546,15 @@ export default function App() {
               setIngredients={setIngredients}
             />
           ) : null}
+          {activeTab === "receipts" ? (
+            <PendingReceiptsScreen
+              error={pendingReceiptsError}
+              loading={pendingReceiptsLoading}
+              onReceive={receivePendingReceipt}
+              onRefresh={() => loadPendingReceipts()}
+              receipts={pendingReceipts}
+            />
+          ) : null}
           {activeTab === "menu" ? (
             <MenuRecipeScreen
               ingredients={ingredients}
@@ -1608,6 +1671,7 @@ function Header({ activeTab, expenseView, lowStock, onOpenInventory, onOpenNav, 
     pos: posView === "history" ? "ประวัติการขาย" : "ขายหน้าร้าน",
     dashboard: "Dashboard สรุปยอดขาย",
     inventory: "เช็ควัตถุดิบ",
+    receipts: "รอรับสินค้า",
     menu: "รายการสินค้า",
     categories: "หมวดหมู่สินค้า",
     modifiers: "จัดการตัวเลือกเสริม",
@@ -3080,6 +3144,48 @@ function PaymentModal({ cart, onClose, onSubmit, total }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function PendingReceiptsScreen({ error, loading, onReceive, onRefresh, receipts }) {
+  return (
+    <section className="content-section pending-receipts-screen">
+      <div className="panel-title pending-receipts-title">
+        <div>
+          <h3>สินค้าที่ซื้อแล้ว รอของมาถึง</h3>
+          <p>รับจาก POS หรือเว็บไซต์ก็ได้ เมื่อรับแล้วรายการจะหายจากทั้งสองฝั่ง</p>
+        </div>
+        <button className="ghost-button" disabled={loading} onClick={onRefresh} type="button"><RefreshCw size={17} /> โหลดใหม่</button>
+      </div>
+      {error ? <div className="sync-error"><AlertTriangle size={18} /><span>โหลดรายการไม่สำเร็จ: {error}</span></div> : null}
+      {!receipts.length && !loading ? <div className="empty-state">ไม่มีสินค้ารอรับ</div> : null}
+      {!receipts.length && loading ? <div className="empty-state">กำลังโหลดรายการรอรับ…</div> : null}
+      <div className="pending-receipts-grid">
+        {receipts.map((receipt) => {
+          const lines = Array.isArray(receipt.lines) ? receipt.lines : [];
+          const createdAt = new Date(receipt.created_at || receipt.transaction_date);
+          const dateLabel = Number.isNaN(createdAt.getTime())
+            ? receipt.transaction_date
+            : createdAt.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
+          return (
+            <article className="pending-receipt-card" key={receipt.receipt_id}>
+              <header>
+                <div><strong>{receipt.transaction_no || "รายการซื้อ"}</strong><small>{dateLabel} · {lines.length} รายการ</small></div>
+                <b>{money(Number(receipt.total_amount || 0))} บาท</b>
+              </header>
+              <div className="pending-receipt-lines">
+                {lines.map((line) => (
+                  <div key={line.line_id}><span>{line.item_name || "สินค้า"}</span><strong>{Number(line.quantity || 0).toLocaleString("th-TH", { maximumFractionDigits: 3 })} {line.unit || ""}</strong></div>
+                ))}
+              </div>
+              <button className="primary-button" disabled={loading} onClick={() => onReceive(receipt.receipt_id)} type="button">
+                <PackageCheck size={19} /> รับสินค้าเข้าสต็อก
+              </button>
+            </article>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

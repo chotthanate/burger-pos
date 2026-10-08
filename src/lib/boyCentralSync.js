@@ -4,7 +4,7 @@ const DEVICE_TOKEN_KEY = "boy-burger-central-device-token";
 const DEVICE_ID_KEY = "boy-burger-central-device-id";
 const DEVICE_CODE_KEY = "boy-burger-central-device-code";
 const DEFAULT_DEVICE_CODE = "BURGER-POS-01";
-const APP_VERSION = "1.6";
+const APP_VERSION = "1.7";
 const CENTRAL_STOCK_NAME_ALIASES = {
   "ขนมปังเบอร์เกอร์": "ขนมปัง",
   ชีส: "ชีส Allowrie",
@@ -98,6 +98,25 @@ export async function getBoyCentralSyncState() {
     })),
     synced_order_external_ids: [],
   };
+}
+
+export async function getBoyCentralPendingReceipts() {
+  const auth = await ensureBoyCentralDeviceSession();
+  const { data, error } = await supabase.rpc("pos_pending_receipts", {
+    device_token: auth.user.deviceToken,
+  });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
+}
+
+export async function receiveBoyCentralPurchaseReceipt(receiptId) {
+  const auth = await ensureBoyCentralDeviceSession();
+  const { data, error } = await supabase.rpc("pos_receive_purchase_receipt", {
+    device_token: auth.user.deviceToken,
+    receipt_id: receiptId,
+  });
+  if (error) throw error;
+  return data;
 }
 
 export function mergeBoyCentralMaster(ingredients, recipes, modifierRecipes = [], snapshot = {}) {
