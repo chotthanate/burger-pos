@@ -69,8 +69,10 @@ import {
   getBoyCentralSyncState,
   makeBoyCentralOrderJob,
   makeBoyCentralVoidJob,
+  mergeBoyCentralMaster,
   mergeBoyCentralStock,
   onBoyCentralAuthChange,
+  saveBoyCentralRecipe,
   sendBoyCentralJob,
 } from "./lib/boyCentralSync.js";
 import { useIndexedDbPersistentState, usePersistentState } from "./lib/storage.js";
@@ -709,7 +711,8 @@ export default function App() {
       const pending = jobs.filter((job) => job.status !== "SYNCED");
       if (pending.length && !force) return { skipped: true, pending: pending.length };
       const snapshot = await getBoyCentralSyncState();
-      setIngredients((current) => mergeBoyCentralStock(current, snapshot));
+      setIngredients((current) => mergeBoyCentralStock(mergeBoyCentralMaster(current, [], snapshot).ingredients, snapshot));
+      setRecipes((current) => mergeBoyCentralMaster(ingredients, current, snapshot).recipes);
       lastCentralStockPullAtRef.current = Date.now();
       return { skipped: false, snapshot };
     } finally {
@@ -3496,6 +3499,9 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
     : {};
   const savedHasRecipe = Object.keys(savedRecipeDraft).length > 0;
   const recipeEntries = Object.entries(recipeDraft).filter(([, quantity]) => Number(quantity) > 0);
+  const centralRecipeIngredients = [...new Map(
+    ingredients.filter((ingredient) => ingredient.centralItemId).map((ingredient) => [ingredient.centralItemId, ingredient]),
+  ).values()];
   const hasUnsavedChanges = editorOpen && (
     JSON.stringify(normalizeProductForm(productForm)) !== JSON.stringify(normalizeProductForm(savedProductForm)) ||
     hasRecipe !== savedHasRecipe ||
@@ -3557,7 +3563,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
     setProductActionNotice("");
   }
 
-  function saveProduct(event) {
+  async function saveProduct(event) {
     event.preventDefault();
     const next = {
       ...productForm,
@@ -3567,13 +3573,21 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
       channelAvailability: normalizeChannelAvailability(productForm),
       active: Object.values(normalizeChannelAvailability(productForm)).some(Boolean),
     };
+    const nextRecipes = hasRecipe
+      ? recipeEntries.map(([ingredientId, quantity]) => ({ productId: next.id, ingredientId, quantity: Number(quantity) }))
+      : [];
+    if (selected) {
+      try {
+        await saveBoyCentralRecipe(next.id, nextRecipes);
+      } catch (error) {
+        setEditorNotice(`บันทึกสูตรกลางไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+        return;
+      }
+    }
     setProducts((current) => {
       const exists = current.some((product) => product.id === next.id);
       return exists ? current.map((product) => (product.id === next.id ? next : product)) : [...current, next];
     });
-    const nextRecipes = hasRecipe
-      ? recipeEntries.map(([ingredientId, quantity]) => ({ productId: next.id, ingredientId, quantity: Number(quantity) }))
-      : [];
     setRecipes((current) => [...current.filter((recipe) => recipe.productId !== next.id), ...nextRecipes]);
     setSelectedId(null);
     setEditorOpen(false);
@@ -3615,7 +3629,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
   }
 
   function addRecipeLine() {
-    const nextIngredient = ingredients.find((ingredient) => !recipeDraft[ingredient.id]);
+    const nextIngredient = centralRecipeIngredients.find((ingredient) => !recipeDraft[ingredient.id]);
     if (!nextIngredient) return;
     setHasRecipe(true);
     setRecipeDraft((current) => ({ ...current, [nextIngredient.id]: 1 }));
@@ -3790,7 +3804,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
                 return (
                   <div className="recipe-line-row" key={ingredientId}>
                     <select value={ingredientId} onChange={(event) => updateRecipeIngredient(ingredientId, event.target.value)}>
-                      {ingredients.map((item) => <option disabled={Boolean(recipeDraft[item.id]) && item.id !== ingredientId} key={item.id} value={item.id}>{item.name}</option>)}
+                      {centralRecipeIngredients.map((item) => <option disabled={Boolean(recipeDraft[item.id]) && item.id !== ingredientId} key={item.id} value={item.id}>{item.name}</option>)}
                     </select>
                     <input
                       inputMode="decimal"
@@ -3809,7 +3823,7 @@ function MenuRecipeScreen({ deleteProduct, ingredients, menuCategories, products
                   </div>
                 );
               })}
-              <button className="ghost-button" onClick={addRecipeLine} type="button">เพิ่มวัตถุดิบในสูตร</button>
+              <button className="ghost-button" disabled={!centralRecipeIngredients.some((item) => !recipeDraft[item.id])} onClick={addRecipeLine} type="button">เพิ่มวัตถุดิบสต็อกกลาง</button>
             </div>
           ) : <div className="empty-compact">เมนูนี้ไม่ตัดสต็อกวัตถุดิบ</div>}
         </div>

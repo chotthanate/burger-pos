@@ -4,7 +4,7 @@ const DEVICE_TOKEN_KEY = "boy-burger-central-device-token";
 const DEVICE_ID_KEY = "boy-burger-central-device-id";
 const DEVICE_CODE_KEY = "boy-burger-central-device-code";
 const DEFAULT_DEVICE_CODE = "BURGER-POS-01";
-const APP_VERSION = "1.4";
+const APP_VERSION = "1.5";
 const CENTRAL_STOCK_NAME_ALIASES = {
   "ขนมปังเบอร์เกอร์": "ขนมปัง",
   ชีส: "ชีส Allowrie",
@@ -100,6 +100,40 @@ export async function getBoyCentralSyncState() {
   };
 }
 
+export function mergeBoyCentralMaster(ingredients, recipes, snapshot) {
+  const mappings = Array.isArray(snapshot?.ingredient_mappings) ? snapshot.ingredient_mappings : [];
+  const mappingByLegacyKey = new Map(mappings.map((row) => [String(row.legacy_key), row]));
+  const nextIngredients = (ingredients || []).map((ingredient) => {
+    const mapping = mappingByLegacyKey.get(String(ingredient.id));
+    if (!mapping?.central_item_id) return ingredient;
+    return {
+      ...ingredient,
+      name: mapping.central_item_name || ingredient.name,
+      unit: mapping.unit || ingredient.unit,
+      centralItemId: mapping.central_item_id,
+      centralItemName: mapping.central_item_name || ingredient.centralItemName || ingredient.name,
+      centralMasterVersion: snapshot.master_version || null,
+    };
+  });
+
+  const centralRows = Array.isArray(snapshot?.recipes) ? snapshot.recipes : [];
+  const mappedProductIds = new Set((snapshot?.product_mappings || []).map((row) => String(row.legacy_key)));
+  centralRows.forEach((row) => mappedProductIds.add(String(row.product_id)));
+  if (!mappedProductIds.size) return { ingredients: nextIngredients, recipes };
+  const nextRecipes = (recipes || []).filter((recipe) => !mappedProductIds.has(String(recipe.productId)));
+  centralRows.forEach((row) => {
+    if (!row.product_id || !row.ingredient_id || Number(row.quantity || 0) <= 0) return;
+    nextRecipes.push({
+      productId: String(row.product_id),
+      ingredientId: String(row.ingredient_id),
+      quantity: Number(row.quantity),
+      centralItemId: row.central_item_id || null,
+      centralMasterVersion: snapshot.master_version || null,
+    });
+  });
+  return { ingredients: nextIngredients, recipes: nextRecipes };
+}
+
 export function mergeBoyCentralStock(ingredients, snapshot) {
   const stockByLegacyKey = new Map(
     (snapshot?.stock || []).filter((row) => row.legacy_key).map((row) => [String(row.legacy_key), row]),
@@ -176,10 +210,27 @@ export async function sendBoyCentralJob(job) {
   throw new Error(`ไม่รู้จักคิว BOY Central: ${job.type}`);
 }
 
+export async function saveBoyCentralRecipe(productId, lines) {
+  const auth = await ensureBoyCentralDeviceSession();
+  const { data, error } = await supabase.rpc("pos_save_recipe", {
+    device_token: auth.user.deviceToken,
+    payload: {
+      product_id: String(productId),
+      lines: (lines || []).map((line) => ({
+        ingredient_id: String(line.ingredientId),
+        quantity: Number(line.quantity),
+      })),
+    },
+  });
+  if (error) throw error;
+  return data;
+}
+
 async function sendOrder(job) {
   const order = job.order || {};
   const stockMovements = (job.movements || []).map((movement) => ({
     central_item_id: movement.centralItemId || null,
+    legacy_ingredient_id: movement.ingredientId || null,
     name: movement.ingredientName || null,
     quantity_delta: Number(movement.quantityDelta || 0),
   }));
@@ -193,6 +244,7 @@ async function sendOrder(job) {
         : "other";
   const event = {
     event_type: "ORDER",
+    source_system: "burger_pos",
     external_id: order.id,
     occurred_at: order.createdAt,
     app_version: APP_VERSION,
@@ -262,6 +314,7 @@ async function sendVoid(job) {
   if (error) throw error;
   const stockMovements = (job.movements || []).map((movement) => ({
     central_item_id: movement.centralItemId || null,
+    legacy_ingredient_id: movement.ingredientId || null,
     name: movement.ingredientName || null,
     quantity_delta: Number(movement.quantityDelta || 0),
   })).filter((movement) => movement.quantity_delta !== 0);
@@ -270,6 +323,7 @@ async function sendVoid(job) {
     device_token: auth.user.deviceToken,
     event: {
       event_type: "STOCK_ADJUST",
+      source_system: "burger_pos",
       external_id: `${order.id}:void-stock`,
       occurred_at: payload.voided_at,
       app_version: APP_VERSION,
