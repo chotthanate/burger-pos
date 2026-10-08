@@ -750,7 +750,11 @@ export default function App() {
     if (!quiet) setPendingReceiptsError("");
     try {
       const rows = await getBoyCentralPendingReceipts();
-      setPendingReceipts(rows);
+      setPendingReceipts((current) => {
+        const receivedElsewhere = current.some((receipt) => !rows.some((row) => row.receipt_id === receipt.receipt_id));
+        if (receivedElsewhere) void pullCentralStock({ force: true });
+        return rows;
+      });
       setPendingReceiptsError("");
     } catch (error) {
       if (!quiet) setPendingReceiptsError(error instanceof Error ? error.message : String(error));
