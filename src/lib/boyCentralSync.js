@@ -4,7 +4,7 @@ const DEVICE_TOKEN_KEY = "boy-burger-central-device-token";
 const DEVICE_ID_KEY = "boy-burger-central-device-id";
 const DEVICE_CODE_KEY = "boy-burger-central-device-code";
 const DEFAULT_DEVICE_CODE = "BURGER-POS-01";
-const APP_VERSION = "1.5";
+const APP_VERSION = "1.6";
 const CENTRAL_STOCK_NAME_ALIASES = {
   "ขนมปังเบอร์เกอร์": "ขนมปัง",
   ชีส: "ชีส Allowrie",
@@ -100,7 +100,7 @@ export async function getBoyCentralSyncState() {
   };
 }
 
-export function mergeBoyCentralMaster(ingredients, recipes, snapshot) {
+export function mergeBoyCentralMaster(ingredients, recipes, modifierRecipes = [], snapshot = {}) {
   const mappings = Array.isArray(snapshot?.ingredient_mappings) ? snapshot.ingredient_mappings : [];
   const mappingByLegacyKey = new Map(mappings.map((row) => [String(row.legacy_key), row]));
   const nextIngredients = (ingredients || []).map((ingredient) => {
@@ -119,7 +119,21 @@ export function mergeBoyCentralMaster(ingredients, recipes, snapshot) {
   const centralRows = Array.isArray(snapshot?.recipes) ? snapshot.recipes : [];
   const mappedProductIds = new Set((snapshot?.product_mappings || []).map((row) => String(row.legacy_key)));
   centralRows.forEach((row) => mappedProductIds.add(String(row.product_id)));
-  if (!mappedProductIds.size) return { ingredients: nextIngredients, recipes };
+  const centralModifierRows = Array.isArray(snapshot?.modifier_recipes) ? snapshot.modifier_recipes : [];
+  const mappedModifierIds = new Set((snapshot?.modifier_mappings || []).map((row) => String(row.legacy_key)));
+  centralModifierRows.forEach((row) => mappedModifierIds.add(String(row.modifier_id)));
+  const nextModifierRecipes = (modifierRecipes || []).filter((recipe) => !mappedModifierIds.has(String(recipe.modifierId)));
+  centralModifierRows.forEach((row) => {
+    if (!row.modifier_id || !row.ingredient_id || Number(row.quantity || 0) === 0) return;
+    nextModifierRecipes.push({
+      modifierId: String(row.modifier_id),
+      ingredientId: String(row.ingredient_id),
+      quantity: Number(row.quantity),
+      centralItemId: row.central_item_id || null,
+      centralMasterVersion: snapshot.master_version || null,
+    });
+  });
+  if (!mappedProductIds.size) return { ingredients: nextIngredients, recipes, modifierRecipes: nextModifierRecipes };
   const nextRecipes = (recipes || []).filter((recipe) => !mappedProductIds.has(String(recipe.productId)));
   centralRows.forEach((row) => {
     if (!row.product_id || !row.ingredient_id || Number(row.quantity || 0) <= 0) return;
@@ -131,7 +145,7 @@ export function mergeBoyCentralMaster(ingredients, recipes, snapshot) {
       centralMasterVersion: snapshot.master_version || null,
     });
   });
-  return { ingredients: nextIngredients, recipes: nextRecipes };
+  return { ingredients: nextIngredients, recipes: nextRecipes, modifierRecipes: nextModifierRecipes };
 }
 
 export function mergeBoyCentralStock(ingredients, snapshot) {
@@ -216,6 +230,24 @@ export async function saveBoyCentralRecipe(productId, lines) {
     device_token: auth.user.deviceToken,
     payload: {
       product_id: String(productId),
+      lines: (lines || []).map((line) => ({
+        ingredient_id: String(line.ingredientId),
+        quantity: Number(line.quantity),
+      })),
+    },
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function saveBoyCentralModifierRecipe(modifier, lines) {
+  const auth = await ensureBoyCentralDeviceSession();
+  const { data, error } = await supabase.rpc("pos_save_modifier_recipe", {
+    device_token: auth.user.deviceToken,
+    payload: {
+      modifier_id: String(modifier.id),
+      modifier_label: modifier.label || String(modifier.id),
+      modifier,
       lines: (lines || []).map((line) => ({
         ingredient_id: String(line.ingredientId),
         quantity: Number(line.quantity),

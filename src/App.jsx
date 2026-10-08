@@ -72,6 +72,7 @@ import {
   mergeBoyCentralMaster,
   mergeBoyCentralStock,
   onBoyCentralAuthChange,
+  saveBoyCentralModifierRecipe,
   saveBoyCentralRecipe,
   sendBoyCentralJob,
 } from "./lib/boyCentralSync.js";
@@ -711,8 +712,9 @@ export default function App() {
       const pending = jobs.filter((job) => job.status !== "SYNCED");
       if (pending.length && !force) return { skipped: true, pending: pending.length };
       const snapshot = await getBoyCentralSyncState();
-      setIngredients((current) => mergeBoyCentralStock(mergeBoyCentralMaster(current, [], snapshot).ingredients, snapshot));
-      setRecipes((current) => mergeBoyCentralMaster(ingredients, current, snapshot).recipes);
+      setIngredients((current) => mergeBoyCentralStock(mergeBoyCentralMaster(current, [], [], snapshot).ingredients, snapshot));
+      setRecipes((current) => mergeBoyCentralMaster(ingredients, current, [], snapshot).recipes);
+      setModifierRecipes((current) => mergeBoyCentralMaster(ingredients, [], current, snapshot).modifierRecipes);
       lastCentralStockPullAtRef.current = Date.now();
       return { skipped: false, snapshot };
     } finally {
@@ -4039,6 +4041,9 @@ function ModifierManagementScreen({ ingredients, modifierGroups, modifierRecipes
   const [deleteArmed, setDeleteArmed] = useState(false);
   const selected = selectedId ? modifiers.find((modifier) => modifier.id === selectedId) : null;
   const recipeEntries = Object.entries(recipeDraft).filter(([, quantity]) => Number(quantity) !== 0);
+  const centralRecipeIngredients = [...new Map(
+    ingredients.filter((ingredient) => ingredient.centralItemId).map((ingredient) => [ingredient.centralItemId, ingredient]),
+  ).values()];
 
   useEffect(() => {
     if (!selected) return;
@@ -4082,7 +4087,7 @@ function ModifierManagementScreen({ ingredients, modifierGroups, modifierRecipes
   }
 
   function addModifierRecipeLine() {
-    const nextIngredient = ingredients.find((ingredient) => !recipeDraft[ingredient.id]);
+    const nextIngredient = centralRecipeIngredients.find((ingredient) => !recipeDraft[ingredient.id]);
     if (!nextIngredient) return;
     setRecipeDraft((current) => ({ ...current, [nextIngredient.id]: 1 }));
   }
@@ -4098,7 +4103,7 @@ function ModifierManagementScreen({ ingredients, modifierGroups, modifierRecipes
     });
   }
 
-  function saveModifier(event) {
+  async function saveModifier(event) {
     event.preventDefault();
     const next = {
       ...form,
@@ -4109,13 +4114,24 @@ function ModifierManagementScreen({ ingredients, modifierGroups, modifierRecipes
       productIds: form.productIds?.length ? form.productIds : products.map((product) => product.id),
     };
     if (!next.label) return;
+    const nextModifierRecipes = recipeEntries.map(([ingredientId, quantity]) => ({
+      modifierId: next.id,
+      ingredientId,
+      quantity: Number(quantity),
+    }));
+    try {
+      await saveBoyCentralModifierRecipe(next, nextModifierRecipes);
+    } catch (error) {
+      window.alert(`บันทึกสูตรตัวเลือกเสริมไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
     setModifiers((current) => {
       const exists = current.some((modifier) => modifier.id === next.id);
       return exists ? current.map((modifier) => (modifier.id === next.id ? next : modifier)) : [...current, next];
     });
     setModifierRecipes((current) => [
       ...current.filter((recipe) => recipe.modifierId !== next.id),
-      ...recipeEntries.map(([ingredientId, quantity]) => ({ modifierId: next.id, ingredientId, quantity: Number(quantity) })),
+      ...nextModifierRecipes,
     ]);
     closeEditor();
   }
@@ -4238,7 +4254,7 @@ function ModifierManagementScreen({ ingredients, modifierGroups, modifierRecipes
                 return (
                   <div className="recipe-line-row" key={ingredientId}>
                     <select value={ingredientId} onChange={(event) => updateModifierRecipeIngredient(ingredientId, event.target.value)}>
-                      {ingredients.map((item) => <option disabled={Boolean(recipeDraft[item.id]) && item.id !== ingredientId} key={item.id} value={item.id}>{item.name}</option>)}
+                      {centralRecipeIngredients.map((item) => <option disabled={Boolean(recipeDraft[item.id]) && item.id !== ingredientId} key={item.id} value={item.id}>{item.name}</option>)}
                     </select>
                     <input
                       inputMode="decimal"
@@ -4256,7 +4272,7 @@ function ModifierManagementScreen({ ingredients, modifierGroups, modifierRecipes
                   </div>
                 );
               })}
-              <button className="ghost-button" onClick={addModifierRecipeLine} type="button">เพิ่มผลต่อสต็อก</button>
+              <button className="ghost-button" disabled={!centralRecipeIngredients.some((item) => !recipeDraft[item.id])} onClick={addModifierRecipeLine} type="button">เพิ่มวัตถุดิบสต็อกกลาง</button>
             </div>
           </div>
           <div className="modal-actions">
