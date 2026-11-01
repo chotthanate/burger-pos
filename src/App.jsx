@@ -443,6 +443,7 @@ export default function App() {
   const centralQueueSyncingRef = useRef(false);
   const centralStockSyncingRef = useRef(false);
   const lastCentralStockPullAtRef = useRef(0);
+  const receiptPollRef = useRef({ busy: false, lastAttempt: 0, failures: 0 });
 
   const catalog = useMemo(() => ({ recipes, modifierRecipes }), [recipes, modifierRecipes]);
   const printOptions = resolvedSettings.defaultPrintOptions || defaultSettings.defaultPrintOptions;
@@ -505,7 +506,7 @@ export default function App() {
     let cancelled = false;
 
     const syncPendingData = () => {
-      if (cancelled) return;
+      if (cancelled || navigator.onLine === false || document.visibilityState === 'hidden') return;
       if (resolvedSettings.sheetWebAppUrl) void flushSheetQueue();
       void flushCentralQueue({ pullStock: true });
       void loadPendingReceipts({ quiet: true });
@@ -532,7 +533,7 @@ export default function App() {
       if (document.visibilityState === "visible") void loadPendingReceipts({ quiet: true });
     };
     refresh();
-    const timer = window.setInterval(refresh, 15000);
+    const timer = window.setInterval(refresh, BACKGROUND_SYNC_INTERVAL_MS);
     document.addEventListener("visibilitychange", refresh);
     return () => {
       window.clearInterval(timer);
@@ -745,11 +746,17 @@ export default function App() {
   }
 
   async function loadPendingReceipts({ quiet = false } = {}) {
-    if (isTestMode || pendingReceiptsLoading) return;
+    const poll = receiptPollRef.current;
+    if (isTestMode || pendingReceiptsLoading || poll.busy || navigator.onLine === false) return;
+    const gap = Math.min(30 * 60_000, BACKGROUND_SYNC_INTERVAL_MS * 2 ** Math.min(poll.failures, 3));
+    if (quiet && Date.now() - poll.lastAttempt < gap) return;
+    poll.busy = true;
+    poll.lastAttempt = Date.now();
     setPendingReceiptsLoading(true);
     if (!quiet) setPendingReceiptsError("");
     try {
       const rows = await getBoyCentralPendingReceipts();
+      poll.failures = 0;
       setPendingReceipts((current) => {
         const receivedElsewhere = current.some((receipt) => !rows.some((row) => row.receipt_id === receipt.receipt_id));
         if (receivedElsewhere) void pullCentralStock({ force: true });
@@ -757,8 +764,10 @@ export default function App() {
       });
       setPendingReceiptsError("");
     } catch (error) {
+      poll.failures += 1;
       if (!quiet) setPendingReceiptsError(error instanceof Error ? error.message : String(error));
     } finally {
+      poll.busy = false;
       setPendingReceiptsLoading(false);
     }
   }
