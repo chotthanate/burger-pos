@@ -1,5 +1,13 @@
 # Work Status
 
+## 2026-11-05: Prepared central shift-close v2 (disabled)
+
+- เตรียม 1.8: สร้างคิว SHIFT_CLOSE ก่อนปิดกะในเครื่องและส่ง UUID กะ/ยอดตามช่องทางชำระไป `public.pos_record_shift_close` แบบ idempotent; คิว Sheet เดิมยังอยู่ ไม่ล้าง IndexedDB หรือประวัติ
+- Feature flag `VITE_CENTRAL_FINANCE_V2=true` เปิดการส่งกะและอ่าน `pos_app_state_compact`; **ค่า default ปิด** เพราะ backend ใหม่ใน BOY Operation ยังไม่ apply/deploy ต้องเปิดหลังตรวจ mapping/หน่วย/สำเนาชีตครบเท่านั้น
+- Vite production build ผ่านทั้ง default และ flag=true; ยังไม่ได้ cap sync/build APK หรือติดตั้งบนแท็บเล็ต การ push ไม่เท่ากับอัปเดตแอปขาย
+- ข้อกั้นฝั่ง BOY: master สินค้าเปิดใช้ 318 รายการยังขาด runtime UUID 101 รายการ และ 17 รายการไม่มีหน่วยฐานที่จับได้ ต้องแก้ normalization โดยรหัส ไม่เดาชื่อ/หน่วย ก่อนย้าย finance ทั้งระบบจริง
+
+
 ## 2026-11-02: Network budget
 
 - ตรวจรายการรอรับอัตโนมัติทุก 5 นาทีแทน 15 วินาที; กันคำขอซ้อนและ backoff สูงสุด 30 นาทีเมื่อผิดพลาด ปุ่มรีเฟรชเองยังทำงานทันที

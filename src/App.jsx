@@ -70,6 +70,7 @@ import {
   getBoyCentralPendingReceipts,
   getBoyCentralSyncState,
   makeBoyCentralOrderJob,
+  makeBoyCentralShiftJob,
   makeBoyCentralVoidJob,
   mergeBoyCentralMaster,
   mergeBoyCentralStock,
@@ -1117,6 +1118,9 @@ export default function App() {
       closedAt,
       shiftId: openShift.id,
     };
+    try {
+      if(import.meta.env.VITE_CENTRAL_FINANCE_V2==='true') await addLocalJob('centralSyncJobs',makeBoyCentralShiftJob({...openShift,closedAt},summary));
+    } catch(error) { alert(`ยังไม่ปิดกะ: เก็บคิวฐานกลางไม่สำเร็จ ${error.message}`);return false; }
     setShifts((current) =>
       current.map((shift) =>
         shift.id === openShift.id
@@ -1127,6 +1131,7 @@ export default function App() {
     setCart([]);
     setPaymentOpen(false);
     await addLocalJob("sheetSyncJobs", makeShiftSheetJob({ ...openShift, closedAt, closingCash: Number(closingCash || 0) }, summary));
+    void flushCentralQueue({pullStock:false});
     if (resolvedSettings.sheetWebAppUrl) void flushSheetQueue();
     if (resolvedSettings.defaultPrintOptions?.shiftSummary !== false) {
       await addLocalJob("printJobs", {

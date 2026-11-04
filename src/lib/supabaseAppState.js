@@ -155,7 +155,7 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID,
 
     async function hydrate() {
       const { data, error } = await supabase
-        .from("pos_app_state")
+        .from(import.meta.env.VITE_CENTRAL_FINANCE_V2==='true'?"pos_app_state_compact":"pos_app_state")
         .select("key,payload,updated_at")
         .eq("store_id", storeId)
         .in("key", keys);
@@ -271,7 +271,7 @@ export function useSupabaseAppState(stateSources, { storeId = SUPABASE_STORE_ID,
       const now = Date.now();
       if (!force && now - lastRemoteRefreshRef.current < REMOTE_REFRESH_MIN_GAP_MS) return;
       const { data, error } = await supabase
-        .from("pos_app_state")
+        .from(import.meta.env.VITE_CENTRAL_FINANCE_V2==='true'?"pos_app_state_compact":"pos_app_state")
         .select("key,payload,updated_at")
         .eq("store_id", storeId)
         .in("key", keys);

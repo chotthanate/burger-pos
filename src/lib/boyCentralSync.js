@@ -4,7 +4,7 @@ const DEVICE_TOKEN_KEY = "boy-burger-central-device-token";
 const DEVICE_ID_KEY = "boy-burger-central-device-id";
 const DEVICE_CODE_KEY = "boy-burger-central-device-code";
 const DEFAULT_DEVICE_CODE = "BURGER-POS-01";
-const APP_VERSION = "1.7";
+const APP_VERSION = "1.8";
 const CENTRAL_STOCK_NAME_ALIASES = {
   "ขนมปังเบอร์เกอร์": "ขนมปัง",
   ชีส: "ชีส Allowrie",
@@ -240,7 +240,20 @@ export async function sendBoyCentralJob(job) {
   if (!auth.user) throw new Error("เครื่อง POS ยังเชื่อม BOY Central ไม่สำเร็จ");
   if (job.type === "ORDER") return sendOrder(job);
   if (job.type === "ORDER_VOID") return sendVoid(job);
+  if (job.type === "SHIFT_CLOSE") {
+    const {data,error}=await supabase.rpc('pos_record_shift_close',{device_token:auth.user.deviceToken,payload:job.payload});
+    if(error)throw error;return data;
+  }
   throw new Error(`ไม่รู้จักคิว BOY Central: ${job.type}`);
+}
+
+export function makeBoyCentralShiftJob(shift, summary) {
+  return {id:`CENTRAL-CLOSE-${shift.id}`,type:'SHIFT_CLOSE',sourceId:shift.id,
+    payload:{shift_id:shift.id,opened_at:shift.openedAt,closed_at:shift.closedAt,
+      cash:Number(summary.cashSales||0),transfer:Number(summary.transferSales||0),government:Number(summary.thaiChuayThaiSales||0),
+      other:Math.max(0,Number(summary.netSales||0)-Number(summary.cashSales||0)-Number(summary.transferSales||0)-Number(summary.thaiChuayThaiSales||0)),
+      total:Number(summary.netSales||0),order_count:Number(summary.orderCount||0),opening_cash:Number(summary.openingCash||0),counted_cash:Number(summary.closingCash||0),expected_cash:Number(summary.expectedCash||0)},
+    description:'ปิดกะ -> BOY Central'};
 }
 
 export async function saveBoyCentralRecipe(productId, lines) {
